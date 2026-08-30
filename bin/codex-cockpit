@@ -189,6 +189,7 @@ tmux new-session -d -s "$session" -n CODEX -c "$root" \
   "cd -- $root_q && exec $runtime_cmd"
 tag "$session:CODEX" "$(cockpit_auth_label "$runtime_id" 2>/dev/null || echo CODEX)" runtime
 tmux set-option -p -t "$session:CODEX" @cockpit_runtime_id "$runtime_id"
+tmux set-option -t "$session" @cockpit_runtime_pane "$(tmux display-message -p -t "$session:CODEX" '#{pane_id}')"
 
 tmux new-window -d -t "$session:" -n FILES -c "$root" \
   "cd -- $root_q && exec codex-cockpit-files $root_q"

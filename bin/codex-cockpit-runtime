@@ -153,6 +153,7 @@ switch_to() {
   tmux swap-pane -s "$incoming" -t "$slot"
   tmux set-option -p -t "$incoming" @cockpit_role runtime
   tmux set-option -p -t "$incoming" @cockpit_runtime_id "$id"
+  tmux set-option -t "$session" @cockpit_runtime_pane "$incoming"
   tmux select-pane -t "$incoming" -T "$(cockpit_auth_label "$id")"
   resume_pane "$incoming"
   tmux set-option -p -t "$slot" @cockpit_role parked

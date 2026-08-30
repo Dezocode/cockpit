@@ -132,7 +132,9 @@ apply_touch_chrome() {
   tmux set-option -t "$session" prefix2 C-b
   # Termius taps arrive as CSI. A tiny escape-time splits ESC into the pane.
   tmux set-option -t "$session" escape-time 50
-  tmux set-option -t "$session" status 2
+  # One fat tab row (not two copies). Extra rows steal the Codex composer
+  # when Termius shrinks the PTY for the keyboard.
+  tmux set-option -t "$session" status on
   tmux set-option -t "$session" status-position bottom
   tmux set-option -t "$session" pane-border-status off
   tmux set-option -t "$session" status-interval 30
@@ -145,10 +147,6 @@ apply_touch_chrome() {
   tmux set-option -t "$session" window-status-current-style 'fg=black,bg=brightyellow,bold'
   tmux set-option -t "$session" window-status-format '#[fg=colour250,bg=colour238]      #W      '
   tmux set-option -t "$session" window-status-current-format '#[fg=black,bg=brightyellow,bold]      #{?window_zoomed_flag,AGENT,#W}      '
-  local fmt
-  fmt="$(tmux show-options -gv status-format[0])"
-  tmux set-option -t "$session" status-format[0] "$fmt"
-  tmux set-option -t "$session" status-format[1] "$fmt"
   tmux set-option -t "$session" @cockpit_profile termius-ios
 }
 
@@ -207,17 +205,31 @@ files="$(pane_for files)"
 diff="$(pane_for diff)"
 map="$(pane_for map)"
 [[ -n "$runtime" ]] || exit 0
+tmux set-option -t "$session" @cockpit_runtime_pane "$runtime"
+
+# Termius shrinks the PTY when the keyboard slides up. Hide the AUTH row
+# so the composer stays above the keys and the transcript can still scroll.
+want_compose=0
+if [[ "$modality" == "touch" || "$phone" == "1" ]] && ((height > 0 && height < 28)); then
+  want_compose=1
+fi
+have_compose="$(tmux show-options -v -t "$session" @cockpit_compose 2>/dev/null || echo 0)"
 
 have_mod="$(tmux show-options -v -t "$session" @cockpit_modality 2>/dev/null || true)"
 have_tabs="$(tmux show-options -v -t "$session" @cockpit_tabs 2>/dev/null || true)"
 if [[ "$have_mod" == "$modality" && "$have_tabs" == "$want_tabs" ]]; then
-  # Keyboard open resizes the Termius client. Do not re-apply chrome (that
-  # rings haptics). Only keep the toolbar sized.
   apply_hush
+  tmux set-option -t "$session" @cockpit_compose "$want_compose"
+  if ((want_compose == 1)); then
+    codex-cockpit-ensure-bar "$session" hide >/dev/null 2>&1 || true
+  elif [[ "$have_compose" == "1" ]]; then
+    codex-cockpit-ensure-bar "$session" show >/dev/null 2>&1 || true
+  else
+    codex-cockpit-ensure-bar "$session" >/dev/null 2>&1 || true
+  fi
   if [[ "$mode" == "attached" ]]; then
     codex-cockpit-idle "$session" >/dev/null 2>&1 &
   fi
-  codex-cockpit-ensure-bar "$session" >/dev/null 2>&1 || true
   exit 0
 fi
 
@@ -255,7 +267,12 @@ else
   layout_pad "$runtime" "$files" "$diff" "$map"
 fi
 
-codex-cockpit-ensure-bar "$session" >/dev/null 2>&1 || true
+tmux set-option -t "$session" @cockpit_compose "$want_compose"
+if ((want_compose == 1)); then
+  codex-cockpit-ensure-bar "$session" hide >/dev/null 2>&1 || true
+else
+  codex-cockpit-ensure-bar "$session" show >/dev/null 2>&1 || true
+fi
 
 if [[ "$mode" == "attached" ]]; then
   tmux select-window -t "$runtime"
