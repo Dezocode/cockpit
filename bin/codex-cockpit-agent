@@ -15,9 +15,10 @@ zoomed="$(tmux display-message -p -t "$pane" '#{window_zoomed_flag}' 2>/dev/null
 panes="$(tmux display-message -p -t "$pane" '#{window_panes}' 2>/dev/null || true)"
 
 is_runtime=0
-if [[ "$role" == "runtime" || "$command" == "codex" ]]; then
-  is_runtime=1
-fi
+case "$role" in runtime|parallel) is_runtime=1 ;; esac
+case "$command" in
+  codex|grok|claude|cursor-agent|agent) is_runtime=1 ;;
+esac
 
 # Double-tap / double-click on the runtime: stay on the same Codex PTY and
 # toggle the AGENT fullscreen tab. Double-tap anywhere else zooms that view

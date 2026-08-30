@@ -33,9 +33,11 @@ cockpit
 ```
 
 `codex` is the Codex CLI again. `cockpit` attaches the single tmux runtime.
-On the agent page, `prefix + e` (or F7 in touch) opens a nested box to switch
-Codex/Grok (and other `kind=runtime` providers). Unused CLIs are SIGSTOP'd.
-Model config is `m` in that box (sends `/model` into the live agent).
+On the agent page, `prefix + e` (or F7 in touch) opens a nested box of
+runtimes (Codex, Grok, Anthropic/claude, Cursor). After you pick one it asks
+**switch active** (pause the other, save compute) or **parallel tab** (both
+keep running). Click outside a box to cancel. `m` sends `/model` into the live
+agent. OAuth stays with each CLI.
 
 From Omarchy/Foot:
 

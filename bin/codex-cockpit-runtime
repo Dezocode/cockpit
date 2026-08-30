@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Switch/pause runtimes (kind=runtime in providers.conf). One live agent pane;
-# unused CLIs are SIGSTOP'd so they do not burn CPU. OAuth stays with each CLI.
+# Runtime switcher. Nested popups: pick provider, then parallel tab vs switch
+# (pause the one leaving the agent slot). OAuth stays with each CLI.
 set -euo pipefail
 
 lib="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/codex-cockpit-auth-lib"
@@ -26,10 +26,10 @@ runtime_pane() {
     awk '$2 == "runtime" { print $1; exit }'
 }
 
-parked_pane() {
+pane_for_id() {
   local id=$1
-  tmux list-panes -s -t "$session" -F '#{pane_id} #{@cockpit_runtime_id} #{@cockpit_role}' 2>/dev/null |
-    awk -v id="$id" '$2 == id && $3 == "parked" { print $1; exit }'
+  tmux list-panes -s -t "$session" -F '#{pane_id} #{@cockpit_runtime_id}' 2>/dev/null |
+    awk -v id="$id" '$2 == id { print $1; exit }'
 }
 
 pane_pid() {
@@ -58,23 +58,28 @@ hide_rt_window() {
   tmux set-option -w -t "$win" allow-rename off
 }
 
-ensure_parked() {
-  local id=$1 start root pane
-  pane="$(parked_pane "$id")"
-  if [[ -n "$pane" ]]; then
-    printf '%s\n' "$pane"
-    return 0
-  fi
+show_rt_window() {
+  local win=$1
+  tmux set-option -u -w -t "$win" window-status-format 2>/dev/null || true
+  tmux set-option -u -w -t "$win" window-status-current-format 2>/dev/null || true
+}
+
+root_path() {
+  tmux display-message -p -t "$(runtime_pane 2>/dev/null || echo "$session:")" \
+    '#{pane_current_path}' 2>/dev/null || pwd
+}
+
+spawn_runtime() {
+  local id=$1 start pane label
   start="$(cockpit_auth_field "$id" start || true)"
   [[ -n "$start" ]] || return 1
-  root="$(tmux display-message -p -t "$session:" '#{pane_current_path}' 2>/dev/null || pwd)"
-  tmux new-window -d -t "$session:" -n "rt-$id" -c "$root" "exec $start"
+  label="$(cockpit_auth_label "$id")"
+  tmux new-window -d -t "$session:" -n "rt-$id" -c "$(root_path)" "exec $start"
   pane="$(tmux list-panes -t "$session:rt-$id" -F '#{pane_id}' | head -1)"
-  tmux select-pane -t "$pane" -T "$(cockpit_auth_label "$id")"
+  tmux select-pane -t "$pane" -T "$label"
   tmux set-option -p -t "$pane" @cockpit_runtime_id "$id"
-  tmux set-option -p -t "$pane" @cockpit_role parked
-  hide_rt_window "$session:rt-$id"
-  pause_pane "$pane"
+  tmux set-option -w -t "$session:rt-$id" automatic-rename off
+  tmux set-option -w -t "$session:rt-$id" allow-rename off
   printf '%s\n' "$pane"
 }
 
@@ -91,8 +96,26 @@ save_runtime() {
   mv "$HOME/.config/codex-cockpit/state.tmp" "$HOME/.config/codex-cockpit/state"
 }
 
+# Parallel tab: both agents keep running. Does not steal the agent slot.
+parallel_to() {
+  local id=$1 pane label
+  pane="$(pane_for_id "$id")"
+  if [[ -z "$pane" ]]; then
+    pane="$(spawn_runtime "$id")"
+  fi
+  label="$(cockpit_auth_label "$id")"
+  resume_pane "$pane"
+  tmux set-option -p -t "$pane" @cockpit_role parallel
+  tmux set-option -p -t "$pane" @cockpit_runtime_id "$id"
+  tmux rename-window -t "$pane" "$label" 2>/dev/null || true
+  show_rt_window "$pane"
+  tmux select-window -t "$pane"
+  tmux select-pane -t "$pane"
+}
+
+# Switch active: this id takes the agent slot; the previous occupant is paused.
 switch_to() {
-  local id=$1 slot current cur_id parked
+  local id=$1 slot current incoming
   slot="$(runtime_pane)"
   [[ -n "$slot" ]] || exit 1
   current="$(tmux display-message -p -t "$slot" '#{@cockpit_runtime_id}')"
@@ -100,40 +123,65 @@ switch_to() {
   if [[ "$current" == "$id" ]]; then
     resume_pane "$slot"
     save_runtime "$id"
+    tmux select-window -t "$slot"
+    tmux select-pane -t "$slot"
     return 0
   fi
-  parked="$(ensure_parked "$id")"
+  incoming="$(pane_for_id "$id")"
+  if [[ -z "$incoming" ]]; then
+    incoming="$(spawn_runtime "$id")"
+    pause_pane "$incoming"
+  fi
   pause_pane "$slot"
-  tmux swap-pane -s "$parked" -t "$slot"
-  # pane ids follow the processes. $parked is now in the agent slot.
-  tmux set-option -p -t "$parked" @cockpit_role runtime
-  tmux set-option -p -t "$parked" @cockpit_runtime_id "$id"
-  tmux select-pane -t "$parked" -T "$(cockpit_auth_label "$id")"
-  resume_pane "$parked"
+  tmux swap-pane -s "$incoming" -t "$slot"
+  tmux set-option -p -t "$incoming" @cockpit_role runtime
+  tmux set-option -p -t "$incoming" @cockpit_runtime_id "$id"
+  tmux select-pane -t "$incoming" -T "$(cockpit_auth_label "$id")"
+  resume_pane "$incoming"
   tmux set-option -p -t "$slot" @cockpit_role parked
   tmux set-option -p -t "$slot" @cockpit_runtime_id "$current"
   pause_pane "$slot"
   tmux rename-window -t "$slot" "rt-$current" 2>/dev/null || true
   hide_rt_window "$slot"
   save_runtime "$id"
-  tmux select-window -t "$parked"
-  tmux select-pane -t "$parked"
+  tmux select-window -t "$incoming"
+  tmux select-pane -t "$incoming"
 }
 
 send_model() {
-  local slot keys
+  local slot keys rid
   slot="$(runtime_pane)"
   [[ -n "$slot" ]] || exit 1
-  keys="$(cockpit_auth_field "$(tmux display-message -p -t "$slot" '#{@cockpit_runtime_id}')" model_keys || true)"
+  rid="$(tmux display-message -p -t "$slot" '#{@cockpit_runtime_id}')"
+  keys="$(cockpit_auth_field "$rid" model_keys || true)"
   [[ -n "$keys" ]] || keys="/model"
   tmux select-window -t "$slot"
   tmux select-pane -t "$slot"
   tmux send-keys -t "$slot" "$keys"
 }
 
-popup() {
+ask_mode() {
+  local id=$1 label
+  label="$(cockpit_auth_label "$id")"
+  printf '%sHOW TO RUN %s%s\n\n' "$bright" "$label" "$reset"
+  printf '  %ss)%s  Switch active\n' "$blue" "$reset"
+  printf '      %sPause the current agent; %s takes the slot (saves compute)%s\n\n' "$muted" "$label" "$reset"
+  printf '  %sp)%s  Parallel tab\n' "$blue" "$reset"
+  printf '      %sKeep both running in their own tabs%s\n\n' "$muted" "$reset"
+  printf '  %sq)%s  Cancel  ·  click outside this box to skip\n\n' "$muted" "$reset"
+  printf '%ss / p / q:%s ' "$muted" "$reset"
+  local sel
+  read -r sel || exit 0
+  case "$sel" in
+    s|S|1) switch_to "$id" ;;
+    p|P|2) parallel_to "$id" ;;
+    *) exit 0 ;;
+  esac
+}
+
+pick() {
   cockpit_auth_ensure_config
-  local ids id n=0 status line
+  local ids id n=0 status
   mapfile -t ids < <(cockpit_auth_ids runtime)
   if ((${#ids[@]} == 0)); then
     printf 'No kind=runtime providers in %s\n' "$cockpit_auth_file" >&2
@@ -141,20 +189,22 @@ popup() {
   fi
   local active
   active="$(tmux show-options -v -t "$session" @cockpit_runtime 2>/dev/null || echo codex)"
-  printf '%sRUNTIME%s  (unused CLIs are paused)\n\n' "$bright" "$reset"
+  printf '%sPROVIDERS%s  (oauth stays with each CLI)\n\n' "$bright" "$reset"
   for id in "${ids[@]}"; do
     n=$((n + 1))
     if ! cockpit_auth_check "$id"; then
-      status="${muted}unavailable${reset}"
+      status="${muted}not installed${reset}"
     elif [[ "$id" == "$active" ]]; then
-      status="${blue}live${reset}"
+      status="${blue}live agent slot${reset}"
+    elif [[ -n "$(pane_for_id "$id")" ]]; then
+      status="${muted}tab / parked${reset}"
     else
-      status="${muted}paused${reset}"
+      status="${muted}idle${reset}"
     fi
     printf '  %s) %s  %s\n' "$n" "$(cockpit_auth_label "$id")" "$status"
   done
   printf '\n  m) model picker in the live agent\n'
-  printf '  q) close\n\n'
+  printf '  q) close  ·  click outside to skip\n\n'
   printf '%sNumber / m / q:%s ' "$muted" "$reset"
   local sel
   read -r sel || exit 0
@@ -165,10 +215,20 @@ popup() {
       if [[ "$sel" =~ ^[0-9]+$ ]] && ((sel >= 1 && sel <= ${#ids[@]})); then
         id="${ids[sel-1]}"
         if ! cockpit_auth_check "$id"; then
-          printf '%s not available on PATH\n' "$id" >&2
+          printf '%s not on PATH. Install the CLI, then retry.\n' "$id" >&2
+          sleep 1.2
           exit 1
         fi
-        switch_to "$id"
+        if [[ "$id" == "$active" ]]; then
+          switch_to "$id"
+          exit 0
+        fi
+        if [[ -n "${TMUX:-}" ]]; then
+          tmux display-popup -E -w 70% -h 50% -T "Run $(cockpit_auth_label "$id")" \
+            "codex-cockpit-runtime ask ${session} ${id}"
+        else
+          ask_mode "$id"
+        fi
       fi
       ;;
   esac
@@ -176,6 +236,8 @@ popup() {
 
 case "$cmd" in
   switch) switch_to "$target" ;;
+  parallel) parallel_to "$target" ;;
+  ask) ask_mode "$target" ;;
   pause)
     slot="$(runtime_pane)"
     [[ -n "$slot" ]] && pause_pane "$slot"
@@ -185,15 +247,13 @@ case "$cmd" in
     [[ -n "$slot" ]] && resume_pane "$slot"
     ;;
   model) send_model ;;
-  pick)
-    popup
-    ;;
+  pick) pick ;;
   popup|*)
     if [[ -n "${TMUX:-}" ]]; then
-      tmux display-popup -E -w 72% -h 60% -T "Runtimes" \
+      tmux display-popup -E -w 76% -h 64% -T "Runtimes" \
         "codex-cockpit-runtime pick ${session}"
     else
-      popup
+      pick
     fi
     ;;
 esac
