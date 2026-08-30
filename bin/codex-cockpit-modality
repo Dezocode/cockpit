@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Apply keyboard vs touch chrome/layout without dropping the live Codex PTY.
+# Remember keyboard vs touch from the last idle input. Same modality is a
+# no-op so the first keystroke after idle still reaches the live agent.
 set -euo pipefail
 
 modality="${1:-}"
@@ -12,6 +13,10 @@ height="${4:-0}"
 tmux has-session -t "$session" 2>/dev/null || exit 0
 
 export PATH="$HOME/.local/bin:$PATH"
-tmux set-option -t "$session" @cockpit_modality "$modality"
+cur="$(tmux show-options -v -t "$session" @cockpit_modality 2>/dev/null || true)"
 tmux switch-client -T root 2>/dev/null || true
+if [[ "$cur" == "$modality" ]]; then
+  exit 0
+fi
+tmux set-option -t "$session" @cockpit_modality "$modality"
 codex-cockpit-adapt modality "$session" "$width" "$height" || true

@@ -6,10 +6,10 @@ ghost Codex processes do not accumulate.
 
 One tmux workspace, two equal profiles, switched live:
 
-At launch a **keyboard-only** screen asks `desktop | touch`. If it idles, the
-next **key** is desktop and the next **tap/click** is touch. After attach the
-same idle probe runs: typing does not get stolen until you go idle, then the
-first key or click flips the layout.
+Keyboard and click always work. After idle, the next **key** remembers
+desktop chrome and is forwarded to the agent; the next **tap** remembers
+touch chrome and still selects the pane. Until that input, the last config
+stays. Typing while you are active is never intercepted.
 
 Endpoint size still wins for fit: phone-sized clients stay on tabs.
 

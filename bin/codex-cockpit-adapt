@@ -102,6 +102,7 @@ apply_hush() {
 
 apply_keyboard_chrome() {
   apply_hush
+  tmux set-option -t "$session" mouse on
   tmux set-option -t "$session" prefix C-Space
   tmux set-option -t "$session" prefix2 C-b
   tmux set-option -t "$session" status-position top
@@ -116,9 +117,9 @@ apply_keyboard_chrome() {
 
 apply_touch_chrome() {
   apply_hush
-  tmux set-option -t "$session" prefix C-b
-  tmux set-option -t "$session" prefix2 C-a
   tmux set-option -t "$session" mouse on
+  tmux set-option -t "$session" prefix C-Space
+  tmux set-option -t "$session" prefix2 C-b
   tmux set-option -t "$session" status-position bottom
   tmux set-option -t "$session" pane-border-status off
   tmux set-option -t "$session" status-interval 30

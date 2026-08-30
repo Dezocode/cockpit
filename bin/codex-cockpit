@@ -148,6 +148,8 @@ overlay="${HOME}/.config/tmux/codex-cockpit.conf"
 if [[ -f "$overlay" ]]; then
   tmux source-file "$overlay" 2>/dev/null || true
 fi
+codex-cockpit-hooks-install >/dev/null 2>&1 || true
+codex-cockpit-probe-install >/dev/null 2>&1 || true
 
 authlib="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/codex-cockpit-auth-lib"
 # shellcheck source=codex-cockpit-auth-lib

@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
-# One-shot install of the idle probe key-table. First key → keyboard (and the
-# key is forwarded). First click → touch (click is the mode switch).
+# After idle: next key → remember keyboard (key is forwarded).
+# Next click → remember touch (pane/window still selected).
 set -euo pipefail
 
-if [[ "$(tmux show-options -gv @cockpit_probe_installed 2>/dev/null || true)" == "1" ]]; then
+ver=2
+if [[ "$(tmux show-options -gv @cockpit_probe_installed 2>/dev/null || true)" == "$ver" ]]; then
   exit 0
 fi
 
@@ -44,10 +45,28 @@ for c in {a..z}; do
   fwd "C-$c" "C-$c"
 done
 
-for btn in MouseDown1Pane MouseDown1Status MouseDown1StatusLeft MouseDown1Border DoubleClick1Pane MouseDown3Pane; do
-  tmux bind-key -T cockpit-probe "$btn" \
-    run-shell 'codex-cockpit-modality touch "#{client_session}" #{client_width} #{client_height}' \; \
-    switch-client -T root
-done
+tmux bind-key -T cockpit-probe MouseDown1Pane \
+  run-shell 'codex-cockpit-modality touch "#{client_session}" #{client_width} #{client_height}' \; \
+  switch-client -T root \; \
+  select-pane -t =
+tmux bind-key -T cockpit-probe MouseDown1Status \
+  run-shell 'codex-cockpit-modality touch "#{client_session}" #{client_width} #{client_height}' \; \
+  switch-client -T root \; \
+  select-window -t =
+tmux bind-key -T cockpit-probe MouseDown1StatusLeft \
+  run-shell 'codex-cockpit-modality touch "#{client_session}" #{client_width} #{client_height}' \; \
+  switch-client -T root
+tmux bind-key -T cockpit-probe MouseDown1Border \
+  run-shell 'codex-cockpit-modality touch "#{client_session}" #{client_width} #{client_height}' \; \
+  switch-client -T root \; \
+  select-pane -t =
+tmux bind-key -T cockpit-probe DoubleClick1Pane \
+  run-shell 'codex-cockpit-modality touch "#{client_session}" #{client_width} #{client_height}' \; \
+  switch-client -T root \; \
+  run-shell -b "codex-cockpit-agent '#{mouse_session}' '#{mouse_window}' '#{mouse_pane}'"
+tmux bind-key -T cockpit-probe MouseDown3Pane \
+  run-shell 'codex-cockpit-modality touch "#{client_session}" #{client_width} #{client_height}' \; \
+  switch-client -T root \; \
+  run-shell "codex-cockpit-menu '#{mouse_session}'"
 
-tmux set-option -g @cockpit_probe_installed 1
+tmux set-option -g @cockpit_probe_installed "$ver"
