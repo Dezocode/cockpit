@@ -4,13 +4,14 @@
 # never waits on a shell. Phone clients stay on the root table.
 set -euo pipefail
 
-ver=5
+ver=6
 if [[ "$(tmux show-options -gv @cockpit_probe_installed 2>/dev/null || true)" == "$ver" ]]; then
   exit 0
 fi
 
 tmp="${XDG_RUNTIME_DIR:-/tmp}/cockpit-probe-$$.conf"
 {
+  printf 'bind-key -T cockpit-probe Any switch-client -T root\n'
   printf 'unbind-key -a -T cockpit-probe\n'
   emit() {
     local key=$1

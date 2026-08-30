@@ -105,6 +105,23 @@ fi
 # GitHub: use local gh CLI status. Already signed in → no prompt.
 # Unsigned → one nested box (click-out skips). Does not touch Codex/Grok OAuth.
 
+tmux start-server 2>/dev/null || true
+
+# Already running: attach immediately. Do not show the gate (that race
+# dropped Termius onto a dying server with "[server exited]").
+if tmux has-session -t "$session" 2>/dev/null; then
+  if [[ -t 1 ]]; then
+    tmux set-option -t "$session" @cockpit_modality \
+      "${COCKPIT_MODALITY:-$(tmux show-options -v -t "$session" @cockpit_modality 2>/dev/null || echo touch)}" \
+      2>/dev/null || true
+    tmux switch-client -t "$session" -T root 2>/dev/null || true
+    codex-cockpit-idle "$session" >/dev/null 2>&1 &
+    exec tmux attach-session -t "$session"
+  fi
+  printf 'codex-cockpit: session %s already running\n' "$session"
+  exit 0
+fi
+
 modality=${COCKPIT_MODALITY:-}
 if [[ -z "$modality" && -t 0 && -t 1 && -z "${COCKPIT_SKIP_GATE:-}" ]]; then
   modality="$(codex-cockpit-gate 2>/dev/null || true)"
@@ -115,16 +132,6 @@ if [[ "$modality" != "keyboard" && "$modality" != "touch" ]]; then
   else
     modality=keyboard
   fi
-fi
-
-if tmux has-session -t "$session" 2>/dev/null; then
-  if [[ -t 1 ]]; then
-    tmux set-option -t "$session" @cockpit_modality "$modality" 2>/dev/null || true
-    codex-cockpit-idle "$session" >/dev/null 2>&1 &
-    exec tmux attach-session -t "$session"
-  fi
-  printf 'codex-cockpit: session %s already running\n' "$session"
-  exit 0
 fi
 
 if ! command -v codex >/dev/null 2>&1; then
@@ -189,6 +196,7 @@ tmux new-session -d -s "$session" -n CODEX -c "$root" \
   "cd -- $root_q && exec $runtime_cmd"
 tag "$session:CODEX" "$(cockpit_auth_label "$runtime_id" 2>/dev/null || echo CODEX)" runtime
 tmux set-option -p -t "$session:CODEX" @cockpit_runtime_id "$runtime_id"
+tmux set-option -p -t "$session:CODEX" remain-on-exit on
 tmux set-option -t "$session" @cockpit_runtime_pane "$(tmux display-message -p -t "$session:CODEX" '#{pane_id}')"
 
 tmux new-window -d -t "$session:" -n FILES -c "$root" \
