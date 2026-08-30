@@ -3,6 +3,26 @@
 tmux workspace for local coding agents (Codex, Grok, Anthropic, Cursor).
 Public repo: **https://github.com/Dezocode/cockpit**. Tokens never go in git.
 
+## New machine (for a human or an agent)
+
+Fork or clone **this** repo — not someone else's private files. Then on the
+new computer:
+
+```bash
+git clone https://github.com/YOUR_USER/cockpit.git
+cd cockpit
+./install.sh
+gh auth login -h github.com -p https -w   # HER GitHub account
+cockpit config pull                        # optional: HER gist only
+cockpit                                    # or: tmux attach -t codex-cockpit
+```
+
+Needs: `tmux`, and whichever agent CLIs she wants (`codex`, `grok`, `claude`,
+`cursor-agent`). Each CLI keeps its own login on **that** machine. The public
+tree has templates only — no API keys, no `auth.json`, no gists from other
+people. `cockpit config push` writes a **secret gist on the signed-in `gh`
+user**, never into this git repo.
+
 One tmux session named `codex-cockpit`. A second launch attaches that
 runtime; leftover `codex-cockpit-*` sessions with no clients are reaped so
 ghost Codex processes do not accumulate.
