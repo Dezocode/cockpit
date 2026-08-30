@@ -74,6 +74,7 @@ if [[ "$have_mod" == "$modality" && "$have_tabs" == "$want_tabs" ]]; then
   if [[ "$mode" == "attached" ]]; then
     codex-cockpit-idle "$session" >/dev/null 2>&1 &
   fi
+  codex-cockpit-ensure-bar "$session" >/dev/null 2>&1 || true
   exit 0
 fi
 
@@ -110,8 +111,9 @@ apply_keyboard_chrome() {
   tmux set-option -t "$session" status-interval 15
   tmux set-option -t "$session" status-left '#[fg=black,bg=blue,bold] #S #[bg=default] '
   tmux set-option -t "$session" status-right '#[fg=blue]#{@cockpit_runtime} #{?pane_in_mode,COPY ,}#{?client_prefix,PREFIX ,}#{?window_zoomed_flag,ZOOM ,}#[fg=brightblack]#h '
-  tmux set-option -t "$session" window-status-format '#{?#{m:rt-*,#W},,#[fg=brightblack] #I:#W }'
-  tmux set-option -t "$session" window-status-current-format '#{?#{m:rt-*,#W},,#[fg=blue,bold] #I:#W }'
+  tmux set-option -t "$session" window-status-format '#[fg=brightblack] #I:#W '
+  tmux set-option -t "$session" window-status-current-format '#[fg=blue,bold] #I:#W '
+  tmux set-option -t "$session" window-status-separator ''
   tmux set-option -t "$session" @cockpit_profile foot
 }
 
@@ -123,10 +125,13 @@ apply_touch_chrome() {
   tmux set-option -t "$session" status-position bottom
   tmux set-option -t "$session" pane-border-status off
   tmux set-option -t "$session" status-interval 30
-  tmux set-option -t "$session" status-left '#[fg=black,bg=blue,bold] #S #[bg=default] '
-  tmux set-option -t "$session" status-right '#[fg=blue]#{@cockpit_runtime}#{?window_zoomed_flag, AGENT ,} #[fg=brightblack]tap tabs · hold menu '
-  tmux set-option -t "$session" window-status-format '#{?#{m:rt-*,#W},,#[fg=brightblack]  #W  }'
-  tmux set-option -t "$session" window-status-current-format '#{?#{m:rt-*,#W},,#[fg=black,bg=brightyellow,bold]  #{?window_zoomed_flag,AGENT,#W}  }'
+  tmux set-option -t "$session" status-left-length 24
+  tmux set-option -t "$session" status-right-length 40
+  tmux set-option -t "$session" status-left '#[fg=black,bg=blue,bold]  #S  #[bg=default] '
+  tmux set-option -t "$session" status-right '#[fg=blue] #{@cockpit_runtime} '
+  tmux set-option -t "$session" window-status-separator ' '
+  tmux set-option -t "$session" window-status-format '#[fg=brightblack]    #W    '
+  tmux set-option -t "$session" window-status-current-format '#[fg=black,bg=brightyellow,bold]    #{?window_zoomed_flag,AGENT,#W}    '
   tmux set-option -t "$session" @cockpit_profile termius-ios
 }
 
@@ -219,6 +224,8 @@ if ((want_tabs == 1)); then
 else
   layout_pad "$runtime" "$files" "$diff" "$map"
 fi
+
+codex-cockpit-ensure-bar "$session" >/dev/null 2>&1 || true
 
 if [[ "$mode" == "attached" ]]; then
   tmux select-window -t "$runtime"

@@ -1,0 +1,104 @@
+#!/usr/bin/env bash
+# Agent toolbar: AUTH · runtime · MODEL. Keyboard and click. Blocks on input.
+set -euo pipefail
+
+lib="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/codex-cockpit-auth-lib"
+# shellcheck source=codex-cockpit-auth-lib
+[[ -f "$lib" ]] && source "$lib"
+
+session="${1:-}"
+if [[ -z "$session" && -n "${TMUX:-}" ]]; then
+  session="$(tmux display-message -p '#{session_name}')"
+fi
+session="${session:-codex-cockpit}"
+
+blue=$'\033[38;5;4m'
+bright=$'\033[1;37m'
+muted=$'\033[38;5;8m'
+reset=$'\033[0m'
+inv=$'\033[7m'
+
+rid() {
+  tmux show-options -v -t "$session" @cockpit_runtime 2>/dev/null || echo codex
+}
+
+label() {
+  local id=$1
+  if command -v cockpit_auth_label >/dev/null 2>&1; then
+    cockpit_auth_label "$id" 2>/dev/null || printf '%s\n' "$id"
+  else
+    printf '%s\n' "$id"
+  fi
+}
+
+draw() {
+  local id name
+  id="$(rid)"
+  name="$(label "$id")"
+  name=$(printf '%s' "$name" | tr '[:lower:]' '[:upper:]')
+  printf '\033[2J\033[H'
+  printf ' %s AUTH %s  %s %s %s  %s MODEL %s\n' \
+    "$inv" "$reset" "$inv" "$name" "$reset" "$inv" "$reset"
+  printf '%sa auth · e runtime · m model · click a button%s\n' "$muted" "$reset"
+}
+
+open_auth() {
+  tmux display-popup -E -w 88% -h 82% -T "Auth" "codex-cockpit-auth popup" 2>/dev/null || true
+}
+
+open_runtime() {
+  tmux display-popup -E -w 76% -h 64% -T "Runtimes" \
+    "codex-cockpit-runtime popup ${session}" 2>/dev/null || true
+}
+
+open_model() {
+  tmux display-popup -E -w 60% -h 40% -T "Model" \
+    "codex-cockpit-runtime model ${session}" 2>/dev/null || \
+    codex-cockpit-runtime model "$session" 2>/dev/null || true
+}
+
+# Click columns: AUTH ~2-10, NAME ~12-22, MODEL ~24-34 on a typical phone.
+handle_click_x() {
+  local x=${1:-0}
+  if ((x <= 12)); then
+    open_auth
+  elif ((x <= 24)); then
+    open_runtime
+  else
+    open_model
+  fi
+}
+
+printf '\033[?25l'
+trap 'printf "\033[?25h\033[?1000l\033[?1006l"' EXIT
+while true; do
+  draw
+  printf '\033[?1000h\033[?1006h'
+  key="" acc="" seq="" c=""
+  IFS= read -rsn1 key || continue
+  if [[ "$key" == $'\033' ]]; then
+    IFS= read -rsn1 -t 0.05 acc || true
+    if [[ "$acc" == "[" ]]; then
+      IFS= read -rsn1 -t 0.05 acc || true
+      if [[ "$acc" == "<" ]]; then
+        seq=""
+        while IFS= read -rsn1 -t 0.05 c; do
+          seq+="$c"
+          [[ "$c" == "M" || "$c" == "m" ]] && break
+        done
+        if [[ "$seq" == 0\;*M ]]; then
+          x=${seq#0;}
+          x=${x%%;*}
+          handle_click_x "$x"
+        fi
+      fi
+    fi
+    continue
+  fi
+  case "$key" in
+    a|A) open_auth ;;
+    e|E|r|R) open_runtime ;;
+    m|M) open_model ;;
+    q|Q) ;;
+  esac
+done

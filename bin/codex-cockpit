@@ -223,6 +223,7 @@ if command -v omarchy-theme-set-tmux >/dev/null 2>&1; then
 fi
 
 codex-cockpit-adapt attached "$session" "${COLUMNS:-0}" "${LINES:-0}" "$$" || true
+codex-cockpit-ensure-bar "$session" >/dev/null 2>&1 || true
 codex-cockpit-probe-install >/dev/null 2>&1 || true
 codex-cockpit-idle "$session" >/dev/null 2>&1 &
 

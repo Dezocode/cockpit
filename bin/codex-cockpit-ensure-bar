@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+# Put AUTH / runtime / MODEL above the live agent pane. Never respawns Codex.
+set -euo pipefail
+
+session="${1:-codex-cockpit}"
+tmux has-session -t "$session" 2>/dev/null || exit 0
+export PATH="$HOME/.local/bin:$PATH"
+
+runtime="$(
+  tmux list-panes -s -t "$session" -F '#{pane_id} #{@cockpit_role}' 2>/dev/null |
+    awk '$2 == "runtime" { print $1; exit }'
+)"
+[[ -n "$runtime" ]] || exit 0
+
+bar="$(
+  tmux list-panes -s -t "$session" -F '#{pane_id} #{@cockpit_role}' 2>/dev/null |
+    awk '$2 == "bar" { print $1; exit }'
+)"
+if [[ -n "$bar" ]]; then
+  tmux select-pane -t "$runtime" 2>/dev/null || true
+  exit 0
+fi
+
+tmux split-window -v -b -l 3 -t "$runtime" "exec codex-cockpit-bar ${session}"
+sleep 0.15
+bar="$(
+  tmux list-panes -t "$runtime" -F '#{pane_id} #{pane_height} #{@cockpit_role} #{pane_current_command}' |
+    awk '$2 <= 4 && $3 != "runtime" { print $1; exit }'
+)"
+[[ -n "$bar" ]] || exit 0
+tmux select-pane -t "$bar" -T BAR
+tmux set-option -p -t "$bar" @cockpit_role bar
+tmux select-pane -t "$runtime"
