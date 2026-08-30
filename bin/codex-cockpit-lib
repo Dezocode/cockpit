@@ -59,6 +59,72 @@ cockpit_install_wake() {
   trap 'COCKPIT_WAKE=1' USR1
 }
 
+# Block on inotify + tab-open (USR1). No idle polling.
+cockpit_event_open() {
+  local session=$1 name=$2
+  local dir fifo
+  dir="$(cockpit_wake_dir "$session")"
+  mkdir -p "$dir"
+  fifo="$dir/${name}.$$.fifo"
+  rm -f "$fifo"
+  mkfifo -m 600 "$fifo"
+  exec {COCKPIT_EVENT_FD}<>"$fifo"
+  COCKPIT_EVENT_FIFO=$fifo
+  COCKPIT_INOTIFY_PIDS=()
+  COCKPIT_WAKE=0
+  printf '%s\n' "${BASHPID:-$$}" >"$dir/${name}.pid"
+  trap 'printf "WAKE\n" >&$COCKPIT_EVENT_FD' USR1
+}
+
+cockpit_event_watch() {
+  local path=$1
+  shift
+  [[ -e "$path" ]] || return 0
+  command -v inotifywait >/dev/null 2>&1 || return 0
+  inotifywait -m -q "$@" --format '%w%f' "$path" >&"$COCKPIT_EVENT_FD" 2>/dev/null &
+  COCKPIT_INOTIFY_PIDS+=($!)
+}
+
+cockpit_event_read() {
+  IFS= read -r COCKPIT_EVENT <&"$COCKPIT_EVENT_FD"
+}
+
+cockpit_event_drain() {
+  local extra
+  while IFS= read -r -t 0.02 -u "$COCKPIT_EVENT_FD" extra; do
+    if [[ "$extra" == "WAKE" ]]; then
+      COCKPIT_WAKE=1
+      continue
+    fi
+    [[ -n "$extra" ]] && printf '%s\n' "$extra"
+  done || true
+}
+
+cockpit_event_close() {
+  local pid
+  for pid in "${COCKPIT_INOTIFY_PIDS[@]+"${COCKPIT_INOTIFY_PIDS[@]}"}"; do
+    kill "$pid" 2>/dev/null || true
+  done
+  exec {COCKPIT_EVENT_FD}>&- 2>/dev/null || true
+  [[ -n "${COCKPIT_EVENT_FIFO:-}" ]] && rm -f "$COCKPIT_EVENT_FIFO"
+}
+
+cockpit_hush_session() {
+  local session=${1:-} w
+  [[ -n "$session" ]] || return 0
+  tmux set-option -t "$session" bell-action none 2>/dev/null || true
+  tmux set-option -t "$session" visual-bell off 2>/dev/null || true
+  tmux set-option -t "$session" activity-action none 2>/dev/null || true
+  tmux set-option -t "$session" silence-action none 2>/dev/null || true
+  tmux set-option -t "$session" allow-passthrough off 2>/dev/null || true
+  while IFS= read -r w; do
+    [[ -n "$w" ]] || continue
+    tmux set-option -w -t "$w" monitor-bell off 2>/dev/null || true
+    tmux set-option -w -t "$w" monitor-activity off 2>/dev/null || true
+    tmux set-option -w -t "$w" monitor-silence 0 2>/dev/null || true
+  done < <(tmux list-windows -t "$session" -F '#{window_id}' 2>/dev/null || true)
+}
+
 cockpit_coalesce() {
   local extra
   while IFS= read -r -t "$COCKPIT_DEBOUNCE" extra; do

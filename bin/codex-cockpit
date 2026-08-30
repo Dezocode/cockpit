@@ -149,7 +149,9 @@ if ! command -v tmux >/dev/null 2>&1; then
 fi
 
 overlay="${HOME}/.config/tmux/codex-cockpit.conf"
-[[ -f "$overlay" ]] || overlay="/home/dezocode/Work/codex-cockpit/stage/tmux/codex-cockpit.conf"
+if [[ ! -f "$overlay" ]]; then
+  overlay="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)/stage/tmux/codex-cockpit.conf"
+fi
 if [[ -f "$overlay" ]]; then
   tmux source-file "$overlay" 2>/dev/null || true
 fi
@@ -210,6 +212,8 @@ tmux set-option -t "$session" @cockpit_modality "$modality"
 tmux set-option -t "$session" @cockpit_runtime "$runtime_id"
 tmux set-hook -t "$session" after-select-window \
   'run-shell -b "codex-cockpit-wake #{session_name} #{window_name}"; run-shell -b "codex-cockpit-popup gc"'
+tmux set-hook -t "$session" after-new-window \
+  'set-option -w monitor-bell off ; set-option -w monitor-activity off ; set-option -w monitor-silence 0'
 tmux set-hook -t "$session" after-select-pane \
   'run-shell -b "codex-cockpit-wake #{session_name} #{@cockpit_role}"'
 

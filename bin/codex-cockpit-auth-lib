@@ -7,8 +7,16 @@ cockpit_auth_dir="${cockpit_auth_home}/providers.d"
 cockpit_auth_ensure_config() {
   mkdir -p "$cockpit_auth_home" "$cockpit_auth_dir"
   if [[ ! -f "$cockpit_auth_file" ]]; then
-    local src="$HOME/Work/codex-cockpit/stage/auth/providers.conf"
-    if [[ -f "$src" ]]; then
+    local src="" cand
+    for cand in \
+      "${COCKPIT_ROOT:-}/stage/auth/providers.conf" \
+      "$(cd -- "$(dirname -- "${BASH_SOURCE[0]:-$0}")/.." 2>/dev/null && pwd)/stage/auth/providers.conf" \
+      "$HOME/.config/codex-cockpit/providers.conf"; do
+      [[ -n "$cand" && -f "$cand" && "$cand" != "$cockpit_auth_file" ]] || continue
+      src=$cand
+      break
+    done
+    if [[ -n "$src" ]]; then
       cp "$src" "$cockpit_auth_file"
     else
       cat >"$cockpit_auth_file" <<'EOF'

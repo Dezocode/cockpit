@@ -13,14 +13,57 @@ COCKPIT_DEBOUNCE=0.25
 last_fp=""
 dirty=1
 
-if [[ -z "$diagram" ]]; then
-  if [[ -f "$root/docs/architecture.mmd" ]]; then
-    diagram="$root/docs/architecture.mmd"
-  else
-    diagram="$(find "$root" -maxdepth 3 \( -name '*.mmd' -o -name '*.mermaid' \) \
-      ! -path '*/.git/*' ! -path '*/node_modules/*' 2>/dev/null | head -1 || true)"
+project_name="$(basename -- "$root")"
+
+find_diagram() {
+  local found
+  if [[ -n "$diagram" && -f "$diagram" ]]; then
+    printf '%s\n' "$diagram"
+    return 0
   fi
-fi
+  if [[ -f "$root/docs/architecture.mmd" ]]; then
+    printf '%s\n' "$root/docs/architecture.mmd"
+    return 0
+  fi
+  found="$(find "$root" -maxdepth 3 \( -name '*.mmd' -o -name '*.mermaid' \) \
+    ! -path '*/.git/*' ! -path '*/node_modules/*' 2>/dev/null | head -1 || true)"
+  if [[ -n "$found" ]]; then
+    printf '%s\n' "$found"
+    return 0
+  fi
+  return 1
+}
+
+# Canon map of this cockpit session for the current project. No host paths.
+write_canon_diagram() {
+  local dest=$1
+  mkdir -p "$(dirname -- "$dest")"
+  cat >"$dest" <<EOF
+flowchart TB
+  subgraph project ["${project_name}"]
+    runtime[CODEX]
+    files[FILES]
+    diff[DIFF]
+    map[MAP]
+    prs[PRS]
+  end
+  runtime -->|edits| files
+  runtime -->|edits| diff
+  files --> map
+  prs --> runtime
+EOF
+}
+
+ensure_diagram() {
+  local found dest
+  if found="$(find_diagram)"; then
+    diagram="$found"
+    return 0
+  fi
+  dest="$root/docs/architecture.mmd"
+  write_canon_diagram "$dest"
+  diagram="$dest"
+}
 
 if [[ -n "$diagram" && "$diagram" != /* ]]; then
   diagram="$root/${diagram#./}"
@@ -31,7 +74,7 @@ clear_screen() {
 }
 
 header() {
-  printf '\033[38;5;4mMAP\033[0m  \033[38;5;8m%s\033[0m\n\n' "${diagram:-waiting for *.mmd}"
+  printf '\033[38;5;4mMAP\033[0m  \033[38;5;8m%s\033[0m\n\n' "${diagram:-*.mmd}"
 }
 
 file_fp() {
@@ -41,7 +84,8 @@ file_fp() {
 }
 
 render() {
-  local fp
+  local fp cols
+  ensure_diagram
   fp="$(file_fp "${diagram:-}")"
   if [[ "$fp" == "$last_fp" && -n "$last_fp" && -n "$diagram" ]]; then
     dirty=0
@@ -53,21 +97,19 @@ render() {
   clear_screen
   header
 
-  if [[ -z "$diagram" ]]; then
-    printf 'No Mermaid file found under %s\n' "$root"
-    printf '\nCreate docs/architecture.mmd; this pane will discover it.\n'
+  if [[ -z "$diagram" || ! -f "$diagram" ]]; then
+    printf 'No Mermaid file in this project.\n'
     return 0
   fi
-  if [[ ! -f "$diagram" ]]; then
-    printf 'Diagram disappeared: %s\n' "$diagram"
-    return 0
-  fi
+  cols="$(tmux display-message -p -t "${TMUX_PANE:-}" '#{pane_width}' 2>/dev/null || echo 80)"
+  [[ "$cols" =~ ^[0-9]+$ ]] || cols=80
   if command -v mermaid-ascii >/dev/null 2>&1; then
-    mermaid-ascii -f "$diagram" -x 4 -y 2 || true
+    mermaid-ascii -f "$diagram" -x 2 -y 1 || cat "$diagram"
   elif command -v merman-cli >/dev/null 2>&1; then
-    merman-cli render "$diagram" --format unicode --output - || true
+    merman-cli render "$diagram" --format unicode --output - || cat "$diagram"
   else
-    printf 'Install a browserless renderer once:\n\n  npm install -g mermaid-ascii\n'
+    printf '%s\n' "$(cat "$diagram")"
+    printf '\n\033[38;5;8m(ascii renderer optional: mermaid-ascii)\033[0m\n'
   fi
 }
 
@@ -79,8 +121,17 @@ maybe_render() {
   fi
 }
 
-cockpit_install_wake "$session" MAP
-trap 'rm -f "$(cockpit_wake_dir "$session")/MAP.pid"' EXIT
+if [[ "$root" == "$HOME" ]]; then
+  while true; do sleep 3600; done
+fi
+
+ensure_diagram
+watch_dir="$(dirname -- "$diagram")"
+[[ -d "$watch_dir" ]] || watch_dir="$root"
+
+cockpit_event_open "$session" MAP
+trap 'cockpit_event_close; rm -f "$(cockpit_wake_dir "$session")/MAP.pid"' EXIT
+
 if cockpit_view_visible; then
   render
 else
@@ -90,47 +141,38 @@ else
   printf 'Diagram renders when you open this tab.\n'
 fi
 
-if [[ -n "$diagram" ]]; then
-  watch_dir="$(dirname -- "$diagram")"
-else
-  watch_dir="$root"
+cockpit_event_watch "$watch_dir" \
+  -e close_write,moved_to,create,delete \
+  --exclude "$cockpit_noise_exclude"
+if [[ "$watch_dir" != "$root" ]]; then
+  cockpit_event_watch "$root" \
+    -e create,moved_to \
+    --exclude "$cockpit_noise_exclude"
 fi
 
-if [[ "$root" == "$HOME" ]]; then
-  while true; do sleep 3600; done
-fi
-
-while true; do
-  if IFS= read -r -t 0.5 event; then
-    cockpit_coalesce
-    while IFS= read -r -t 0.01 extra; do
-      event=$extra
-    done || true
-    base="${event##*/}"
-    if [[ -z "$diagram" ]]; then
-      case "$base" in
-        *.mmd|*.mermaid)
-          diagram="$event"
-          [[ "$diagram" == /* ]] || diagram="$watch_dir/$base"
-          watch_dir="$(dirname -- "$diagram")"
-          last_fp=""
-          maybe_render
-          ;;
-      esac
-    elif [[ "$base" == "$(basename -- "$diagram")" || "$event" == "$diagram" ]]; then
-      maybe_render
-    fi
-  else
-    if ((COCKPIT_WAKE == 1)); then
-      COCKPIT_WAKE=0
+while cockpit_event_read; do
+  if [[ "$COCKPIT_EVENT" == "WAKE" ]]; then
+    last_fp=""
+    maybe_render
+    continue
+  fi
+  sleep "$COCKPIT_DEBOUNCE"
+  cockpit_event_drain >/dev/null
+  base="${COCKPIT_EVENT##*/}"
+  case "$base" in
+    *.mmd|*.mermaid|WAKE)
+      if [[ "$base" != WAKE && -z "$diagram" ]]; then
+        diagram="$COCKPIT_EVENT"
+        [[ "$diagram" == /* ]] || diagram="$watch_dir/$base"
+      fi
       last_fp=""
       maybe_render
-    fi
-  fi
-done < <(
-  inotifywait -m -q \
-    -e close_write,moved_to,create,delete \
-    --exclude "$cockpit_noise_exclude" \
-    --format '%w%f' \
-    "$watch_dir" 2>/dev/null
-)
+      ;;
+    *)
+      if [[ "$COCKPIT_EVENT" == "$diagram" || "$base" == "$(basename -- "${diagram:-}")" ]]; then
+        last_fp=""
+        maybe_render
+      fi
+      ;;
+  esac
+done

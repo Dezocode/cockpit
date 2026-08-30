@@ -81,4 +81,4 @@ follow_edits() {
 follow_edits &
 watcher_pid=$!
 
-exec nvim --listen "$listen" .
+exec nvim --listen "$listen" -c 'set errorbells visualbell belloff=all' .

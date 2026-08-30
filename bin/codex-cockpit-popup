@@ -48,6 +48,8 @@ if [[ "$cmd" == "run" ]]; then
   tmux set-option -w window-status-current-format '' 2>/dev/null || true
   tmux set-option -w monitor-bell off 2>/dev/null || true
   tmux set-option -w monitor-activity off 2>/dev/null || true
+  tmux set-option -w monitor-silence 0 2>/dev/null || true
+  tmux set-option -t "$(tmux display-message -p '#{session_name}')" allow-passthrough off 2>/dev/null || true
   tmux set-option -w automatic-rename off 2>/dev/null || true
   tmux set-option -w allow-rename off 2>/dev/null || true
   cleanup() {

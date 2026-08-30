@@ -11,6 +11,15 @@ client_pid="${5:-}"
 [[ "$session" == codex-cockpit* ]] || exit 0
 tmux has-session -t "$session" 2>/dev/null || exit 0
 
+# Keyboard slide fires many client-resized events. Keep the last one.
+if [[ "$mode" == "resized" ]]; then
+  _rsdir="${XDG_RUNTIME_DIR:-/tmp}/codex-cockpit/${session}"
+  mkdir -p "$_rsdir"
+  printf '%s\n' "$$" >"$_rsdir/resize.pid"
+  sleep 0.35
+  [[ "$(cat "$_rsdir/resize.pid" 2>/dev/null || true)" == "$$" ]] || exit 0
+fi
+
 export PATH="$HOME/.local/bin:$PATH"
 width=${width:-0}
 height=${height:-0}
@@ -80,15 +89,20 @@ window_for() {
   tmux display-message -p -t "$pane" '#{window_id}'
 }
 
-# Termius treats BEL / other-window activity as haptics. Keep background
-# panes silent so only the focused UX is felt.
+# Termius treats BEL / activity / passthrough as haptics. Hush every window.
 apply_hush() {
+  local w
   tmux set-option -t "$session" bell-action none
   tmux set-option -t "$session" visual-bell off
   tmux set-option -t "$session" activity-action none
   tmux set-option -t "$session" silence-action none
-  tmux set-option -t "$session" -w monitor-bell off
-  tmux set-option -t "$session" -w monitor-activity off
+  tmux set-option -t "$session" allow-passthrough off
+  while IFS= read -r w; do
+    [[ -n "$w" ]] || continue
+    tmux set-option -w -t "$w" monitor-bell off
+    tmux set-option -w -t "$w" monitor-activity off
+    tmux set-option -w -t "$w" monitor-silence 0
+  done < <(tmux list-windows -t "$session" -F '#{window_id}' 2>/dev/null || true)
 }
 
 apply_keyboard_chrome() {
@@ -197,11 +211,9 @@ map="$(pane_for map)"
 have_mod="$(tmux show-options -v -t "$session" @cockpit_modality 2>/dev/null || true)"
 have_tabs="$(tmux show-options -v -t "$session" @cockpit_tabs 2>/dev/null || true)"
 if [[ "$have_mod" == "$modality" && "$have_tabs" == "$want_tabs" ]]; then
-  if [[ "$modality" == "touch" ]]; then
-    apply_touch_chrome
-  else
-    apply_keyboard_chrome
-  fi
+  # Keyboard open resizes the Termius client. Do not re-apply chrome (that
+  # rings haptics). Only keep the toolbar sized.
+  apply_hush
   if [[ "$mode" == "attached" ]]; then
     codex-cockpit-idle "$session" >/dev/null 2>&1 &
   fi

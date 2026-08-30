@@ -6,19 +6,18 @@ session="${1:-codex-cockpit}"
 tmux has-session -t "$session" 2>/dev/null || exit 0
 export PATH="$HOME/.local/bin:$PATH"
 
-BAR_H=6
+# Same height as the touch tab row (status 2). Not taller.
+BAR_H=2
+st="$(tmux show-options -t "$session" -v status 2>/dev/null || echo on)"
+if [[ "$st" == "2" || "$st" == "3" ]]; then
+  BAR_H=$st
+fi
 
 runtime="$(
   tmux list-panes -s -t "$session" -F '#{pane_id} #{@cockpit_role}' 2>/dev/null |
     awk '$2 == "runtime" { print $1; exit }'
 )"
 [[ -n "$runtime" ]] || exit 0
-
-win_h="$(tmux display-message -p -t "$runtime" '#{window_height}' 2>/dev/null || echo 36)"
-[[ "$win_h" =~ ^[0-9]+$ ]] || win_h=36
-if ((win_h < 16)); then
-  BAR_H=4
-fi
 
 tag_bar() {
   local pane=$1
@@ -34,12 +33,13 @@ bar="$(
 )"
 
 if [[ -n "$bar" ]]; then
-  tag_bar "$bar"
   start="$(tmux display-message -p -t "$bar" '#{pane_start_command}' 2>/dev/null || true)"
   dead="$(tmux display-message -p -t "$bar" '#{pane_dead}' 2>/dev/null || true)"
+  have="$(tmux display-message -p -t "$bar" '#{pane_height}' 2>/dev/null || echo 0)"
+  tag_bar "$bar"
   if [[ "$dead" == "1" || "$start" != *codex-cockpit-bar* ]]; then
     tmux respawn-pane -k -t "$bar" "exec codex-cockpit-bar ${session}" 2>/dev/null || true
-  else
+  elif [[ "$have" != "$BAR_H" ]]; then
     pid="$(tmux display-message -p -t "$bar" '#{pane_pid}' 2>/dev/null || true)"
     [[ -n "$pid" ]] && kill -WINCH "$pid" 2>/dev/null || true
   fi
