@@ -115,7 +115,18 @@ gate() {
 pick() {
   cockpit_auth_ensure_config
   local ids id n=0 sel
-  mapfile -t ids < <(cockpit_auth_ids)
+  mapfile -t ids < <(cockpit_auth_ids cli-oauth)
+  if ((${#ids[@]} == 0)); then
+    mapfile -t ids < <(cockpit_auth_ids)
+    # Drop runtime entries from the OAuth picker.
+    local filtered=() k
+    for id in "${ids[@]}"; do
+      k="$(cockpit_auth_kind "$id")"
+      [[ "$k" == "runtime" ]] && continue
+      filtered+=("$id")
+    done
+    ids=("${filtered[@]}")
+  fi
   if ((${#ids[@]} == 0)); then
     printf 'No providers in %s\n' "$cockpit_auth_file" >&2
     exit 1

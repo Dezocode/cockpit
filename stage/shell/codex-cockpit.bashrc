@@ -1,4 +1,3 @@
-# Codex terminal cockpit: `codex` opens the live tmux workspace.
-# The underlying CLI remains available as `codex-cli`.
-alias codex='codex-cockpit'
-alias codex-cli='${HOME}/.local/bin/codex'
+# Codex Cockpit: `cockpit` is the tmux workspace. `codex` is the Codex CLI.
+alias cockpit='codex-cockpit'
+unalias codex 2>/dev/null || true

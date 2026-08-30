@@ -33,11 +33,22 @@ cockpit_auth_files() {
   done
 }
 
+cockpit_auth_kind() {
+  cockpit_auth_field "$1" kind || true
+}
+
 cockpit_auth_ids() {
-  local f
+  local f id kind want=${1:-}
   while IFS= read -r f; do
     [[ -f "$f" ]] || continue
-    awk '/^\[.+\]/{gsub(/[][]/,""); print}' "$f"
+    while IFS= read -r id; do
+      [[ -n "$id" ]] || continue
+      if [[ -n "$want" ]]; then
+        kind="$(cockpit_auth_kind "$id")"
+        [[ "$kind" == "$want" ]] || continue
+      fi
+      printf '%s\n' "$id"
+    done < <(awk '/^\[.+\]/{gsub(/[][]/,""); print}' "$f")
   done < <(cockpit_auth_files)
 }
 

@@ -13,4 +13,5 @@ fi
 if [[ -f "$confdir/tmux/tmux.conf" ]] && ! grep -q 'codex-cockpit.conf' "$confdir/tmux/tmux.conf"; then
   printf '\n# Codex Cockpit overlay\nif-shell '\''[ -f ~/.config/tmux/codex-cockpit.conf ]'\'' '\''source-file ~/.config/tmux/codex-cockpit.conf'\''\n' >>"$confdir/tmux/tmux.conf"
 fi
-printf 'Installed to %s\nRun: codex-cockpit [project]\n' "$bindir"
+ln -sf codex-cockpit "$bindir/cockpit"
+printf 'Installed to %s\nRun: cockpit\n' "$bindir"

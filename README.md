@@ -29,8 +29,13 @@ Views (same in both profiles):
 - **PRS** — GitHub PRs
 
 ```bash
-codex
+cockpit
 ```
+
+`codex` is the Codex CLI again. `cockpit` attaches the single tmux runtime.
+On the agent page, `prefix + e` (or F7 in touch) opens a nested box to switch
+Codex/Grok (and other `kind=runtime` providers). Unused CLIs are SIGSTOP'd.
+Model config is `m` in that box (sends `/model` into the live agent).
 
 From Omarchy/Foot:
 

@@ -1,0 +1,199 @@
+#!/usr/bin/env bash
+# Switch/pause runtimes (kind=runtime in providers.conf). One live agent pane;
+# unused CLIs are SIGSTOP'd so they do not burn CPU. OAuth stays with each CLI.
+set -euo pipefail
+
+lib="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/codex-cockpit-auth-lib"
+# shellcheck source=codex-cockpit-auth-lib
+source "$lib"
+
+blue=$'\033[38;5;4m'
+muted=$'\033[38;5;8m'
+bright=$'\033[1;37m'
+reset=$'\033[0m'
+
+cmd="${1:-popup}"
+session="${2:-}"
+target="${3:-}"
+
+if [[ -z "$session" && -n "${TMUX:-}" ]]; then
+  session="$(tmux display-message -p '#{session_name}')"
+fi
+[[ -n "$session" ]] || session=codex-cockpit
+
+runtime_pane() {
+  tmux list-panes -s -t "$session" -F '#{pane_id} #{@cockpit_role}' 2>/dev/null |
+    awk '$2 == "runtime" { print $1; exit }'
+}
+
+parked_pane() {
+  local id=$1
+  tmux list-panes -s -t "$session" -F '#{pane_id} #{@cockpit_runtime_id} #{@cockpit_role}' 2>/dev/null |
+    awk -v id="$id" '$2 == id && $3 == "parked" { print $1; exit }'
+}
+
+pane_pid() {
+  tmux display-message -p -t "$1" '#{pane_pid}' 2>/dev/null || true
+}
+
+pause_pane() {
+  local pane=$1 pid
+  pid="$(pane_pid "$pane")"
+  [[ -n "$pid" ]] || return 0
+  kill -STOP -- "-$pid" 2>/dev/null || kill -STOP "$pid" 2>/dev/null || true
+}
+
+resume_pane() {
+  local pane=$1 pid
+  pid="$(pane_pid "$pane")"
+  [[ -n "$pid" ]] || return 0
+  kill -CONT -- "-$pid" 2>/dev/null || kill -CONT "$pid" 2>/dev/null || true
+}
+
+hide_rt_window() {
+  local win=$1
+  tmux set-option -w -t "$win" window-status-format '' 2>/dev/null || true
+  tmux set-option -w -t "$win" window-status-current-format '' 2>/dev/null || true
+  tmux set-option -w -t "$win" automatic-rename off
+  tmux set-option -w -t "$win" allow-rename off
+}
+
+ensure_parked() {
+  local id=$1 start root pane
+  pane="$(parked_pane "$id")"
+  if [[ -n "$pane" ]]; then
+    printf '%s\n' "$pane"
+    return 0
+  fi
+  start="$(cockpit_auth_field "$id" start || true)"
+  [[ -n "$start" ]] || return 1
+  root="$(tmux display-message -p -t "$session:" '#{pane_current_path}' 2>/dev/null || pwd)"
+  tmux new-window -d -t "$session:" -n "rt-$id" -c "$root" "exec $start"
+  pane="$(tmux list-panes -t "$session:rt-$id" -F '#{pane_id}' | head -1)"
+  tmux select-pane -t "$pane" -T "$(cockpit_auth_label "$id")"
+  tmux set-option -p -t "$pane" @cockpit_runtime_id "$id"
+  tmux set-option -p -t "$pane" @cockpit_role parked
+  hide_rt_window "$session:rt-$id"
+  pause_pane "$pane"
+  printf '%s\n' "$pane"
+}
+
+save_runtime() {
+  local id=$1
+  tmux set-option -t "$session" @cockpit_runtime "$id"
+  mkdir -p "$HOME/.config/codex-cockpit"
+  if [[ -f "$HOME/.config/codex-cockpit/state" ]]; then
+    grep -v '^runtime=' "$HOME/.config/codex-cockpit/state" >"$HOME/.config/codex-cockpit/state.tmp" || true
+  else
+    : >"$HOME/.config/codex-cockpit/state.tmp"
+  fi
+  printf 'runtime=%s\n' "$id" >>"$HOME/.config/codex-cockpit/state.tmp"
+  mv "$HOME/.config/codex-cockpit/state.tmp" "$HOME/.config/codex-cockpit/state"
+}
+
+switch_to() {
+  local id=$1 slot current cur_id parked
+  slot="$(runtime_pane)"
+  [[ -n "$slot" ]] || exit 1
+  current="$(tmux display-message -p -t "$slot" '#{@cockpit_runtime_id}')"
+  [[ -n "$current" ]] || current=codex
+  if [[ "$current" == "$id" ]]; then
+    resume_pane "$slot"
+    save_runtime "$id"
+    return 0
+  fi
+  parked="$(ensure_parked "$id")"
+  pause_pane "$slot"
+  tmux swap-pane -s "$parked" -t "$slot"
+  # pane ids follow the processes. $parked is now in the agent slot.
+  tmux set-option -p -t "$parked" @cockpit_role runtime
+  tmux set-option -p -t "$parked" @cockpit_runtime_id "$id"
+  tmux select-pane -t "$parked" -T "$(cockpit_auth_label "$id")"
+  resume_pane "$parked"
+  tmux set-option -p -t "$slot" @cockpit_role parked
+  tmux set-option -p -t "$slot" @cockpit_runtime_id "$current"
+  pause_pane "$slot"
+  tmux rename-window -t "$slot" "rt-$current" 2>/dev/null || true
+  hide_rt_window "$slot"
+  save_runtime "$id"
+  tmux select-window -t "$parked"
+  tmux select-pane -t "$parked"
+}
+
+send_model() {
+  local slot keys
+  slot="$(runtime_pane)"
+  [[ -n "$slot" ]] || exit 1
+  keys="$(cockpit_auth_field "$(tmux display-message -p -t "$slot" '#{@cockpit_runtime_id}')" model_keys || true)"
+  [[ -n "$keys" ]] || keys="/model"
+  tmux select-window -t "$slot"
+  tmux select-pane -t "$slot"
+  tmux send-keys -t "$slot" "$keys"
+}
+
+popup() {
+  cockpit_auth_ensure_config
+  local ids id n=0 status line
+  mapfile -t ids < <(cockpit_auth_ids runtime)
+  if ((${#ids[@]} == 0)); then
+    printf 'No kind=runtime providers in %s\n' "$cockpit_auth_file" >&2
+    exit 1
+  fi
+  local active
+  active="$(tmux show-options -v -t "$session" @cockpit_runtime 2>/dev/null || echo codex)"
+  printf '%sRUNTIME%s  (unused CLIs are paused)\n\n' "$bright" "$reset"
+  for id in "${ids[@]}"; do
+    n=$((n + 1))
+    if ! cockpit_auth_check "$id"; then
+      status="${muted}unavailable${reset}"
+    elif [[ "$id" == "$active" ]]; then
+      status="${blue}live${reset}"
+    else
+      status="${muted}paused${reset}"
+    fi
+    printf '  %s) %s  %s\n' "$n" "$(cockpit_auth_label "$id")" "$status"
+  done
+  printf '\n  m) model picker in the live agent\n'
+  printf '  q) close\n\n'
+  printf '%sNumber / m / q:%s ' "$muted" "$reset"
+  local sel
+  read -r sel || exit 0
+  case "$sel" in
+    q|Q|'') exit 0 ;;
+    m|M) send_model; exit 0 ;;
+    *)
+      if [[ "$sel" =~ ^[0-9]+$ ]] && ((sel >= 1 && sel <= ${#ids[@]})); then
+        id="${ids[sel-1]}"
+        if ! cockpit_auth_check "$id"; then
+          printf '%s not available on PATH\n' "$id" >&2
+          exit 1
+        fi
+        switch_to "$id"
+      fi
+      ;;
+  esac
+}
+
+case "$cmd" in
+  switch) switch_to "$target" ;;
+  pause)
+    slot="$(runtime_pane)"
+    [[ -n "$slot" ]] && pause_pane "$slot"
+    ;;
+  resume)
+    slot="$(runtime_pane)"
+    [[ -n "$slot" ]] && resume_pane "$slot"
+    ;;
+  model) send_model ;;
+  pick)
+    popup
+    ;;
+  popup|*)
+    if [[ -n "${TMUX:-}" ]]; then
+      tmux display-popup -E -w 72% -h 60% -T "Runtimes" \
+        "codex-cockpit-runtime pick ${session}"
+    else
+      popup
+    fi
+    ;;
+esac

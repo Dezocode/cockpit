@@ -6,6 +6,7 @@ session="${1:-}"
 
 tmux display-menu -T "Cockpit" -x M -y M \
   "Runtime" r "run-shell 'codex-cockpit-touch \"$session\" runtime'" \
+  "Switch runtime" e "run-shell 'codex-cockpit-runtime popup \"$session\"'" \
   "Files" f "run-shell 'codex-cockpit-touch \"$session\" files'" \
   "Diff" d "run-shell 'codex-cockpit-touch \"$session\" diff'" \
   "Map" m "run-shell 'codex-cockpit-touch \"$session\" map'" \

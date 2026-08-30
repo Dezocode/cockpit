@@ -66,6 +66,8 @@ and the same switch runs without stealing keys from Codex until then.
 
 ${blue}prefix + k${reset} desktop/keyboard    ${blue}prefix + t${reset} touch/mobile
 ${blue}prefix + A${reset} auth popup (providers.conf)    ${blue}prefix + G${reset} GitHub OAuth box
+${blue}prefix + e${reset}  switch runtime / model (pauses the other CLI)
+${blue}F7${reset} (touch) same runtime popup
 
 PRs open a nested login box only when GitHub is unsigned. Click outside
 that box to skip. It closes itself after a successful gh CLI OAuth.

@@ -161,6 +161,21 @@ if [[ -f "$overlay" ]]; then
   tmux source-file "$overlay" 2>/dev/null || true
 fi
 
+authlib="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/codex-cockpit-auth-lib"
+# shellcheck source=codex-cockpit-auth-lib
+[[ -f "$authlib" ]] && source "$authlib"
+cockpit_auth_ensure_config 2>/dev/null || true
+runtime_id=codex
+if [[ -f "$HOME/.config/codex-cockpit/state" ]]; then
+  runtime_id="$(awk -F= '/^runtime=/{print $2}' "$HOME/.config/codex-cockpit/state" | tail -1)"
+fi
+[[ -n "$runtime_id" ]] || runtime_id=codex
+if [[ -n "${authlib:-}" ]] && ! cockpit_auth_check "$runtime_id" 2>/dev/null; then
+  runtime_id=codex
+fi
+runtime_cmd="$(cockpit_auth_field "$runtime_id" start 2>/dev/null || true)"
+[[ -n "$runtime_cmd" ]] || runtime_cmd="$codex_bin"
+
 profile="$(codex-cockpit-profile $$ 2>/dev/null || echo foot)"
 use_tabs=0
 if [[ "$modality" == "touch" || "$profile" == "termius-ios" ]]; then
@@ -178,8 +193,9 @@ tag() {
 
 if ((use_tabs == 1)); then
   tmux new-session -d -s "$session" -n CODEX -c "$root" \
-    "cd -- $root_q && exec $(quote_sh "$codex_bin")"
-  tag "$session:CODEX" CODEX runtime
+    "cd -- $root_q && exec $runtime_cmd"
+  tag "$session:CODEX" "$(cockpit_auth_label "$runtime_id" 2>/dev/null || echo CODEX)" runtime
+  tmux set-option -p -t "$session:CODEX" @cockpit_runtime_id "$runtime_id"
 
   tmux new-window -d -t "$session:" -n FILES -c "$root" \
     "cd -- $root_q && exec codex-cockpit-files $root_q"
@@ -194,8 +210,9 @@ if ((use_tabs == 1)); then
   tag "$session:MAP" MAP map
 else
   tmux new-session -d -s "$session" -n cockpit -c "$root" \
-    "cd -- $root_q && exec $(quote_sh "$codex_bin")"
-  tag "$session:cockpit.1" CODEX runtime
+    "cd -- $root_q && exec $runtime_cmd"
+  tag "$session:cockpit.1" "$(cockpit_auth_label "$runtime_id" 2>/dev/null || echo CODEX)" runtime
+  tmux set-option -p -t "$session:cockpit.1" @cockpit_runtime_id "$runtime_id"
 
   tmux split-window -h -p 42 -t "$session:cockpit.1" -c "$root" \
     "cd -- $root_q && exec codex-cockpit-files $root_q"
@@ -217,6 +234,7 @@ tmux select-window -t "$session:1"
 tmux select-pane -t "$session:1.1"
 tmux set-option -t "$session" @cockpit 1
 tmux set-option -t "$session" @cockpit_modality "$modality"
+tmux set-option -t "$session" @cockpit_runtime "$runtime_id"
 tmux set-hook -t "$session" after-select-window \
   'run-shell -b "codex-cockpit-wake #{session_name} #{window_name}"'
 tmux set-hook -t "$session" after-select-pane \
