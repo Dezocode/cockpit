@@ -1,0 +1,136 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+lib="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/codex-cockpit-lib"
+# shellcheck source=codex-cockpit-lib
+source "$lib"
+
+root="${1:-$PWD}"
+diagram="${2:-}"
+root="$(cd -- "$root" && pwd -P)"
+session="$(tmux display-message -p '#{session_name}' 2>/dev/null || echo unknown)"
+COCKPIT_DEBOUNCE=0.25
+last_fp=""
+dirty=1
+
+if [[ -z "$diagram" ]]; then
+  if [[ -f "$root/docs/architecture.mmd" ]]; then
+    diagram="$root/docs/architecture.mmd"
+  else
+    diagram="$(find "$root" -maxdepth 3 \( -name '*.mmd' -o -name '*.mermaid' \) \
+      ! -path '*/.git/*' ! -path '*/node_modules/*' 2>/dev/null | head -1 || true)"
+  fi
+fi
+
+if [[ -n "$diagram" && "$diagram" != /* ]]; then
+  diagram="$root/${diagram#./}"
+fi
+
+clear_screen() {
+  printf '\033[2J\033[H'
+}
+
+header() {
+  printf '\033[38;5;4mMAP\033[0m  \033[38;5;8m%s\033[0m\n\n' "${diagram:-waiting for *.mmd}"
+}
+
+file_fp() {
+  local path=$1
+  [[ -f "$path" ]] || { printf 'missing\n'; return 0; }
+  stat -c '%Y %s' "$path" 2>/dev/null
+}
+
+render() {
+  local fp
+  fp="$(file_fp "${diagram:-}")"
+  if [[ "$fp" == "$last_fp" && -n "$last_fp" && -n "$diagram" ]]; then
+    dirty=0
+    return 0
+  fi
+  last_fp=$fp
+  dirty=0
+
+  clear_screen
+  header
+
+  if [[ -z "$diagram" ]]; then
+    printf 'No Mermaid file found under %s\n' "$root"
+    printf '\nCreate docs/architecture.mmd; this pane will discover it.\n'
+    return 0
+  fi
+  if [[ ! -f "$diagram" ]]; then
+    printf 'Diagram disappeared: %s\n' "$diagram"
+    return 0
+  fi
+  if command -v mermaid-ascii >/dev/null 2>&1; then
+    mermaid-ascii -f "$diagram" -x 4 -y 2 || true
+  elif command -v merman-cli >/dev/null 2>&1; then
+    merman-cli render "$diagram" --format unicode --output - || true
+  else
+    printf 'Install a browserless renderer once:\n\n  npm install -g mermaid-ascii\n'
+  fi
+}
+
+maybe_render() {
+  if cockpit_view_visible; then
+    render
+  else
+    dirty=1
+  fi
+}
+
+cockpit_install_wake "$session" MAP
+trap 'rm -f "$(cockpit_wake_dir "$session")/MAP.pid"' EXIT
+if cockpit_view_visible; then
+  render
+else
+  dirty=1
+  printf '\033[2J\033[H'
+  printf '\033[38;5;4mMAP\033[0m  idle\n\n'
+  printf 'Diagram renders when you open this tab.\n'
+fi
+
+if [[ -n "$diagram" ]]; then
+  watch_dir="$(dirname -- "$diagram")"
+else
+  watch_dir="$root"
+fi
+
+if [[ "$root" == "$HOME" ]]; then
+  while true; do sleep 3600; done
+fi
+
+while true; do
+  if IFS= read -r -t 0.5 event; then
+    cockpit_coalesce
+    while IFS= read -r -t 0.01 extra; do
+      event=$extra
+    done || true
+    base="${event##*/}"
+    if [[ -z "$diagram" ]]; then
+      case "$base" in
+        *.mmd|*.mermaid)
+          diagram="$event"
+          [[ "$diagram" == /* ]] || diagram="$watch_dir/$base"
+          watch_dir="$(dirname -- "$diagram")"
+          last_fp=""
+          maybe_render
+          ;;
+      esac
+    elif [[ "$base" == "$(basename -- "$diagram")" || "$event" == "$diagram" ]]; then
+      maybe_render
+    fi
+  else
+    if ((COCKPIT_WAKE == 1)); then
+      COCKPIT_WAKE=0
+      last_fp=""
+      maybe_render
+    fi
+  fi
+done < <(
+  inotifywait -m -q \
+    -e close_write,moved_to,create,delete \
+    --exclude "$cockpit_noise_exclude" \
+    --format '%w%f' \
+    "$watch_dir" 2>/dev/null
+)

@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# Apply keyboard vs touch chrome/layout without dropping the live Codex PTY.
+set -euo pipefail
+
+modality="${1:-}"
+session="${2:-}"
+width="${3:-0}"
+height="${4:-0}"
+
+[[ "$modality" == "keyboard" || "$modality" == "touch" ]] || exit 0
+[[ -n "$session" && "$session" == codex-cockpit* ]] || exit 0
+tmux has-session -t "$session" 2>/dev/null || exit 0
+
+export PATH="$HOME/.local/bin:$PATH"
+tmux set-option -t "$session" @cockpit_modality "$modality"
+tmux switch-client -T root 2>/dev/null || true
+codex-cockpit-adapt modality "$session" "$width" "$height" || true

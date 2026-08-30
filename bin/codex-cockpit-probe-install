@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+# One-shot install of the idle probe key-table. First key → keyboard (and the
+# key is forwarded). First click → touch (click is the mode switch).
+set -euo pipefail
+
+if [[ "$(tmux show-options -gv @cockpit_probe_installed 2>/dev/null || true)" == "1" ]]; then
+  exit 0
+fi
+
+tmux unbind-key -a -T cockpit-probe 2>/dev/null || true
+
+fwd() {
+  local key=$1
+  shift
+  tmux bind-key -T cockpit-probe -n "$key" \
+    run-shell 'codex-cockpit-modality keyboard "#{client_session}" #{client_width} #{client_height}' \; \
+    switch-client -T root \; \
+    send-keys "$@"
+}
+
+for c in {a..z} {A..Z} {0..9}; do
+  fwd "$c" "$c"
+done
+
+fwd Space -l ' '
+fwd Enter Enter
+fwd BSpace BSpace
+fwd Tab Tab
+fwd Escape Escape
+fwd DC DC
+fwd C-Space C-Space
+
+for a in Left Right Up Down Home End PageUp PageDown; do
+  fwd "$a" "$a"
+done
+
+n=1
+while ((n <= 12)); do
+  fwd "F$n" "F$n"
+  n=$((n + 1))
+done
+
+for c in {a..z}; do
+  fwd "C-$c" "C-$c"
+done
+
+for btn in MouseDown1Pane MouseDown1Status MouseDown1StatusLeft MouseDown1Border DoubleClick1Pane MouseDown3Pane; do
+  tmux bind-key -T cockpit-probe "$btn" \
+    run-shell 'codex-cockpit-modality touch "#{client_session}" #{client_width} #{client_height}' \; \
+    switch-client -T root
+done
+
+tmux set-option -g @cockpit_probe_installed 1

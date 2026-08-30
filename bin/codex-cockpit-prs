@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# PRs are just the GitHub provider's ready command. Auth is generic and
+# configured in ~/.config/codex-cockpit/providers.conf — not hardcoded here.
+exec codex-cockpit-auth gate github

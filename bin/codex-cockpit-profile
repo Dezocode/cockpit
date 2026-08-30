@@ -1,0 +1,165 @@
+#!/usr/bin/env bash
+# Detect the attaching client: Omarchy Foot vs iPhone Termius (Tailscale/SSH).
+# Prints: foot | termius-ios
+set -euo pipefail
+
+usage() {
+  printf 'usage: codex-cockpit-profile [pid|--session NAME|--explain]\n' >&2
+  exit 2
+}
+
+in_tailscale_cgnat() {
+  local ip=${1:-}
+  [[ "$ip" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)\.([0-9]+)$ ]] || return 1
+  local a=${BASH_REMATCH[1]} b=${BASH_REMATCH[2]}
+  ((a == 100 && b >= 64 && b <= 127))
+}
+
+pid_comm() {
+  local pid=$1
+  [[ -r "/proc/$pid/comm" ]] && tr -d '\n' <"/proc/$pid/comm"
+}
+
+pid_env() {
+  local pid=$1
+  [[ -r "/proc/$pid/environ" ]] && tr '\0' '\n' <"/proc/$pid/environ"
+}
+
+pid_ppid() {
+  local pid=$1
+  awk '/^PPid:/{print $2}' "/proc/$pid/status" 2>/dev/null
+}
+
+env_val() {
+  local blob=$1 key=$2
+  printf '%s\n' "$blob" | awk -F= -v k="$key" '$1 == k { print substr($0, index($0, "=") + 1); exit }'
+}
+
+fingerprint_pid() {
+  local start=${1:-$$}
+  local pid=$start depth=0
+  local comms="" blob ssh_client colorterm wayland session_type term_program lc_terminal terminal_var
+  ssh_client=""; colorterm=""; wayland=""; session_type=""; term_program=""; lc_terminal=""; terminal_var=""
+
+  while [[ -n "$pid" && "$pid" != "0" && "$pid" != "1" && $depth -lt 24 ]]; do
+    comms+=":$(pid_comm "$pid"):"
+    blob="$(pid_env "$pid" || true)"
+    [[ -z "$ssh_client" ]] && ssh_client="$(env_val "$blob" SSH_CLIENT)"
+    [[ -z "$colorterm" ]] && colorterm="$(env_val "$blob" COLORTERM)"
+    [[ -z "$wayland" ]] && wayland="$(env_val "$blob" WAYLAND_DISPLAY)"
+    [[ -z "$session_type" ]] && session_type="$(env_val "$blob" XDG_SESSION_TYPE)"
+    [[ -z "$term_program" ]] && term_program="$(env_val "$blob" TERM_PROGRAM)"
+    [[ -z "$lc_terminal" ]] && lc_terminal="$(env_val "$blob" LC_TERMINAL)"
+    [[ -z "$terminal_var" ]] && terminal_var="$(env_val "$blob" TERMINAL)"
+    pid="$(pid_ppid "$pid")"
+    depth=$((depth + 1))
+  done
+
+  printf 'comms=%s\n' "$comms"
+  printf 'ssh_client=%s\n' "$ssh_client"
+  printf 'colorterm=%s\n' "$colorterm"
+  printf 'wayland=%s\n' "$wayland"
+  printf 'session_type=%s\n' "$session_type"
+  printf 'term_program=%s\n' "$term_program"
+  printf 'lc_terminal=%s\n' "$lc_terminal"
+  printf 'terminal=%s\n' "$terminal_var"
+}
+
+classify_fp() {
+  local fp=$1 width=${2:-0} height=${3:-0}
+  local comms ssh_client colorterm wayland session_type term_program lc_terminal terminal_var ssh_ip
+  comms=$(printf '%s\n' "$fp" | awk -F= '/^comms=/{print substr($0,7)}')
+  ssh_client=$(printf '%s\n' "$fp" | awk -F= '/^ssh_client=/{print substr($0,12)}')
+  colorterm=$(printf '%s\n' "$fp" | awk -F= '/^colorterm=/{print substr($0,11)}')
+  wayland=$(printf '%s\n' "$fp" | awk -F= '/^wayland=/{print substr($0,9)}')
+  session_type=$(printf '%s\n' "$fp" | awk -F= '/^session_type=/{print substr($0,14)}')
+  term_program=$(printf '%s\n' "$fp" | awk -F= '/^term_program=/{print substr($0,14)}')
+  lc_terminal=$(printf '%s\n' "$fp" | awk -F= '/^lc_terminal=/{print substr($0,13)}')
+  terminal_var=$(printf '%s\n' "$fp" | awk -F= '/^terminal=/{print substr($0,10)}')
+  ssh_ip=${ssh_client%% *}
+
+  # Local Omarchy Foot (xdg-terminal-exec, wayland, or foot process).
+  if [[ "$comms" == *:foot:* || "$terminal_var" == *xdg-terminal-exec* || -n "$wayland" || "$session_type" == "wayland" ]]; then
+    printf 'foot\n'
+    return 0
+  fi
+
+  # Explicit Termius client env (desktop or iOS).
+  if [[ "${term_program,,}" == *termius* || "${lc_terminal,,}" == *termius* ]]; then
+    printf 'termius-ios\n'
+    return 0
+  fi
+
+  # iPhone path on this host: Tailscale SSH (tailscaled → login) with no
+  # COLORTERM, or classic sshd from the Tailscale CGNAT range.
+  if [[ "$comms" == *:tailscaled:* || "$comms" == *:sshd:* || "$comms" == *:sshd-session:* || -n "$ssh_client" ]]; then
+    if in_tailscale_cgnat "$ssh_ip" || [[ -z "$colorterm" ]] || ((width > 0 && (width < 100 || height < 32))); then
+      printf 'termius-ios\n'
+      return 0
+    fi
+  fi
+
+  printf 'foot\n'
+}
+
+classify_pid() {
+  local pid=$1 width=${2:-0} height=${3:-0}
+  classify_fp "$(fingerprint_pid "$pid")" "$width" "$height"
+}
+
+session_profile() {
+  local session=$1
+  local pid width height profile
+  local saw_foot=0 saw_termius=0
+  while IFS=$'\t' read -r pid width height; do
+    [[ -n "$pid" ]] || continue
+    profile="$(classify_pid "$pid" "$width" "$height")"
+    if [[ "$profile" == "foot" ]]; then
+      saw_foot=1
+    else
+      saw_termius=1
+    fi
+  done < <(tmux list-clients -t "$session" -F '#{client_pid}\t#{client_width}\t#{client_height}' 2>/dev/null || true)
+
+  if ((saw_foot == 1)); then
+    printf 'foot\n'
+  elif ((saw_termius == 1)); then
+    printf 'termius-ios\n'
+  else
+    classify_pid "$$"
+  fi
+}
+
+explain=0
+target_pid=$$
+session=""
+
+while (($#)); do
+  case "$1" in
+    --explain) explain=1 ;;
+    --session)
+      shift || true
+      session=${1:-}
+      ;;
+    --tmux-client) target_pid=${TMUX_PANE:+$$} ;;
+    -h|--help) usage ;;
+    *)
+      [[ "$1" =~ ^[0-9]+$ ]] || usage
+      target_pid=$1
+      ;;
+  esac
+  shift || true
+done
+
+if [[ -n "$session" ]]; then
+  if ((explain)); then
+    tmux list-clients -t "$session" -F 'pid=#{client_pid} #{client_width}x#{client_height} #{client_termname}' 2>/dev/null || true
+  fi
+  session_profile "$session"
+  exit 0
+fi
+
+if ((explain)); then
+  fingerprint_pid "$target_pid"
+fi
+classify_pid "$target_pid"

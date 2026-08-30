@@ -1,0 +1,16 @@
+flowchart LR
+  subgraph detect [client profile]
+    foot[Foot / Omarchy]
+    ios[Termius iOS SSH]
+  end
+  subgraph views [same session]
+    runtime[CODEX runtime]
+    files[FILES nvim]
+    diff[DIFF events]
+    map[MAP mermaid]
+    prs[PRS github]
+  end
+  foot -->|2x2 pad| views
+  ios -->|fullscreen tabs| views
+  runtime -->|writes| files
+  runtime -->|writes| diff

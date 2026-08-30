@@ -1,0 +1,242 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+root="${1:-$PWD}"
+diagram="${2:-}"
+explicit_root=$(( $# > 0 ? 1 : 0 ))
+
+if [[ ! -d "$root" ]]; then
+  printf 'codex-cockpit: directory not found: %s\n' "$root" >&2
+  exit 1
+fi
+
+root="$(cd -- "$root" && pwd -P)"
+
+is_project_dir() {
+  local dir=$1
+  [[ -d "$dir/.git" || -f "$dir/README.md" || -f "$dir/package.json" ||
+    -f "$dir/go.mod" || -f "$dir/Cargo.toml" || -f "$dir/pyproject.toml" ||
+    -f "$dir/Makefile" ]]
+}
+
+# A freshly initialized home directory is technically a Git worktree, but it
+# is a disastrous cockpit root. Treat an empty home worktree as a container
+# for projects instead of as the project itself.
+usable_git_root() {
+  local dir=$1
+  if [[ "$dir" == "$HOME" ]] && ! git -C "$dir" rev-parse --verify HEAD >/dev/null 2>&1; then
+    return 1
+  fi
+  return 0
+}
+
+git_root="$(git -C "$root" rev-parse --show-toplevel 2>/dev/null || true)"
+if [[ -n "$git_root" ]] && usable_git_root "$git_root"; then
+  root="$(cd -- "$git_root" && pwd -P)"
+elif is_project_dir "$root"; then
+  :
+elif (( explicit_root == 0 )) && [[ -t 0 && -t 1 ]] && command -v fzf >/dev/null 2>&1; then
+  candidates="$(find "$HOME/Work" -mindepth 1 -maxdepth 2 -type d \
+    \( -name .git -o -name node_modules -o -name .cache \) -prune -o \
+    -type d -print 2>/dev/null | while IFS= read -r candidate; do
+      if is_project_dir "$candidate"; then
+        printf '%s\n' "$candidate"
+      fi
+    done | sort -u || true)"
+  if [[ -n "$candidates" ]]; then
+    selected="$(printf '%s\n' "$candidates" | fzf \
+      --height=55% --layout=reverse --border=rounded \
+      --prompt='project › ' \
+      --header='Choose a project  •  Enter open  •  Esc cancel' \
+      --preview='git -C {} status --short --branch 2>/dev/null | head -20 || find {} -maxdepth 1 -type f -printf "%f\\n" | head -20' \
+      --preview-window=right:45%:wrap || true)"
+    if [[ -z "$selected" ]]; then
+      exit 0
+    fi
+    root="$(cd -- "$selected" && pwd -P)"
+  else
+    printf 'codex-cockpit: no projects found under %s\n' "$HOME/Work" >&2
+    exit 1
+  fi
+else
+  printf 'codex-cockpit: %s is not a project directory\n' "$root" >&2
+  printf 'Run `codex` inside a project, or pass its path: codex /path/to/project\n' >&2
+  exit 1
+fi
+
+# One canonical runtime. Project path is the pane cwd, not extra sessions.
+session="${CODEX_COCKPIT_SESSION:-codex-cockpit}"
+
+reap_ghost_sessions() {
+  local name attached
+  while IFS=$'\t' read -r name attached; do
+    [[ "$name" == "$session" ]] && continue
+    [[ "$name" == codex-cockpit-* ]] || continue
+    if [[ "${attached:-0}" == "0" ]]; then
+      tmux kill-session -t "$name" 2>/dev/null || true
+    fi
+  done < <(tmux list-sessions -F '#{session_name}\t#{session_attached}' 2>/dev/null || true)
+}
+
+quote_sh() {
+  local value=$1
+  value=${value//\\/\\\\}
+  value=${value//\'/\'\\\'\'}
+  printf "'%s'" "$value"
+}
+
+root_q="$(quote_sh "$root")"
+mermaid_args="$root_q"
+if [[ -n "$diagram" ]]; then
+  mermaid_args+=" $(quote_sh "$diagram")"
+fi
+
+export PATH="$HOME/.local/bin:$PATH"
+
+if command -v tmux >/dev/null 2>&1; then
+  reap_ghost_sessions
+fi
+
+# GitHub OAuth is optional for the Codex PTY. Unsigned GitHub keeps PR/secret
+# surfaces behind the auth button. Codex CLI / Grok OAuth are untouched.
+if [[ -t 0 && -t 1 && -z "${COCKPIT_SKIP_GH_AUTH:-}" ]] && command -v gh >/dev/null 2>&1; then
+  if ! gh auth status -h github.com >/dev/null 2>&1; then
+    printf 'GitHub CLI is not signed in. Auth keeps git/PR secrets off unsigned panes.\n'
+    if [[ -n "${TMUX:-}" ]]; then
+      printf 'Nested box: click outside to skip.\n'
+      codex-cockpit-auth popup github || true
+    else
+      printf 'Ctrl-C skips; Codex still starts. Or: gh auth login -h github.com -p https -w\n'
+      codex-cockpit-auth run github || true
+    fi
+  fi
+fi
+
+modality=${COCKPIT_MODALITY:-}
+if [[ -z "$modality" && -t 0 && -t 1 && -z "${COCKPIT_SKIP_GATE:-}" ]]; then
+  modality="$(codex-cockpit-gate 2>/dev/null || true)"
+fi
+if [[ "$modality" != "keyboard" && "$modality" != "touch" ]]; then
+  if [[ "$(codex-cockpit-profile $$ 2>/dev/null || true)" == "termius-ios" ]]; then
+    modality=touch
+  else
+    modality=keyboard
+  fi
+fi
+
+if tmux has-session -t "$session" 2>/dev/null; then
+  if [[ -t 1 ]]; then
+    tmux set-option -t "$session" @cockpit_modality "$modality" 2>/dev/null || true
+    codex-cockpit-idle "$session" >/dev/null 2>&1 &
+    exec tmux attach-session -t "$session"
+  fi
+  printf 'codex-cockpit: session %s already running\n' "$session"
+  exit 0
+fi
+
+if ! command -v codex >/dev/null 2>&1; then
+  printf 'codex-cockpit: codex is not on PATH\n' >&2
+  exit 1
+fi
+
+codex_bin="${CODEX_CLI_BIN:-$(command -v codex)}"
+if [[ ! -x "$codex_bin" ]]; then
+  printf 'codex-cockpit: Codex CLI is not executable: %s\n' "$codex_bin" >&2
+  exit 1
+fi
+
+if ! command -v nvim >/dev/null 2>&1; then
+  printf 'codex-cockpit: nvim is not on PATH\n' >&2
+  exit 1
+fi
+
+if ! command -v tmux >/dev/null 2>&1; then
+  printf 'codex-cockpit: tmux is not on PATH\n' >&2
+  exit 1
+fi
+
+overlay="${HOME}/.config/tmux/codex-cockpit.conf"
+[[ -f "$overlay" ]] || overlay="/home/dezocode/Work/codex-cockpit/stage/tmux/codex-cockpit.conf"
+if [[ -f "$overlay" ]]; then
+  tmux source-file "$overlay" 2>/dev/null || true
+fi
+
+profile="$(codex-cockpit-profile $$ 2>/dev/null || echo foot)"
+use_tabs=0
+if [[ "$modality" == "touch" || "$profile" == "termius-ios" ]]; then
+  use_tabs=1
+fi
+if [[ -n "${COLUMNS:-}" && -n "${LINES:-}" ]] && ((COLUMNS > 0 && (COLUMNS < 100 || LINES < 32))); then
+  use_tabs=1
+fi
+
+tag() {
+  local target=$1 title=$2 role=$3
+  tmux select-pane -t "$target" -T "$title"
+  tmux set-option -p -t "$target" @cockpit_role "$role"
+}
+
+if ((use_tabs == 1)); then
+  tmux new-session -d -s "$session" -n CODEX -c "$root" \
+    "cd -- $root_q && exec $(quote_sh "$codex_bin")"
+  tag "$session:CODEX" CODEX runtime
+
+  tmux new-window -d -t "$session:" -n FILES -c "$root" \
+    "cd -- $root_q && exec codex-cockpit-files $root_q"
+  tag "$session:FILES" FILES files
+
+  tmux new-window -d -t "$session:" -n DIFF -c "$root" \
+    "cd -- $root_q && exec codex-cockpit-diff $root_q"
+  tag "$session:DIFF" DIFF diff
+
+  tmux new-window -d -t "$session:" -n MAP -c "$root" \
+    "cd -- $root_q && exec codex-mermaid-watch $mermaid_args"
+  tag "$session:MAP" MAP map
+else
+  tmux new-session -d -s "$session" -n cockpit -c "$root" \
+    "cd -- $root_q && exec $(quote_sh "$codex_bin")"
+  tag "$session:cockpit.1" CODEX runtime
+
+  tmux split-window -h -p 42 -t "$session:cockpit.1" -c "$root" \
+    "cd -- $root_q && exec codex-cockpit-files $root_q"
+  tag "$session:cockpit.2" FILES files
+
+  tmux split-window -v -p 46 -t "$session:cockpit.1" -c "$root" \
+    "cd -- $root_q && exec codex-mermaid-watch $mermaid_args"
+  tag "$session:cockpit.3" MAP map
+
+  tmux split-window -v -p 46 -t "$session:cockpit.2" -c "$root" \
+    "cd -- $root_q && exec codex-cockpit-diff $root_q"
+  tag "$session:cockpit.4" DIFF diff
+fi
+
+tmux new-window -d -t "$session:" -n prs -c "$root" "exec codex-cockpit-prs"
+tag "$session:prs" PRS prs
+
+tmux select-window -t "$session:1"
+tmux select-pane -t "$session:1.1"
+tmux set-option -t "$session" @cockpit 1
+tmux set-option -t "$session" @cockpit_modality "$modality"
+tmux set-hook -t "$session" after-select-window \
+  'run-shell -b "codex-cockpit-wake #{session_name} #{window_name}"'
+tmux set-hook -t "$session" after-select-pane \
+  'run-shell -b "codex-cockpit-wake #{session_name} #{@cockpit_role}"'
+
+tmux list-windows -t "$session" -F '#{window_id}' | while IFS= read -r wid; do
+  tmux set-option -w -t "$wid" automatic-rename off
+  tmux set-option -w -t "$wid" allow-rename off
+done
+
+if command -v omarchy-theme-set-tmux >/dev/null 2>&1; then
+  omarchy-theme-set-tmux >/dev/null 2>&1 || true
+fi
+
+codex-cockpit-adapt attached "$session" "${COLUMNS:-0}" "${LINES:-0}" "$$" || true
+codex-cockpit-probe-install >/dev/null 2>&1 || true
+codex-cockpit-idle "$session" >/dev/null 2>&1 &
+
+if [[ -t 1 ]]; then
+  exec tmux attach-session -t "$session"
+fi
+
+printf 'codex-cockpit: started session %s (%s, %s)\n' "$session" "$profile" "$modality"

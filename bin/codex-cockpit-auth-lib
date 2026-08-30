@@ -1,0 +1,89 @@
+# Provider registry. Sourced, not executed.
+
+cockpit_auth_home="${COCKPIT_AUTH_HOME:-$HOME/.config/codex-cockpit}"
+cockpit_auth_file="${cockpit_auth_home}/providers.conf"
+cockpit_auth_dir="${cockpit_auth_home}/providers.d"
+
+cockpit_auth_ensure_config() {
+  mkdir -p "$cockpit_auth_home" "$cockpit_auth_dir"
+  if [[ ! -f "$cockpit_auth_file" ]]; then
+    local src="$HOME/Work/codex-cockpit/stage/auth/providers.conf"
+    if [[ -f "$src" ]]; then
+      cp "$src" "$cockpit_auth_file"
+    else
+      cat >"$cockpit_auth_file" <<'EOF'
+[github]
+label=GitHub
+kind=cli-oauth
+check=gh auth status -h github.com
+login=gh auth login -h github.com -p https -w
+on_ready=MISE_YES=1 ghui
+EOF
+    fi
+  fi
+}
+
+cockpit_auth_files() {
+  cockpit_auth_ensure_config
+  printf '%s\n' "$cockpit_auth_file"
+  shopt -s nullglob
+  local f
+  for f in "$cockpit_auth_dir"/*.conf; do
+    printf '%s\n' "$f"
+  done
+}
+
+cockpit_auth_ids() {
+  local f
+  while IFS= read -r f; do
+    [[ -f "$f" ]] || continue
+    awk '/^\[.+\]/{gsub(/[][]/,""); print}' "$f"
+  done < <(cockpit_auth_files)
+}
+
+cockpit_auth_field() {
+  local id=$1 field=$2 f section="" line key val
+  while IFS= read -r f; do
+    [[ -f "$f" ]] || continue
+    section=""
+    while IFS= read -r line || [[ -n "$line" ]]; do
+      case "$line" in
+        ''|\#*) continue ;;
+        \[*\])
+          section=${line#\[}
+          section=${section%\]}
+          ;;
+        *=*)
+          if [[ "$section" == "$id" ]]; then
+            key=${line%%=*}
+            val=${line#*=}
+            if [[ "$key" == "$field" ]]; then
+              printf '%s\n' "$val"
+              return 0
+            fi
+          fi
+          ;;
+      esac
+    done <"$f"
+  done < <(cockpit_auth_files)
+  return 1
+}
+
+cockpit_auth_check() {
+  local id=$1 cmd
+  cmd="$(cockpit_auth_field "$id" check || true)"
+  [[ -n "$cmd" ]] || return 1
+  bash -lc "$cmd" >/dev/null 2>&1
+}
+
+cockpit_auth_login_cmd() {
+  cockpit_auth_field "$1" login
+}
+
+cockpit_auth_ready_cmd() {
+  cockpit_auth_field "$1" on_ready || true
+}
+
+cockpit_auth_label() {
+  cockpit_auth_field "$1" label || printf '%s\n' "$1"
+}

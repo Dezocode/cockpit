@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+# Idempotent global hooks. `set-hook -ag` used to stack a new adapt on every
+# overlay source-file, so attach/resize forked several layout morphs.
+set -euo pipefail
+
+export PATH="$HOME/.local/bin:$PATH"
+
+while IFS= read -r name; do
+  [[ -n "$name" ]] || continue
+  tmux set-hook -ug "$name" 2>/dev/null || true
+done < <(
+  tmux show-hooks -g 2>/dev/null |
+    awk '/codex-cockpit-adapt/{print $1}'
+)
+
+# Fixed indices so sourcing the overlay replaces instead of appending.
+tmux set-hook -g client-attached[91] \
+  'if-shell -F "#{m:codex-cockpit*,#{client_session}}" { run-shell -b "codex-cockpit-adapt attached \"#{client_session}\" #{client_width} #{client_height} #{client_pid}" }'
+tmux set-hook -g client-resized[91] \
+  'if-shell -F "#{m:codex-cockpit*,#{client_session}}" { run-shell -b "codex-cockpit-adapt resized \"#{client_session}\" #{client_width} #{client_height} #{client_pid}" }'

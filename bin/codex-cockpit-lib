@@ -1,0 +1,92 @@
+# Shared event policy for cockpit watchers. Sourced, not executed.
+# Idle: block on inotify. Hidden tabs keep a dirty bit. Visible tabs
+# coalesce bursts, skip noise, and skip redraws when the fingerprint is unchanged.
+
+: "${COCKPIT_DEBOUNCE:=0.40}"
+: "${XDG_RUNTIME_DIR:=/tmp}"
+
+cockpit_noise_exclude='(^|/)(\.git|node_modules|\.cache|dist|build|target|\.local|\.npm)(/|$)|(\.swp|\.swo|\.swn|~$|\.tmp$|\.sock$)'
+
+cockpit_is_text_ext() {
+  case "${1##*.}" in
+    md|mmd|mermaid|txt|json|toml|yml|yaml|lua|py|rs|go|js|ts|tsx|jsx|css|html|sh|bash|zsh|rb|c|h|cc|cpp|hpp|java|kt|swift|nix|sql|graphql|xml|svg|csv|env|ini|conf|cfg|r|php|ex|exs|erl|hs|ml|vim)
+      return 0
+      ;;
+  esac
+  case "$1" in
+    *Dockerfile*|*Makefile*|*README*|*LICENSE*|*.gitignore|*.gitmodules)
+      return 0
+      ;;
+  esac
+  return 1
+}
+
+cockpit_is_noise_path() {
+  local path=$1 base=${1##*/}
+  case "$path" in
+    */.git/*|*/node_modules/*|*/.cache/*|*/dist/*|*/build/*|*/target/*) return 0 ;;
+  esac
+  case "$base" in
+    *.swp|*.swo|*.swn|*~|*.tmp|*.sock|.DS_Store) return 0 ;;
+  esac
+  return 1
+}
+
+cockpit_view_visible() {
+  local pane=${TMUX_PANE:-}
+  local active zoomed pane_active
+  [[ -n "$pane" ]] || return 0
+  active="$(tmux display-message -p -t "$pane" '#{window_active}' 2>/dev/null || echo 0)"
+  [[ "$active" == "1" ]] || return 1
+  zoomed="$(tmux display-message -p -t "$pane" '#{window_zoomed_flag}' 2>/dev/null || echo 0)"
+  pane_active="$(tmux display-message -p -t "$pane" '#{pane_active}' 2>/dev/null || echo 0)"
+  if [[ "$zoomed" == "1" && "$pane_active" != "1" ]]; then
+    return 1
+  fi
+  return 0
+}
+
+cockpit_wake_dir() {
+  local session=${1:-${COCKPIT_SESSION:-unknown}}
+  printf '%s/codex-cockpit/%s' "$XDG_RUNTIME_DIR" "$session"
+}
+
+cockpit_install_wake() {
+  local session=${1:-} name=${2:-}
+  COCKPIT_WAKE=0
+  mkdir -p "$(cockpit_wake_dir "$session")"
+  printf '%s\n' "${BASHPID:-$$}" >"$(cockpit_wake_dir "$session")/${name}.pid"
+  trap 'COCKPIT_WAKE=1' USR1
+}
+
+cockpit_coalesce() {
+  local extra
+  while IFS= read -r -t "$COCKPIT_DEBOUNCE" extra; do
+    :
+  done || true
+  return 0
+}
+
+cockpit_state_file() {
+  printf '%s\n' "${COCKPIT_AUTH_HOME:-$HOME/.config/codex-cockpit}/state"
+}
+
+cockpit_state_write() {
+  local session=${1:-} modality=${2:-} endpoint=${3:-}
+  local dir
+  dir="$(dirname -- "$(cockpit_state_file)")"
+  mkdir -p "$dir"
+  printf 'session=%s\nmodality=%s\nendpoint=%s\n' "$session" "$modality" "$endpoint" \
+    >"$(cockpit_state_file).tmp"
+  mv "$(cockpit_state_file).tmp" "$(cockpit_state_file)"
+}
+
+cockpit_fingerprint_files() {
+  local root=$1
+  shift
+  if (($# == 0)); then
+    printf 'empty\n'
+    return 0
+  fi
+  stat -c '%n %Y %s' "$@" 2>/dev/null | sort
+}

@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+# After the client is idle, put it on the probe table so the next key is
+# desktop/keyboard and the next click is touch. Does not run while you type.
+set -euo pipefail
+
+session="${1:-}"
+[[ -n "$session" && "$session" == codex-cockpit* ]] || exit 0
+
+export PATH="$HOME/.local/bin:$PATH"
+idle_secs=${COCKPIT_IDLE_SECS:-10}
+pidfile="${XDG_RUNTIME_DIR:-/tmp}/codex-cockpit/${session}/idle.pid"
+mkdir -p "$(dirname "$pidfile")"
+
+if [[ -f "$pidfile" ]]; then
+  old=$(cat "$pidfile" 2>/dev/null || true)
+  if [[ -n "$old" && -d "/proc/$old" ]]; then
+    exit 0
+  fi
+fi
+printf '%s\n' "$$" >"$pidfile"
+trap 'rm -f "$pidfile"' EXIT
+
+codex-cockpit-probe-install >/dev/null 2>&1 || true
+
+while tmux has-session -t "$session" 2>/dev/null; do
+  nclients="$(tmux list-clients -t "$session" 2>/dev/null | wc -l)"
+  nclients=${nclients:-0}
+  if ((nclients == 0)); then
+    # Detached: keep profile state on disk, do no layout or probe work.
+    sleep 15
+    continue
+  fi
+  now=$(date +%s)
+  tmux list-clients -t "$session" -F '#{client_name} #{client_activity} #{client_key_table}' 2>/dev/null |
+    while IFS=' ' read -r name activity table; do
+      [[ -n "$name" ]] || continue
+      [[ "$table" == "root" ]] || continue
+      activity=${activity:-0}
+      if ((now - activity >= idle_secs)); then
+        tmux switch-client -c "$name" -T cockpit-probe 2>/dev/null || true
+      fi
+    done
+  sleep 2
+done
