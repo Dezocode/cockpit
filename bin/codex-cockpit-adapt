@@ -68,16 +68,6 @@ if ((has_desktop == 1 && has_phone == 1)) && [[ "$modality" == "keyboard" || "$h
   fi
 fi
 
-have_mod="$(tmux show-options -v -t "$session" @cockpit_modality 2>/dev/null || true)"
-have_tabs="$(tmux show-options -v -t "$session" @cockpit_tabs 2>/dev/null || true)"
-if [[ "$have_mod" == "$modality" && "$have_tabs" == "$want_tabs" ]]; then
-  if [[ "$mode" == "attached" ]]; then
-    codex-cockpit-idle "$session" >/dev/null 2>&1 &
-  fi
-  codex-cockpit-ensure-bar "$session" >/dev/null 2>&1 || true
-  exit 0
-fi
-
 pane_for() {
   local role=$1
   tmux list-panes -s -t "$session" -F '#{pane_id} #{@cockpit_role}' 2>/dev/null |
@@ -106,9 +96,13 @@ apply_keyboard_chrome() {
   tmux set-option -t "$session" mouse on
   tmux set-option -t "$session" prefix C-Space
   tmux set-option -t "$session" prefix2 C-b
+  tmux set-option -t "$session" escape-time 10
+  tmux set-option -t "$session" status on
   tmux set-option -t "$session" status-position top
   tmux set-option -t "$session" pane-border-status top
   tmux set-option -t "$session" status-interval 15
+  tmux set-option -u -t "$session" window-status-style 2>/dev/null || true
+  tmux set-option -u -t "$session" window-status-current-style 2>/dev/null || true
   tmux set-option -t "$session" status-left '#[fg=black,bg=blue,bold] #S #[bg=default] '
   tmux set-option -t "$session" status-right '#[fg=blue]#{@cockpit_runtime} #{?pane_in_mode,COPY ,}#{?client_prefix,PREFIX ,}#{?window_zoomed_flag,ZOOM ,}#[fg=brightblack]#h '
   tmux set-option -t "$session" window-status-format '#[fg=brightblack] #I:#W '
@@ -122,16 +116,25 @@ apply_touch_chrome() {
   tmux set-option -t "$session" mouse on
   tmux set-option -t "$session" prefix C-Space
   tmux set-option -t "$session" prefix2 C-b
+  # Termius taps arrive as CSI. A tiny escape-time splits ESC into the pane.
+  tmux set-option -t "$session" escape-time 50
+  tmux set-option -t "$session" status 2
   tmux set-option -t "$session" status-position bottom
   tmux set-option -t "$session" pane-border-status off
   tmux set-option -t "$session" status-interval 30
-  tmux set-option -t "$session" status-left-length 24
-  tmux set-option -t "$session" status-right-length 40
-  tmux set-option -t "$session" status-left '#[fg=black,bg=blue,bold]  #S  #[bg=default] '
-  tmux set-option -t "$session" status-right '#[fg=blue] #{@cockpit_runtime} '
+  tmux set-option -t "$session" status-left-length 28
+  tmux set-option -t "$session" status-right-length 24
+  tmux set-option -t "$session" status-left '#[fg=black,bg=blue,bold]    #S    #[bg=default] '
+  tmux set-option -t "$session" status-right '#[fg=black,bg=colour238]  #{@cockpit_runtime}  '
   tmux set-option -t "$session" window-status-separator ' '
-  tmux set-option -t "$session" window-status-format '#[fg=brightblack]    #W    '
-  tmux set-option -t "$session" window-status-current-format '#[fg=black,bg=brightyellow,bold]    #{?window_zoomed_flag,AGENT,#W}    '
+  tmux set-option -t "$session" window-status-style 'fg=colour250,bg=colour238'
+  tmux set-option -t "$session" window-status-current-style 'fg=black,bg=brightyellow,bold'
+  tmux set-option -t "$session" window-status-format '#[fg=colour250,bg=colour238]      #W      '
+  tmux set-option -t "$session" window-status-current-format '#[fg=black,bg=brightyellow,bold]      #{?window_zoomed_flag,AGENT,#W}      '
+  local fmt
+  fmt="$(tmux show-options -gv status-format[0])"
+  tmux set-option -t "$session" status-format[0] "$fmt"
+  tmux set-option -t "$session" status-format[1] "$fmt"
   tmux set-option -t "$session" @cockpit_profile termius-ios
 }
 
@@ -190,6 +193,21 @@ files="$(pane_for files)"
 diff="$(pane_for diff)"
 map="$(pane_for map)"
 [[ -n "$runtime" ]] || exit 0
+
+have_mod="$(tmux show-options -v -t "$session" @cockpit_modality 2>/dev/null || true)"
+have_tabs="$(tmux show-options -v -t "$session" @cockpit_tabs 2>/dev/null || true)"
+if [[ "$have_mod" == "$modality" && "$have_tabs" == "$want_tabs" ]]; then
+  if [[ "$modality" == "touch" ]]; then
+    apply_touch_chrome
+  else
+    apply_keyboard_chrome
+  fi
+  if [[ "$mode" == "attached" ]]; then
+    codex-cockpit-idle "$session" >/dev/null 2>&1 &
+  fi
+  codex-cockpit-ensure-bar "$session" >/dev/null 2>&1 || true
+  exit 0
+fi
 
 lockdir="${XDG_RUNTIME_DIR:-/tmp}/codex-cockpit-adapt-${session}.lock"
 if ! mkdir "$lockdir" 2>/dev/null; then

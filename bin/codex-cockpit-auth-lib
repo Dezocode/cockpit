@@ -122,6 +122,33 @@ cockpit_popup_slug() {
   printf '%s\n' "$s"
 }
 
+cockpit_popup_any() {
+  tmux list-windows -F '#{@cockpit_popup}' 2>/dev/null | grep -qx 1
+}
+
+cockpit_popup_home() {
+  local sess=${1:-} pane
+  pane="$(
+    tmux list-panes -s ${sess:+-t "$sess"} -F '#{window_id} #{@cockpit_role}' 2>/dev/null |
+      awk '$2 == "runtime" { print $1; exit }'
+  )"
+  if [[ -n "$pane" ]]; then
+    tmux select-window -t "$pane" 2>/dev/null || true
+    tmux select-pane -t "$pane" 2>/dev/null || true
+    return 0
+  fi
+  tmux select-window -t ${sess:+"$sess:"}CODEX 2>/dev/null || true
+}
+
+cockpit_popup_dismiss() {
+  local sess=${1:-} pop
+  cockpit_popup_home "$sess"
+  while IFS= read -r pop; do
+    [[ -n "$pop" ]] || continue
+    tmux kill-window -t "$pop" 2>/dev/null || true
+  done < <(tmux list-windows ${sess:+-t "$sess"} -F '#{window_id} #{@cockpit_popup}' 2>/dev/null | awk '$2 == 1 { print $1 }')
+}
+
 cockpit_popup_gc() {
   local cur pop flag
   [[ -n "${TMUX:-}" ]] || return 0
@@ -129,12 +156,11 @@ cockpit_popup_gc() {
   if [[ "$flag" == "1" ]]; then
     return 0
   fi
-  cur="$(tmux display-message -p '#{window_id}' 2>/dev/null || true)"
-  while IFS= read -r pop; do
-    [[ -n "$pop" ]] || continue
-    [[ "$pop" == "$cur" ]] && continue
-    tmux kill-window -t "$pop" 2>/dev/null || true
-  done < <(tmux list-windows -F '#{window_id} #{@cockpit_popup}' 2>/dev/null | awk '$2 == 1 { print $1 }')
+  if ! cockpit_popup_any; then
+    return 0
+  fi
+  # A tap meant to close the nested flow must not land on FILES/DIFF/MAP/PRS.
+  cockpit_popup_dismiss
 }
 
 cockpit_popup() {

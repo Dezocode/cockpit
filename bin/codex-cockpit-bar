@@ -1,17 +1,16 @@
 #!/usr/bin/env bash
-# Agent toolbar: fat AUTH · runtime · MODEL. Keyboard and first tap.
-# Never wraps the Codex PTY.
+# Agent toolbar: AUTH · runtime · MODEL as the same pills as the tab row.
+# Keyboard and first tap. Never wraps the Codex PTY. Never forwards CSI.
 set -euo pipefail
 
 lib="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/codex-cockpit-auth-lib"
 # shellcheck source=codex-cockpit-auth-lib
 [[ -f "$lib" ]] && source "$lib"
 
-blue=$'\033[38;5;4m'
-bright=$'\033[1;37m'
-muted=$'\033[38;5;8m'
 reset=$'\033[0m'
-inv=$'\033[7m'
+# Match tmux touch tabs: dim chip vs black-on-brightyellow current.
+idle=$'\033[38;5;250m\033[48;5;238m'
+on=$'\033[1;38;5;16m\033[48;5;11m'
 
 session="${1:-}"
 if [[ "${1:-}" == "click" ]]; then
@@ -56,16 +55,29 @@ center() {
   local left=0 right=0
   if ((n >= width)); then
     printf '%s' "${text:0:width}"
-    return
+    return 0
   fi
   left=$(( (width - n) / 2 ))
   right=$(( width - n - left ))
   printf '%*s%s%*s' "$left" "" "$text" "$right" ""
+  return 0
+}
+
+# One row of a status-style chip: solid bg, optional centered label.
+chip_row() {
+  local sty=$1 text=$2 width=$3 show=$4
+  printf '%s' "$sty"
+  if [[ "$show" == "1" ]]; then
+    center "$text" "$width"
+  else
+    printf '%*s' "$width" ""
+  fi
+  printf '%s' "$reset"
 }
 
 draw() {
-  local id name cols rows gap side box_w box_h inner label_row i x
-  local l1 l2 l3 rest
+  local id name cols rows gap box_w label_row i show end
+  local l1 l2 l3
   pane_size "${TMUX_PANE:-}"
   id="$(rid)"
   name="$(label "$id")"
@@ -73,66 +85,23 @@ draw() {
   gap=1
   box_w=$(( (cols - gap * 2) / 3 ))
   if ((box_w < 8)); then box_w=8; fi
-  box_h=$rows
-  if ((box_h < 3)); then box_h=3; fi
-  inner=$((box_h - 2))
-  if ((inner < 1)); then inner=1; fi
-  label_row=$((inner / 2))
+  label_row=$((rows / 2))
   l1=AUTH
   l2=$name
   l3=MODEL
-  hrule() {
-    local n=$1 i
-    for ((i = 0; i < n; i++)); do
-      printf '─'
-    done
-  }
 
   printf '\033[2J\033[H'
-  for i in $(seq 0 $((box_h - 1))); do
+  for i in $(seq 0 $((rows - 1))); do
     end=$'\n'
-    if ((i == box_h - 1)); then end=; fi
-    if ((i == 0)); then
-      printf '%s┌' "$blue"; hrule $((box_w - 2)); printf '┐%s' "$reset"
-      printf '%*s' "$gap" ""
-      printf '%s┌' "$blue"; hrule $((box_w - 2)); printf '┐%s' "$reset"
-      printf '%*s' "$gap" ""
-      printf '%s┌' "$blue"; hrule $((box_w - 2)); printf '┐%s' "$reset"
-      printf '%s' "$end"
-    elif ((i == box_h - 1)); then
-      printf '%s└' "$blue"; hrule $((box_w - 2)); printf '┘%s' "$reset"
-      printf '%*s' "$gap" ""
-      printf '%s└' "$blue"; hrule $((box_w - 2)); printf '┘%s' "$reset"
-      printf '%*s' "$gap" ""
-      printf '%s└' "$blue"; hrule $((box_w - 2)); printf '┘%s' "$reset"
-      printf '%s' "$end"
-    else
-      x=$((i - 1))
-      printf '%s│%s' "$blue" "$reset"
-      if ((x == label_row)); then
-        printf '%s%s%s' "$inv$bright" "$(center "$l1" $((box_w - 2)))" "$reset"
-      else
-        printf '%*s' $((box_w - 2)) ""
-      fi
-      printf '%s│%s' "$blue" "$reset"
-      printf '%*s' "$gap" ""
-      printf '%s│%s' "$blue" "$reset"
-      if ((x == label_row)); then
-        printf '%s%s%s' "$inv$bright" "$(center "$l2" $((box_w - 2)))" "$reset"
-      else
-        printf '%*s' $((box_w - 2)) ""
-      fi
-      printf '%s│%s' "$blue" "$reset"
-      printf '%*s' "$gap" ""
-      printf '%s│%s' "$blue" "$reset"
-      if ((x == label_row)); then
-        printf '%s%s%s' "$inv$bright" "$(center "$l3" $((box_w - 2)))" "$reset"
-      else
-        printf '%*s' $((box_w - 2)) ""
-      fi
-      printf '%s│%s' "$blue" "$reset"
-      printf '%s' "$end"
-    fi
+    if ((i == rows - 1)); then end=; fi
+    show=0
+    if ((i == label_row)); then show=1; fi
+    chip_row "$idle" "$l1" "$box_w" "$show"
+    printf '%*s' "$gap" ""
+    chip_row "$on" "$l2" "$box_w" "$show"
+    printf '%*s' "$gap" ""
+    chip_row "$idle" "$l3" "$box_w" "$show"
+    printf '%s' "$end"
   done
 }
 
@@ -154,7 +123,6 @@ open_runtime() {
 }
 
 open_model() {
-  # /model goes to the live agent pane. No overlay (Termius cannot show it).
   codex-cockpit-runtime model "$session" 2>/dev/null || true
 }
 
@@ -190,6 +158,7 @@ if [[ "${1:-}" == "click" ]]; then
   fi
   role="$(tmux display-message -p -t "$pane" '#{@cockpit_role}' 2>/dev/null || true)"
   if [[ "$role" != "bar" ]]; then
+    # Swallow the tap: select only. Never send CSI into FILES/DIFF/MAP/PRS.
     tmux select-pane -t "$pane" 2>/dev/null || true
     exit 0
   fi
@@ -213,9 +182,16 @@ while true; do
     m|M) run_btn model; draw ;;
     '') draw ;;
     $'\033')
+      # Eat CSI / leftover Termius mouse. Do not forward into any pane.
       acc=""
       IFS= read -rsn1 -t 0.05 acc || true
-      # Esc alone: ignore. Arrow / CSI: ignore (tmux mouse bind owns taps).
+      if [[ "$acc" == "[" || "$acc" == "O" ]]; then
+        while IFS= read -rsn1 -t 0.05 acc; do
+          case "$acc" in
+            M|m|~|[A-Z]) break ;;
+          esac
+        done || true
+      fi
       draw
       ;;
     *) draw ;;
