@@ -1,72 +1,45 @@
 #!/usr/bin/env bash
 # After idle: next key → remember keyboard (key is forwarded).
 # Next click → remember touch (pane/window still selected).
+# Binds are applied via source-file so this works with no attached client.
 set -euo pipefail
 
-ver=2
+ver=3
 if [[ "$(tmux show-options -gv @cockpit_probe_installed 2>/dev/null || true)" == "$ver" ]]; then
   exit 0
 fi
 
-tmux unbind-key -a -T cockpit-probe 2>/dev/null || true
+tmp="${XDG_RUNTIME_DIR:-/tmp}/cockpit-probe-$$.conf"
+{
+  printf 'unbind-key -a -T cockpit-probe\n'
+  emit() {
+    local key=$1
+    shift
+    printf 'bind-key -T cockpit-probe -n %s run-shell '\''codex-cockpit-modality keyboard "#{client_session}" #{client_width} #{client_height}'\'' \\; switch-client -T root \\; send-keys %s\n' "$key" "$*"
+  }
+  for c in {a..z} {A..Z} {0..9}; do
+    emit "$c" "$c"
+  done
+  printf 'bind-key -T cockpit-probe -n Space run-shell '\''codex-cockpit-modality keyboard "#{client_session}" #{client_width} #{client_height}'\'' \\; switch-client -T root \\; send-keys -l " "\n'
+  for k in Enter BSpace Tab Escape DC C-Space Left Right Up Down Home End PageUp PageDown; do
+    emit "$k" "$k"
+  done
+  n=1
+  while ((n <= 12)); do
+    emit "F$n" "F$n"
+    n=$((n + 1))
+  done
+  for c in {a..z}; do
+    emit "C-$c" "C-$c"
+  done
+  printf 'bind-key -T cockpit-probe MouseDown1Pane run-shell '\''codex-cockpit-modality touch "#{client_session}" #{client_width} #{client_height}'\'' \\; switch-client -T root \\; select-pane -t =\n'
+  printf 'bind-key -T cockpit-probe MouseDown1Status run-shell '\''codex-cockpit-modality touch "#{client_session}" #{client_width} #{client_height}'\'' \\; switch-client -T root \\; select-window -t =\n'
+  printf 'bind-key -T cockpit-probe MouseDown1StatusLeft run-shell '\''codex-cockpit-modality touch "#{client_session}" #{client_width} #{client_height}'\'' \\; switch-client -T root\n'
+  printf 'bind-key -T cockpit-probe MouseDown1Border run-shell '\''codex-cockpit-modality touch "#{client_session}" #{client_width} #{client_height}'\'' \\; switch-client -T root \\; select-pane -t =\n'
+  printf 'bind-key -T cockpit-probe DoubleClick1Pane run-shell '\''codex-cockpit-modality touch "#{client_session}" #{client_width} #{client_height}'\'' \\; switch-client -T root \\; run-shell -b "codex-cockpit-agent '\''#{mouse_session}'\'' '\''#{mouse_window}'\'' '\''#{mouse_pane}'\''"\n'
+  printf 'bind-key -T cockpit-probe MouseDown3Pane run-shell '\''codex-cockpit-modality touch "#{client_session}" #{client_width} #{client_height}'\'' \\; switch-client -T root \\; run-shell "codex-cockpit-menu '\''#{mouse_session}'\''"\n'
+  printf 'set-option -g @cockpit_probe_installed %s\n' "$ver"
+} >"$tmp"
 
-fwd() {
-  local key=$1
-  shift
-  tmux bind-key -T cockpit-probe -n "$key" \
-    run-shell 'codex-cockpit-modality keyboard "#{client_session}" #{client_width} #{client_height}' \; \
-    switch-client -T root \; \
-    send-keys "$@"
-}
-
-for c in {a..z} {A..Z} {0..9}; do
-  fwd "$c" "$c"
-done
-
-fwd Space -l ' '
-fwd Enter Enter
-fwd BSpace BSpace
-fwd Tab Tab
-fwd Escape Escape
-fwd DC DC
-fwd C-Space C-Space
-
-for a in Left Right Up Down Home End PageUp PageDown; do
-  fwd "$a" "$a"
-done
-
-n=1
-while ((n <= 12)); do
-  fwd "F$n" "F$n"
-  n=$((n + 1))
-done
-
-for c in {a..z}; do
-  fwd "C-$c" "C-$c"
-done
-
-tmux bind-key -T cockpit-probe MouseDown1Pane \
-  run-shell 'codex-cockpit-modality touch "#{client_session}" #{client_width} #{client_height}' \; \
-  switch-client -T root \; \
-  select-pane -t =
-tmux bind-key -T cockpit-probe MouseDown1Status \
-  run-shell 'codex-cockpit-modality touch "#{client_session}" #{client_width} #{client_height}' \; \
-  switch-client -T root \; \
-  select-window -t =
-tmux bind-key -T cockpit-probe MouseDown1StatusLeft \
-  run-shell 'codex-cockpit-modality touch "#{client_session}" #{client_width} #{client_height}' \; \
-  switch-client -T root
-tmux bind-key -T cockpit-probe MouseDown1Border \
-  run-shell 'codex-cockpit-modality touch "#{client_session}" #{client_width} #{client_height}' \; \
-  switch-client -T root \; \
-  select-pane -t =
-tmux bind-key -T cockpit-probe DoubleClick1Pane \
-  run-shell 'codex-cockpit-modality touch "#{client_session}" #{client_width} #{client_height}' \; \
-  switch-client -T root \; \
-  run-shell -b "codex-cockpit-agent '#{mouse_session}' '#{mouse_window}' '#{mouse_pane}'"
-tmux bind-key -T cockpit-probe MouseDown3Pane \
-  run-shell 'codex-cockpit-modality touch "#{client_session}" #{client_width} #{client_height}' \; \
-  switch-client -T root \; \
-  run-shell "codex-cockpit-menu '#{mouse_session}'"
-
-tmux set-option -g @cockpit_probe_installed "$ver"
+tmux source-file "$tmp"
+rm -f "$tmp"
