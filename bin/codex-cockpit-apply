@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+# Push cockpit config into a live tmux server without touching the Codex PTY.
+# Validates the overlay on a throwaway server first.
+set -euo pipefail
+
+export PATH="$HOME/.local/bin:$PATH"
+session="${1:-codex-cockpit}"
+overlay="${HOME}/.config/tmux/codex-cockpit.conf"
+label="cockpit-validate-$$"
+
+if [[ ! -f "$overlay" ]]; then
+  printf 'codex-cockpit-apply: missing %s\n' "$overlay" >&2
+  exit 1
+fi
+
+tmux -L "$label" kill-server >/dev/null 2>&1 || true
+if ! tmux -L "$label" -f /dev/null new-session -d -s v -n t 'sleep 5' >/dev/null 2>&1; then
+  printf 'codex-cockpit-apply: could not start isolated tmux\n' >&2
+  exit 1
+fi
+if ! tmux -L "$label" source-file "$overlay" >/dev/null 2>&1; then
+  tmux -L "$label" kill-server >/dev/null 2>&1 || true
+  printf 'codex-cockpit-apply: overlay failed isolated check; live server left alone\n' >&2
+  exit 1
+fi
+tmux -L "$label" kill-server >/dev/null 2>&1 || true
+
+tmux start-server 2>/dev/null || true
+tmux source-file "$overlay" 2>/dev/null || true
+codex-cockpit-hooks-install >/dev/null 2>&1 || true
+codex-cockpit-probe-install >/dev/null 2>&1 || true
+
+tmux has-session -t "$session" 2>/dev/null || exit 0
+
+tmux set-option -t "$session" status-interval 0
+tmux set-option -t "$session" escape-time 10
+tmux set-option -s exit-empty off 2>/dev/null || true
+
+runtime="$(
+  tmux list-panes -s -t "$session" -F '#{pane_id} #{@cockpit_role}' 2>/dev/null |
+    awk '$2 == "runtime" { print $1; exit }'
+)"
+if [[ -n "$runtime" ]]; then
+  tmux set-option -t "$session" @cockpit_runtime_pane "$runtime"
+  tmux set-option -p -t "$runtime" remain-on-exit on 2>/dev/null || true
+fi
+
+# Never respawn the agent. Unstick any idle probe table.
+while IFS= read -r c; do
+  [[ -n "$c" ]] || continue
+  tmux switch-client -c "$c" -T root 2>/dev/null || true
+done < <(tmux list-clients -t "$session" -F '#{client_name}' 2>/dev/null || true)

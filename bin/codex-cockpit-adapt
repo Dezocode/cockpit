@@ -114,7 +114,7 @@ apply_keyboard_chrome() {
   tmux set-option -t "$session" status on
   tmux set-option -t "$session" status-position top
   tmux set-option -t "$session" pane-border-status top
-  tmux set-option -t "$session" status-interval 15
+  tmux set-option -t "$session" status-interval 0
   tmux set-option -u -t "$session" window-status-style 2>/dev/null || true
   tmux set-option -u -t "$session" window-status-current-style 2>/dev/null || true
   tmux set-option -t "$session" status-left '#[fg=black,bg=blue,bold] #S #[bg=default] '
@@ -130,14 +130,13 @@ apply_touch_chrome() {
   tmux set-option -t "$session" mouse on
   tmux set-option -t "$session" prefix C-Space
   tmux set-option -t "$session" prefix2 C-b
-  # Termius taps arrive as CSI. A tiny escape-time splits ESC into the pane.
-  tmux set-option -t "$session" escape-time 50
+  tmux set-option -t "$session" escape-time 10
   # One fat tab row (not two copies). Extra rows steal the Codex composer
   # when Termius shrinks the PTY for the keyboard.
   tmux set-option -t "$session" status on
   tmux set-option -t "$session" status-position bottom
   tmux set-option -t "$session" pane-border-status off
-  tmux set-option -t "$session" status-interval 30
+  tmux set-option -t "$session" status-interval 0
   tmux set-option -t "$session" status-left-length 28
   tmux set-option -t "$session" status-right-length 24
   tmux set-option -t "$session" status-left '#[fg=black,bg=blue,bold]    #S    #[bg=default] '

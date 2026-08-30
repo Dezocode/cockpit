@@ -19,16 +19,19 @@ cleanup() {
   rm -f "$listen"
   rm -f "$(cockpit_wake_dir "$session")/FILES.pid"
 }
-trap cleanup EXIT
+trap 'cockpit_event_close; cleanup' EXIT
 
 printf '\033[2J\033[H'
 printf '\033[38;5;4mFILES\033[0m  idle\n\n'
 printf 'Neovim starts when you open this tab.\n'
 
-cockpit_install_wake "$session" FILES
-while ((COCKPIT_WAKE == 0)) && ! cockpit_view_visible; do
-  sleep 0.5 || true
-done
+cockpit_event_open "$session" FILES
+if ! cockpit_view_visible; then
+  while cockpit_event_read; do
+    [[ "$COCKPIT_EVENT" == "WAKE" ]] && break
+    cockpit_view_visible && break
+  done
+fi
 
 open_in_nvim() {
   local path=$1 lua_path
@@ -41,41 +44,29 @@ open_in_nvim() {
 }
 
 follow_edits() {
-  local path extra
   [[ "$root" == "$HOME" ]] && return 0
-  command -v inotifywait >/dev/null 2>&1 || return 0
-  cockpit_install_wake "$session" FILES
-
-  while true; do
-    if IFS= read -r -t 0.5 path; then
-      cockpit_coalesce
-      while IFS= read -r -t 0.01 extra; do
-        path=$extra
-      done || true
-      cockpit_is_noise_path "$path" && continue
-      cockpit_is_text_ext "$path" || continue
-      [[ -f "$path" ]] || continue
-      last_path=$path
-      if cockpit_view_visible; then
-        open_in_nvim "$path"
+  cockpit_event_watch "$root" -r \
+    -e close_write,moved_to \
+    --exclude "$cockpit_noise_exclude"
+  while cockpit_event_read; do
+    if [[ "$COCKPIT_EVENT" == "WAKE" ]]; then
+      if [[ -n "$last_path" ]] && cockpit_view_visible; then
+        open_in_nvim "$last_path"
+      else
+        nvim --server "$listen" --remote-send "<Cmd>checktime<CR>" >/dev/null 2>&1 || true
       fi
-    else
-      if ((COCKPIT_WAKE == 1)); then
-        COCKPIT_WAKE=0
-        if [[ -n "$last_path" ]] && cockpit_view_visible; then
-          open_in_nvim "$last_path"
-        else
-          nvim --server "$listen" --remote-send "<Cmd>checktime<CR>" >/dev/null 2>&1 || true
-        fi
-      fi
+      continue
     fi
-  done < <(
-    inotifywait -m -q -r \
-      -e close_write,moved_to \
-      --exclude "$cockpit_noise_exclude" \
-      --format '%w%f' \
-      "$root" 2>/dev/null
-  )
+    sleep "$COCKPIT_DEBOUNCE"
+    cockpit_event_drain >/dev/null
+    cockpit_is_noise_path "$COCKPIT_EVENT" && continue
+    cockpit_is_text_ext "$COCKPIT_EVENT" || continue
+    [[ -f "$COCKPIT_EVENT" ]] || continue
+    last_path=$COCKPIT_EVENT
+    if cockpit_view_visible; then
+      open_in_nvim "$last_path"
+    fi
+  done
 }
 
 follow_edits &

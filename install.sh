@@ -15,4 +15,7 @@ if [[ -f "$confdir/tmux/tmux.conf" ]] && ! grep -q 'codex-cockpit.conf' "$confdi
 fi
 install -m 0755 "$root/bin/codex-cockpit-config" "$bindir/codex-cockpit-config" 2>/dev/null || true
 ln -sf codex-cockpit "$bindir/cockpit"
+if tmux has-session -t "${CODEX_COCKPIT_SESSION:-codex-cockpit}" 2>/dev/null; then
+  "$bindir/codex-cockpit-apply" "${CODEX_COCKPIT_SESSION:-codex-cockpit}" || true
+fi
 printf 'Installed to %s\nRun: cockpit\nProfile sync: cockpit config push|pull (your gh login, secret gist)\n' "$bindir"
