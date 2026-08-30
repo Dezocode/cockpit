@@ -17,9 +17,12 @@ if [[ "$profile" == "termius-ios" ]]; then
   map_body=$(cat <<EOF
 ${bright}TOUCH${reset}  (this client: iPhone SSH / Tailscale)
   ${blue}Tap a tab${reset}                     CODEX  FILES  DIFF  MAP  PRS
+  ${blue}Tap AUTH / runtime / MODEL${reset}    fat buttons above the agent
   ${blue}Long-press${reset}                    Cockpit menu
   ${blue}Double-tap runtime${reset}            AGENT fullscreen (same PTY)
   ${blue}F1${reset} Runtime   ${blue}F2${reset} Files   ${blue}F3${reset} Diff   ${blue}F4${reset} Map   ${blue}F5${reset} PRs   ${blue}F6${reset} Help
+  Nested flows (auth, runtime pick) open as a tab — Termius cannot
+  show overlay popups. ${blue}q / Esc / tap CODEX${reset} closes and returns.
   Enable Termius ${blue}Send mouse events${reset}.
 
 ${bright}KEYS${reset}  prefix = ${blue}CTRL + B${reset}  (CTRL + A also)
@@ -66,9 +69,10 @@ and the same switch runs without stealing keys from Codex until then.
 
 ${blue}prefix + k${reset} desktop/keyboard    ${blue}prefix + t${reset} touch/mobile
 ${blue}prefix + A${reset} auth popup (providers.conf)    ${blue}prefix + G${reset} GitHub OAuth box
-${blue}prefix + e${reset} / ${blue}F7${reset}  provider popup, then nested:
+${blue}prefix + e${reset} / ${blue}F7${reset} / tap CODEX button  provider list, then nested:
      ${blue}s${reset} switch active (pause the other)  ·  ${blue}p${reset} parallel tab
-     Click outside either box to cancel. OAuth stays with each CLI.
+     Desktop: click outside the box to cancel.
+     Termius: q / Esc / tap CODEX returns to the agent. OAuth stays with each CLI.
 
 PRs open a nested login box only when GitHub is unsigned. Click outside
 that box to skip. It closes itself after a successful gh CLI OAuth.

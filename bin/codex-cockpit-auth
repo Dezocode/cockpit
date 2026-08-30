@@ -146,7 +146,7 @@ pick() {
         printf '  %s) %s  %snot installed%s\n' "$n" "$(cockpit_auth_label "$id")" "$muted" "$reset"
       fi
     done
-    printf '\nNumber, or q: '
+    printf '\nq / Esc close · tap CODEX to return (desktop: click outside)\nNumber, or q: '
   } >/dev/tty
   read -r sel </dev/tty
   [[ "$sel" == "q" || -z "$sel" ]] && exit 0

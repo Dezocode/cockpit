@@ -18,7 +18,10 @@ case "$view" in
   diff|DIFF) role=diff; window=DIFF ;;
   map|mermaid|MAP|MERMAID) role=map; window=MAP ;;
   prs|PRS|github) role=prs; window=PRS ;;
-  help|HELP) exec tmux display-popup -t "$session" -E -w 90% -h 90% -T "Codex Cockpit" "codex-cockpit-help" ;;
+  help|HELP)
+    export PATH="$HOME/.local/bin:$PATH"
+    exec codex-cockpit-popup HELP codex-cockpit-help
+    ;;
   *) exit 0 ;;
 esac
 

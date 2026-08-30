@@ -185,10 +185,11 @@ ask_mode() {
   printf '      %sPause the current agent; %s takes the slot (saves compute)%s\n\n' "$muted" "$label" "$reset"
   printf '  %sp)%s  Parallel tab\n' "$blue" "$reset"
   printf '      %sKeep both running in their own tabs%s\n\n' "$muted" "$reset"
-  printf '  %sq)%s  Cancel  ·  click outside this box to skip\n\n' "$muted" "$reset"
+  printf '  %sq)%s  Cancel  ·  Esc / q / tap CODEX (desktop: click outside)\n\n' "$muted" "$reset"
   printf '%ss / p / q:%s ' "$muted" "$reset"
   local sel
   read -r sel || exit 0
+  [[ "$sel" == $'\033' ]] && exit 0
   case "$sel" in
     s|S|1) switch_to "$id" ;;
     p|P|2) parallel_to "$id" ;;
@@ -223,12 +224,12 @@ pick() {
     printf '  %s) %s  %s\n' "$n" "$(cockpit_auth_label "$id")" "$status"
   done
   printf '\n  m) model picker in the live agent\n'
-  printf '  q) close  ·  click outside to skip\n\n'
+  printf '  q) close  ·  Esc / tap CODEX to return (desktop: click outside)\n\n'
   printf '%sNumber / m / q:%s ' "$muted" "$reset"
   local sel
   read -r sel || exit 0
   case "$sel" in
-    q|Q|'') exit 0 ;;
+    q|Q|''|$'\033') exit 0 ;;
     m|M) send_model; exit 0 ;;
     *)
       if [[ "$sel" =~ ^[0-9]+$ ]] && ((sel >= 1 && sel <= ${#ids[@]})); then

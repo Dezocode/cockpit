@@ -14,6 +14,11 @@ command="$(tmux display-message -p -t "$pane" '#{pane_current_command}' 2>/dev/n
 zoomed="$(tmux display-message -p -t "$pane" '#{window_zoomed_flag}' 2>/dev/null || true)"
 panes="$(tmux display-message -p -t "$pane" '#{window_panes}' 2>/dev/null || true)"
 
+# Bar and nested flow windows are not AGENT zoom targets.
+if [[ "$role" == "bar" || "$role" == "popup" ]]; then
+  exit 0
+fi
+
 is_runtime=0
 case "$role" in runtime|parallel) is_runtime=1 ;; esac
 case "$command" in

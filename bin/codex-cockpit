@@ -209,7 +209,7 @@ tmux set-option -t "$session" @cockpit 1
 tmux set-option -t "$session" @cockpit_modality "$modality"
 tmux set-option -t "$session" @cockpit_runtime "$runtime_id"
 tmux set-hook -t "$session" after-select-window \
-  'run-shell -b "codex-cockpit-wake #{session_name} #{window_name}"'
+  'run-shell -b "codex-cockpit-wake #{session_name} #{window_name}"; run-shell -b "codex-cockpit-popup gc"'
 tmux set-hook -t "$session" after-select-pane \
   'run-shell -b "codex-cockpit-wake #{session_name} #{@cockpit_role}"'
 

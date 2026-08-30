@@ -6,28 +6,58 @@ session="${1:-codex-cockpit}"
 tmux has-session -t "$session" 2>/dev/null || exit 0
 export PATH="$HOME/.local/bin:$PATH"
 
+BAR_H=6
+
 runtime="$(
   tmux list-panes -s -t "$session" -F '#{pane_id} #{@cockpit_role}' 2>/dev/null |
     awk '$2 == "runtime" { print $1; exit }'
 )"
 [[ -n "$runtime" ]] || exit 0
 
+win_h="$(tmux display-message -p -t "$runtime" '#{window_height}' 2>/dev/null || echo 36)"
+[[ "$win_h" =~ ^[0-9]+$ ]] || win_h=36
+if ((win_h < 16)); then
+  BAR_H=4
+fi
+
+tag_bar() {
+  local pane=$1
+  tmux select-pane -t "$pane" -T BAR 2>/dev/null || true
+  tmux set-option -p -t "$pane" @cockpit_role bar
+  tmux set-option -t "$session" @cockpit_bar_pane "$pane"
+  tmux resize-pane -t "$pane" -y "$BAR_H" 2>/dev/null || true
+}
+
 bar="$(
   tmux list-panes -s -t "$session" -F '#{pane_id} #{@cockpit_role}' 2>/dev/null |
     awk '$2 == "bar" { print $1; exit }'
 )"
+
 if [[ -n "$bar" ]]; then
-  tmux select-pane -t "$runtime" 2>/dev/null || true
+  tag_bar "$bar"
+  start="$(tmux display-message -p -t "$bar" '#{pane_start_command}' 2>/dev/null || true)"
+  dead="$(tmux display-message -p -t "$bar" '#{pane_dead}' 2>/dev/null || true)"
+  if [[ "$dead" == "1" || "$start" != *codex-cockpit-bar* ]]; then
+    tmux respawn-pane -k -t "$bar" "exec codex-cockpit-bar ${session}" 2>/dev/null || true
+  else
+    pid="$(tmux display-message -p -t "$bar" '#{pane_pid}' 2>/dev/null || true)"
+    [[ -n "$pid" ]] && kill -WINCH "$pid" 2>/dev/null || true
+  fi
   exit 0
 fi
 
-tmux split-window -v -b -l 3 -t "$runtime" "exec codex-cockpit-bar ${session}"
+tmux split-window -v -b -l "$BAR_H" -t "$runtime" "exec codex-cockpit-bar ${session}"
 sleep 0.15
 bar="$(
-  tmux list-panes -t "$runtime" -F '#{pane_id} #{pane_height} #{@cockpit_role} #{pane_current_command}' |
-    awk '$2 <= 4 && $3 != "runtime" { print $1; exit }'
+  tmux list-panes -t "$runtime" -F '#{pane_id} #{@cockpit_role} #{pane_start_command}' |
+    awk '$2 == "bar" || $3 ~ /codex-cockpit-bar/ { print $1; exit }'
 )"
+if [[ -z "$bar" ]]; then
+  bar="$(
+    tmux list-panes -t "$runtime" -F '#{pane_id} #{pane_height} #{@cockpit_role}' |
+      awk '$3 != "runtime" { print $1; exit }'
+  )"
+fi
 [[ -n "$bar" ]] || exit 0
-tmux select-pane -t "$bar" -T BAR
-tmux set-option -p -t "$bar" @cockpit_role bar
+tag_bar "$bar"
 tmux select-pane -t "$runtime"

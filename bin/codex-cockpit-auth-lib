@@ -96,11 +96,67 @@ cockpit_auth_signed_in() {
   bash -lc "$cmd" >/dev/null 2>&1
 }
 
+# Termius iOS does not paint tmux overlay popups. Phone/touch uses a real
+# window; q / Esc / command exit / tapping a main tab returns to the caller.
+cockpit_popup_use_window() {
+  local modality endpoint w h
+  [[ -n "${TMUX:-}" ]] || return 1
+  modality="$(tmux show-options -v @cockpit_modality 2>/dev/null || true)"
+  endpoint="$(tmux show-options -v @cockpit_endpoint 2>/dev/null || true)"
+  [[ "$modality" == "touch" ]] && return 0
+  [[ "$endpoint" == "termius-ios" ]] && return 0
+  w="$(tmux display-message -p '#{client_width}' 2>/dev/null || echo 200)"
+  h="$(tmux display-message -p '#{client_height}' 2>/dev/null || echo 50)"
+  [[ "$w" =~ ^[0-9]+$ ]] || w=200
+  [[ "$h" =~ ^[0-9]+$ ]] || h=50
+  if ((w < 100 || h < 32)); then
+    return 0
+  fi
+  return 1
+}
+
+cockpit_popup_slug() {
+  local s
+  s="$(printf '%s' "$1" | tr '[:lower:]' '[:upper:]' | tr -cd 'A-Z0-9' | cut -c1-12)"
+  [[ -n "$s" ]] || s=POP
+  printf '%s\n' "$s"
+}
+
+cockpit_popup_gc() {
+  local cur pop flag
+  [[ -n "${TMUX:-}" ]] || return 0
+  flag="$(tmux show-options -wv @cockpit_popup 2>/dev/null || true)"
+  if [[ "$flag" == "1" ]]; then
+    return 0
+  fi
+  cur="$(tmux display-message -p '#{window_id}' 2>/dev/null || true)"
+  while IFS= read -r pop; do
+    [[ -n "$pop" ]] || continue
+    [[ "$pop" == "$cur" ]] && continue
+    tmux kill-window -t "$pop" 2>/dev/null || true
+  done < <(tmux list-windows -F '#{window_id} #{@cockpit_popup}' 2>/dev/null | awk '$2 == 1 { print $1 }')
+}
+
 cockpit_popup() {
   local title=$1
   shift
-  [[ -n "${TMUX:-}" ]] || { bash -lc "$*"; return $?; }
-  tmux display-popup -E -w 88% -h 82% -T "$title" "$*"
+  local inner=$*
+  [[ -n "${TMUX:-}" ]] || { bash -lc "$inner"; return $?; }
+  if ! cockpit_popup_use_window; then
+    tmux display-popup -E -w 88% -h 82% -T "$title" "$inner"
+    return $?
+  fi
+  local ret token slug sess
+  ret="$(tmux display-message -p '#{window_id}')"
+  sess="$(tmux display-message -p '#{session_name}')"
+  token="cockpit-pop-$$-$RANDOM"
+  slug="$(cockpit_popup_slug "$title")"
+  if ! tmux new-window -t "${sess}:" -n "$slug" \
+    "exec codex-cockpit-popup run $(printf %q "$ret") $(printf %q "$token") $(printf %q "$title") $(printf %q "$inner")"; then
+    bash -lc "$inner"
+    return $?
+  fi
+  tmux wait-for "$token"
 }
 
 # If already signed in locally, do nothing. Otherwise nested login box (click-out).

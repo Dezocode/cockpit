@@ -56,11 +56,19 @@ cockpit
 ```
 
 `codex` is the Codex CLI again. `cockpit` attaches the single tmux runtime.
-On the agent page, `prefix + e` (or F7 in touch) opens a nested box of
+On the agent page, fat **AUTH / runtime / MODEL** buttons sit above the live
+agent. `prefix + e` (or F7, or tap the runtime button) opens a nested list of
 runtimes (Codex, Grok, Anthropic/claude, Cursor). After you pick one it asks
 **switch active** (pause the other, save compute) or **parallel tab** (both
-keep running). Click outside a box to cancel. `m` sends `/model` into the live
-agent. OAuth stays with each CLI.
+keep running). `m` / MODEL sends `/model` into the live agent. OAuth stays with
+each CLI.
+
+Desktop Foot uses a click-out overlay box. Termius iOS cannot paint that overlay,
+so the same command opens as a full tab; **q / Esc / success / tap CODEX**
+closes it and returns to the agent. Tokens never go in git. The public tree is
+**https://github.com/Dezocode/cockpit** (live as soon as it is pushed — GitHub
+does not wait for you to reopen the page; search `cockpit`, not only
+`codex-cockpit`).
 
 From Omarchy/Foot:
 
