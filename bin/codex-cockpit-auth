@@ -23,8 +23,7 @@ open_popup() {
   fi
   # -E: close when the login process exits (success or failure).
   # No -B: a click outside the box dismisses it without finishing login.
-  tmux display-popup -E -w 88% -h 82% -T "Auth · ${label}" \
-    "codex-cockpit-auth run $(printf %q "$id")"
+  cockpit_popup "Auth · ${label}" "codex-cockpit-auth run $(printf %q "$id")"
 }
 
 run_login() {
@@ -40,7 +39,7 @@ run_login() {
   bash -lc "$login"
   local st=$?
   set -e
-  if cockpit_auth_check "$id"; then
+  if cockpit_auth_signed_in "$id"; then
     printf '\n%sSigned in. Closing this box.%s\n' "$bright" "$reset"
     sleep 0.6
     exit 0
@@ -67,7 +66,7 @@ gate() {
   ready="$(cockpit_auth_ready_cmd "$id")"
 
   while true; do
-    if cockpit_auth_check "$id"; then
+    if cockpit_auth_signed_in "$id"; then
       if [[ -n "$ready" ]]; then
         exec bash -lc "$ready"
       fi
@@ -139,10 +138,12 @@ pick() {
     printf '%sAuth sources%s\n\n' "$bright" "$reset"
     for id in "${ids[@]}"; do
       n=$((n + 1))
-      if cockpit_auth_check "$id"; then
+      if cockpit_auth_signed_in "$id"; then
         printf '  %s) %s  %sready%s\n' "$n" "$(cockpit_auth_label "$id")" "$muted" "$reset"
-      else
+      elif cockpit_auth_check "$id"; then
         printf '  %s) %s  %sneeds auth%s\n' "$n" "$(cockpit_auth_label "$id")" "$blue" "$reset"
+      else
+        printf '  %s) %s  %snot installed%s\n' "$n" "$(cockpit_auth_label "$id")" "$muted" "$reset"
       fi
     done
     printf '\nNumber, or q: '

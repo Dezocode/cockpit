@@ -61,9 +61,13 @@ Watchers stay blocked on inotify while idle. Hidden or zoomed-away views only se
 ./install.sh
 ```
 
-Requires tmux, a Codex CLI on `PATH`, and (for PRs) GitHub CLI. Unsigned
-`gh` does not block the Codex runtime; the PR pane and `prefix + G` open a
-nested OAuth box you can click out of.
+Requires tmux, a Codex CLI on `PATH`, and (for PRs) GitHub CLI. Local CLI auth is used as-is (`gh`, `~/.codex/auth.json`, `~/.grok/auth.json`,
+`claude auth status`, `cursor-agent status`). Already signed in → no prompt.
+Unsigned providers get one nested box (click out to skip). Background panes
+do not ring the terminal (Termius haptics stay off).
+
+Unsigned `gh` does not block the Codex runtime; the PR pane and `prefix + G`
+open that same nested box.
 
 ## License
 

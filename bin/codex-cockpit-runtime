@@ -56,6 +56,7 @@ hide_rt_window() {
   tmux set-option -w -t "$win" window-status-current-format '' 2>/dev/null || true
   tmux set-option -w -t "$win" automatic-rename off
   tmux set-option -w -t "$win" allow-rename off
+  hush_window "$win"
 }
 
 show_rt_window() {
@@ -69,8 +70,23 @@ root_path() {
     '#{pane_current_path}' 2>/dev/null || pwd
 }
 
+hush_window() {
+  local win=$1
+  tmux set-option -w -t "$win" monitor-bell off 2>/dev/null || true
+  tmux set-option -w -t "$win" monitor-activity off 2>/dev/null || true
+}
+
+ensure_runtime_auth() {
+  local id=$1
+  if cockpit_auth_signed_in "$id"; then
+    return 0
+  fi
+  cockpit_auth_ensure "$id"
+}
+
 spawn_runtime() {
   local id=$1 start pane label
+  ensure_runtime_auth "$id" || return 1
   start="$(cockpit_auth_field "$id" start || true)"
   [[ -n "$start" ]] || return 1
   label="$(cockpit_auth_label "$id")"
@@ -80,6 +96,7 @@ spawn_runtime() {
   tmux set-option -p -t "$pane" @cockpit_runtime_id "$id"
   tmux set-option -w -t "$session:rt-$id" automatic-rename off
   tmux set-option -w -t "$session:rt-$id" allow-rename off
+  hush_window "$session:rt-$id"
   printf '%s\n' "$pane"
 }
 
@@ -194,6 +211,8 @@ pick() {
     n=$((n + 1))
     if ! cockpit_auth_check "$id"; then
       status="${muted}not installed${reset}"
+    elif ! cockpit_auth_signed_in "$id"; then
+      status="${blue}needs local CLI auth${reset}"
     elif [[ "$id" == "$active" ]]; then
       status="${blue}live agent slot${reset}"
     elif [[ -n "$(pane_for_id "$id")" ]]; then
@@ -219,12 +238,19 @@ pick() {
           sleep 1.2
           exit 1
         fi
+        if ! cockpit_auth_signed_in "$id"; then
+          if ! cockpit_auth_ensure "$id"; then
+            printf '%s is not signed in on this machine. Skipping.\n' "$(cockpit_auth_label "$id")" >&2
+            sleep 1.2
+            exit 1
+          fi
+        fi
         if [[ "$id" == "$active" ]]; then
           switch_to "$id"
           exit 0
         fi
         if [[ -n "${TMUX:-}" ]]; then
-          tmux display-popup -E -w 70% -h 50% -T "Run $(cockpit_auth_label "$id")" \
+          cockpit_popup "Run $(cockpit_auth_label "$id")" \
             "codex-cockpit-runtime ask ${session} ${id}"
         else
           ask_mode "$id"
@@ -250,8 +276,7 @@ case "$cmd" in
   pick) pick ;;
   popup|*)
     if [[ -n "${TMUX:-}" ]]; then
-      tmux display-popup -E -w 76% -h 64% -T "Runtimes" \
-        "codex-cockpit-runtime pick ${session}"
+      cockpit_popup "Runtimes" "codex-cockpit-runtime pick ${session}"
     else
       pick
     fi

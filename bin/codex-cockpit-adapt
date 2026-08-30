@@ -89,7 +89,19 @@ window_for() {
   tmux display-message -p -t "$pane" '#{window_id}'
 }
 
+# Termius treats BEL / other-window activity as haptics. Keep background
+# panes silent so only the focused UX is felt.
+apply_hush() {
+  tmux set-option -t "$session" bell-action none
+  tmux set-option -t "$session" visual-bell off
+  tmux set-option -t "$session" activity-action none
+  tmux set-option -t "$session" silence-action none
+  tmux set-option -t "$session" -w monitor-bell off
+  tmux set-option -t "$session" -w monitor-activity off
+}
+
 apply_keyboard_chrome() {
+  apply_hush
   tmux set-option -t "$session" prefix C-Space
   tmux set-option -t "$session" prefix2 C-b
   tmux set-option -t "$session" status-position top
@@ -103,6 +115,7 @@ apply_keyboard_chrome() {
 }
 
 apply_touch_chrome() {
+  apply_hush
   tmux set-option -t "$session" prefix C-b
   tmux set-option -t "$session" prefix2 C-a
   tmux set-option -t "$session" mouse on

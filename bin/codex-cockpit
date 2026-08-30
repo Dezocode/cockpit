@@ -97,20 +97,8 @@ if command -v tmux >/dev/null 2>&1; then
   reap_ghost_sessions
 fi
 
-# GitHub OAuth is optional for the Codex PTY. Unsigned GitHub keeps PR/secret
-# surfaces behind the auth button. Codex CLI / Grok OAuth are untouched.
-if [[ -t 0 && -t 1 && -z "${COCKPIT_SKIP_GH_AUTH:-}" ]] && command -v gh >/dev/null 2>&1; then
-  if ! gh auth status -h github.com >/dev/null 2>&1; then
-    printf 'GitHub CLI is not signed in. Auth keeps git/PR secrets off unsigned panes.\n'
-    if [[ -n "${TMUX:-}" ]]; then
-      printf 'Nested box: click outside to skip.\n'
-      codex-cockpit-auth popup github || true
-    else
-      printf 'Ctrl-C skips; Codex still starts. Or: gh auth login -h github.com -p https -w\n'
-      codex-cockpit-auth run github || true
-    fi
-  fi
-fi
+# GitHub: use local gh CLI status. Already signed in → no prompt.
+# Unsigned → one nested box (click-out skips). Does not touch Codex/Grok OAuth.
 
 modality=${COCKPIT_MODALITY:-}
 if [[ -z "$modality" && -t 0 && -t 1 && -z "${COCKPIT_SKIP_GATE:-}" ]]; then
@@ -165,6 +153,9 @@ authlib="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/codex-cockpit-auth-
 # shellcheck source=codex-cockpit-auth-lib
 [[ -f "$authlib" ]] && source "$authlib"
 cockpit_auth_ensure_config 2>/dev/null || true
+if [[ -t 0 && -t 1 && -z "${COCKPIT_SKIP_GH_AUTH:-}" ]]; then
+  cockpit_auth_signed_in github 2>/dev/null || cockpit_auth_ensure github || true
+fi
 runtime_id=codex
 if [[ -f "$HOME/.config/codex-cockpit/state" ]]; then
   runtime_id="$(awk -F= '/^runtime=/{print $2}' "$HOME/.config/codex-cockpit/state" | tail -1)"
@@ -177,13 +168,6 @@ runtime_cmd="$(cockpit_auth_field "$runtime_id" start 2>/dev/null || true)"
 [[ -n "$runtime_cmd" ]] || runtime_cmd="$codex_bin"
 
 profile="$(codex-cockpit-profile $$ 2>/dev/null || echo foot)"
-use_tabs=0
-if [[ "$modality" == "touch" || "$profile" == "termius-ios" ]]; then
-  use_tabs=1
-fi
-if [[ -n "${COLUMNS:-}" && -n "${LINES:-}" ]] && ((COLUMNS > 0 && (COLUMNS < 100 || LINES < 32))); then
-  use_tabs=1
-fi
 
 tag() {
   local target=$1 title=$2 role=$3
@@ -191,41 +175,23 @@ tag() {
   tmux set-option -p -t "$target" @cockpit_role "$role"
 }
 
-if ((use_tabs == 1)); then
-  tmux new-session -d -s "$session" -n CODEX -c "$root" \
-    "cd -- $root_q && exec $runtime_cmd"
-  tag "$session:CODEX" "$(cockpit_auth_label "$runtime_id" 2>/dev/null || echo CODEX)" runtime
-  tmux set-option -p -t "$session:CODEX" @cockpit_runtime_id "$runtime_id"
+# One create path: windows, then adapt morphs pad vs tabs from modality + size.
+tmux new-session -d -s "$session" -n CODEX -c "$root" \
+  "cd -- $root_q && exec $runtime_cmd"
+tag "$session:CODEX" "$(cockpit_auth_label "$runtime_id" 2>/dev/null || echo CODEX)" runtime
+tmux set-option -p -t "$session:CODEX" @cockpit_runtime_id "$runtime_id"
 
-  tmux new-window -d -t "$session:" -n FILES -c "$root" \
-    "cd -- $root_q && exec codex-cockpit-files $root_q"
-  tag "$session:FILES" FILES files
+tmux new-window -d -t "$session:" -n FILES -c "$root" \
+  "cd -- $root_q && exec codex-cockpit-files $root_q"
+tag "$session:FILES" FILES files
 
-  tmux new-window -d -t "$session:" -n DIFF -c "$root" \
-    "cd -- $root_q && exec codex-cockpit-diff $root_q"
-  tag "$session:DIFF" DIFF diff
+tmux new-window -d -t "$session:" -n DIFF -c "$root" \
+  "cd -- $root_q && exec codex-cockpit-diff $root_q"
+tag "$session:DIFF" DIFF diff
 
-  tmux new-window -d -t "$session:" -n MAP -c "$root" \
-    "cd -- $root_q && exec codex-mermaid-watch $mermaid_args"
-  tag "$session:MAP" MAP map
-else
-  tmux new-session -d -s "$session" -n cockpit -c "$root" \
-    "cd -- $root_q && exec $runtime_cmd"
-  tag "$session:cockpit.1" "$(cockpit_auth_label "$runtime_id" 2>/dev/null || echo CODEX)" runtime
-  tmux set-option -p -t "$session:cockpit.1" @cockpit_runtime_id "$runtime_id"
-
-  tmux split-window -h -p 42 -t "$session:cockpit.1" -c "$root" \
-    "cd -- $root_q && exec codex-cockpit-files $root_q"
-  tag "$session:cockpit.2" FILES files
-
-  tmux split-window -v -p 46 -t "$session:cockpit.1" -c "$root" \
-    "cd -- $root_q && exec codex-mermaid-watch $mermaid_args"
-  tag "$session:cockpit.3" MAP map
-
-  tmux split-window -v -p 46 -t "$session:cockpit.2" -c "$root" \
-    "cd -- $root_q && exec codex-cockpit-diff $root_q"
-  tag "$session:cockpit.4" DIFF diff
-fi
+tmux new-window -d -t "$session:" -n MAP -c "$root" \
+  "cd -- $root_q && exec codex-mermaid-watch $mermaid_args"
+tag "$session:MAP" MAP map
 
 tmux new-window -d -t "$session:" -n prs -c "$root" "exec codex-cockpit-prs"
 tag "$session:prs" PRS prs

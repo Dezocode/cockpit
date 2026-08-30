@@ -87,6 +87,40 @@ cockpit_auth_check() {
   bash -lc "$cmd" >/dev/null 2>&1
 }
 
+# Local CLI session, not a second OAuth. Missing auth_check means "binary is enough".
+cockpit_auth_signed_in() {
+  local id=$1 cmd
+  cockpit_auth_check "$id" || return 1
+  cmd="$(cockpit_auth_field "$id" auth_check || true)"
+  [[ -z "$cmd" ]] && return 0
+  bash -lc "$cmd" >/dev/null 2>&1
+}
+
+cockpit_popup() {
+  local title=$1
+  shift
+  [[ -n "${TMUX:-}" ]] || { bash -lc "$*"; return $?; }
+  tmux display-popup -E -w 88% -h 82% -T "$title" "$*"
+}
+
+# If already signed in locally, do nothing. Otherwise nested login box (click-out).
+cockpit_auth_ensure() {
+  local id=$1 login
+  cockpit_auth_ensure_config
+  cockpit_auth_check "$id" || return 1
+  if cockpit_auth_signed_in "$id"; then
+    return 0
+  fi
+  login="$(cockpit_auth_login_cmd "$id" || true)"
+  [[ -n "$login" ]] || return 1
+  if [[ -n "${TMUX:-}" ]]; then
+    cockpit_popup "Auth · $(cockpit_auth_label "$id")" "codex-cockpit-auth run $(printf %q "$id")"
+  else
+    bash -lc "$login" || true
+  fi
+  cockpit_auth_signed_in "$id"
+}
+
 cockpit_auth_login_cmd() {
   cockpit_auth_field "$1" login
 }
