@@ -7,7 +7,7 @@ session="${1:-}"
 [[ -n "$session" && "$session" == codex-cockpit* ]] || exit 0
 
 export PATH="$HOME/.local/bin:$PATH"
-idle_secs=${COCKPIT_IDLE_SECS:-10}
+idle_secs=${COCKPIT_IDLE_SECS:-30}
 pidfile="${XDG_RUNTIME_DIR:-/tmp}/codex-cockpit/${session}/idle.pid"
 mkdir -p "$(dirname "$pidfile")"
 
@@ -31,11 +31,17 @@ while tmux has-session -t "$session" 2>/dev/null; do
     continue
   fi
   now=$(date +%s)
-  tmux list-clients -t "$session" -F '#{client_name} #{client_activity} #{client_key_table} #{client_prefix}' 2>/dev/null |
-    while IFS=' ' read -r name activity table prefix; do
+  tmux list-clients -t "$session" -F '#{client_name} #{client_activity} #{client_key_table} #{client_prefix} #{client_width} #{client_height}' 2>/dev/null |
+    while IFS=' ' read -r name activity table prefix cw ch; do
       [[ -n "$name" ]] || continue
       [[ "$table" == "root" ]] || continue
       [[ "$prefix" != "1" ]] || continue
+      # Phone PTY: stay on root. Probe would wrap every key in a shell.
+      cw=${cw:-0}
+      ch=${ch:-0}
+      if ((cw > 0 && (cw < 100 || ch < 32))); then
+        continue
+      fi
       activity=${activity:-0}
       if ((now - activity >= idle_secs)); then
         tmux switch-client -c "$name" -T cockpit-probe 2>/dev/null || true

@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# After idle: next key → remember keyboard (key is forwarded).
-# Next click → remember touch (pane/window still selected).
-# Binds are applied via source-file so this works with no attached client.
+# After idle (desktop only): next key → remember keyboard; next click → touch.
+# The key/click is delivered FIRST. Modality runs in the background so Codex
+# never waits on a shell. Phone clients stay on the root table.
 set -euo pipefail
 
-ver=4
+ver=5
 if [[ "$(tmux show-options -gv @cockpit_probe_installed 2>/dev/null || true)" == "$ver" ]]; then
   exit 0
 fi
@@ -15,17 +15,15 @@ tmp="${XDG_RUNTIME_DIR:-/tmp}/cockpit-probe-$$.conf"
   emit() {
     local key=$1
     shift
-    printf 'bind-key -T cockpit-probe -n %s run-shell '\''codex-cockpit-modality keyboard "#{client_session}" #{client_width} #{client_height}'\'' \\; switch-client -T root \\; send-keys %s\n' "$key" "$*"
+    printf 'bind-key -T cockpit-probe -n %s switch-client -T root \\; send-keys %s \\; run-shell -b '\''codex-cockpit-modality keyboard "#{client_session}" #{client_width} #{client_height}'\''\n' "$key" "$*"
   }
   for c in {a..z} {A..Z} {0..9}; do
     emit "$c" "$c"
   done
-  printf 'bind-key -T cockpit-probe -n Space run-shell '\''codex-cockpit-modality keyboard "#{client_session}" #{client_width} #{client_height}'\'' \\; switch-client -T root \\; send-keys -l " "\n'
-  for k in Enter BSpace Tab DC C-Space Left Right Up Down Home End PageUp PageDown; do
+  printf 'bind-key -T cockpit-probe -n Space switch-client -T root \\; send-keys -l " " \\; run-shell -b '\''codex-cockpit-modality keyboard "#{client_session}" #{client_width} #{client_height}'\''\n'
+  for k in Enter BSpace Tab Escape DC C-Space Left Right Up Down Home End PageUp PageDown; do
     emit "$k" "$k"
   done
-  # Swallow stray ESC / CSI from Termius. Never write it into a pane.
-  printf 'bind-key -T cockpit-probe -n Escape switch-client -T root\n'
   n=1
   while ((n <= 12)); do
     emit "F$n" "F$n"
@@ -34,12 +32,12 @@ tmp="${XDG_RUNTIME_DIR:-/tmp}/cockpit-probe-$$.conf"
   for c in {a..z}; do
     emit "C-$c" "C-$c"
   done
-  printf 'bind-key -T cockpit-probe MouseDown1Pane run-shell '\''codex-cockpit-modality touch "#{client_session}" #{client_width} #{client_height}'\'' \\; switch-client -T root \\; select-pane -t =\n'
-  printf 'bind-key -T cockpit-probe MouseDown1Status run-shell '\''codex-cockpit-modality touch "#{client_session}" #{client_width} #{client_height}'\'' \\; switch-client -T root \\; run-shell -b "codex-cockpit-popup status-tap #{mouse_session} #{mouse_window}"\n'
-  printf 'bind-key -T cockpit-probe MouseDown1StatusLeft run-shell '\''codex-cockpit-modality touch "#{client_session}" #{client_width} #{client_height}'\'' \\; switch-client -T root\n'
-  printf 'bind-key -T cockpit-probe MouseDown1Border run-shell '\''codex-cockpit-modality touch "#{client_session}" #{client_width} #{client_height}'\'' \\; switch-client -T root \\; select-pane -t =\n'
-  printf 'bind-key -T cockpit-probe DoubleClick1Pane run-shell '\''codex-cockpit-modality touch "#{client_session}" #{client_width} #{client_height}'\'' \\; switch-client -T root \\; run-shell -b "codex-cockpit-agent '\''#{mouse_session}'\'' '\''#{mouse_window}'\'' '\''#{mouse_pane}'\''"\n'
-  printf 'bind-key -T cockpit-probe MouseDown3Pane run-shell '\''codex-cockpit-modality touch "#{client_session}" #{client_width} #{client_height}'\'' \\; switch-client -T root \\; run-shell "codex-cockpit-menu '\''#{mouse_session}'\''"\n'
+  printf 'bind-key -T cockpit-probe MouseDown1Pane switch-client -T root \\; select-pane -t = \\; send-keys -M \\; run-shell -b '\''codex-cockpit-modality touch "#{client_session}" #{client_width} #{client_height}'\''\n'
+  printf 'bind-key -T cockpit-probe MouseDown1Status switch-client -T root \\; run-shell -b "codex-cockpit-popup status-tap #{mouse_session} #{mouse_window}" \\; run-shell -b '\''codex-cockpit-modality touch "#{client_session}" #{client_width} #{client_height}'\''\n'
+  printf 'bind-key -T cockpit-probe MouseDown1StatusLeft switch-client -T root \\; run-shell -b '\''codex-cockpit-modality touch "#{client_session}" #{client_width} #{client_height}'\''\n'
+  printf 'bind-key -T cockpit-probe MouseDown1Border switch-client -T root \\; select-pane -t = \\; run-shell -b '\''codex-cockpit-modality touch "#{client_session}" #{client_width} #{client_height}'\''\n'
+  printf 'bind-key -T cockpit-probe DoubleClick1Pane switch-client -T root \\; run-shell -b "codex-cockpit-agent '\''#{mouse_session}'\'' '\''#{mouse_window}'\'' '\''#{mouse_pane}'\''" \\; run-shell -b '\''codex-cockpit-modality touch "#{client_session}" #{client_width} #{client_height}'\''\n'
+  printf 'bind-key -T cockpit-probe MouseDown3Pane switch-client -T root \\; run-shell -b "codex-cockpit-menu '\''#{mouse_session}'\''" \\; run-shell -b '\''codex-cockpit-modality touch "#{client_session}" #{client_width} #{client_height}'\''\n'
   printf 'set-option -g @cockpit_probe_installed %s\n' "$ver"
 } >"$tmp"
 

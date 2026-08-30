@@ -215,8 +215,6 @@ tmux set-hook -t "$session" after-select-window \
   'run-shell -b "codex-cockpit-wake #{session_name} #{window_name}"; run-shell -b "codex-cockpit-popup gc"'
 tmux set-hook -t "$session" after-new-window \
   'set-option -w monitor-bell off ; set-option -w monitor-activity off ; set-option -w monitor-silence 0'
-tmux set-hook -t "$session" after-select-pane \
-  'run-shell -b "codex-cockpit-wake #{session_name} #{@cockpit_role}"'
 
 tmux list-windows -t "$session" -F '#{window_id}' | while IFS= read -r wid; do
   tmux set-option -w -t "$wid" automatic-rename off
