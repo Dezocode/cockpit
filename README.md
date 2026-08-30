@@ -1,4 +1,7 @@
-# Codex Cockpit
+# Cockpit
+
+tmux workspace for local coding agents (Codex, Grok, Anthropic, Cursor).
+Public repo: **https://github.com/Dezocode/cockpit**. Tokens never go in git.
 
 One tmux session named `codex-cockpit`. A second launch attaches that
 runtime; leftover `codex-cockpit-*` sessions with no clients are reaped so
@@ -68,6 +71,23 @@ do not ring the terminal (Termius haptics stay off).
 
 Unsigned `gh` does not block the Codex runtime; the PR pane and `prefix + G`
 open that same nested box.
+
+## Your profile vs this repo
+
+CLI tokens (`gh`, Codex, Grok, Claude, Cursor) stay on **your** machine and
+your **your** GitHub login. They are not in this git tree.
+
+Save or restore *chrome + provider command templates* with the same `gh`
+account you already use:
+
+```bash
+cockpit config status
+cockpit config push    # secret gist on *your* GitHub account
+cockpit config pull    # from that gist
+```
+
+`push` refuses files that look like tokens. `~/.codex/auth.json` and
+`~/.grok/auth.json` are never uploaded.
 
 ## License
 

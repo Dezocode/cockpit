@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+if [[ "${1:-}" == "config" ]]; then
+  shift
+  exec "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/codex-cockpit-config" "$@"
+fi
+
 root="${1:-$PWD}"
 diagram="${2:-}"
 explicit_root=$(( $# > 0 ? 1 : 0 ))

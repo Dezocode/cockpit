@@ -4,3 +4,13 @@
 .DS_Store
 state
 *.tmp
+gist.id
+.env
+.env.*
+auth.json
+*.pem
+*.key
+id_rsa
+id_ed25519
+providers.d/
+
