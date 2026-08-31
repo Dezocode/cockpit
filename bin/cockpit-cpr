@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# Stable command name for agents and scripts that do not load the shell
+# function from stage/shell/cockpit.bashrc.
+set -euo pipefail
+exec cockpit-plugin run cpr "$@"

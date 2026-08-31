@@ -1,0 +1,127 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+script_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=cockpit-lib
+source "$script_root/cockpit-lib"
+
+# Open one changed file at a time in the user's normal Neovim/Vim config.
+# This is intentionally on-demand: the resident DIFF watcher remains the
+# cheap event-driven view, while full Vim diff mode is available when wanted.
+
+session="${1:-}"
+root="${2:-}"
+
+if [[ -n "$session" ]] && command -v tmux >/dev/null 2>&1 &&
+  tmux has-session -t "$session" 2>/dev/null; then
+  runtime_pane="$(
+    tmux list-panes -s -t "$session" -F '#{pane_id} #{@cockpit_role}' 2>/dev/null |
+      awk '$2 == "runtime" { print $1; exit }'
+  )"
+  if [[ -n "$runtime_pane" ]]; then
+    root="$(tmux display-message -p -t "$runtime_pane" '#{pane_current_path}' 2>/dev/null || true)"
+  fi
+else
+  # Direct use is useful from a shell: cockpit vimdiff [directory].
+  [[ -n "$root" ]] || root="$session"
+fi
+
+root="${root:-$PWD}"
+[[ -d "$root" ]] || { printf 'Vim diff: directory not found: %s\n' "$root" >&2; exit 1; }
+root="$(cd -- "$root" && pwd -P)"
+
+editor=''
+if command -v nvim >/dev/null 2>&1; then
+  editor=nvim
+elif command -v vim >/dev/null 2>&1; then
+  editor=vim
+else
+  printf 'Vim diff: nvim or vim is not on PATH\n' >&2
+  exit 1
+fi
+
+git_root="$(git -C "$root" rev-parse --show-toplevel 2>/dev/null || true)"
+if [[ -z "$git_root" || "$git_root" == "$HOME" ]]; then
+  printf 'Vim diff: no usable Git worktree at %s\n' "$root" >&2
+  exit 0
+fi
+git_root="$(cd -- "$git_root" && pwd -P)"
+
+scope='.'
+if [[ "$root" != "$git_root" ]]; then
+  scope="${root#"$git_root"/}"
+fi
+
+git_cmd=(git -C "$git_root" --no-pager -c core.pager=cat)
+declare -a paths=()
+declare -A seen=()
+
+add_path() {
+  local path=$1
+  [[ -n "$path" && -z "${seen[$path]+yes}" ]] || return 0
+  seen["$path"]=1
+  paths+=("$path")
+}
+
+if "${git_cmd[@]}" rev-parse --verify HEAD >/dev/null 2>&1; then
+  while IFS= read -r -d '' path; do
+    add_path "$path"
+  done < <("${git_cmd[@]}" diff --name-only -z HEAD -- "$scope" 2>/dev/null || true)
+  while IFS= read -r -d '' path; do
+    add_path "$path"
+  done < <("${git_cmd[@]}" ls-files --others --exclude-standard -z -- "$scope" 2>/dev/null || true)
+else
+  # A freshly initialized cockpit has no HEAD yet. Show its index and
+  # untracked files against an empty base without adding or staging anything.
+  while IFS= read -r -d '' path; do
+    add_path "$path"
+  done < <("${git_cmd[@]}" ls-files --cached --others --exclude-standard -z -- "$scope" 2>/dev/null || true)
+fi
+
+if ((${#paths[@]} == 0)); then
+  printf 'Vim diff: working tree clean.\n'
+  exit 0
+fi
+
+scratch="$(mktemp -d "${TMPDIR:-/tmp}/cockpit-vimdiff.XXXXXX")"
+trap 'rm -rf "$scratch"' EXIT
+
+theme_init="${COCKPIT_NVIM_THEME_INIT:-$(cockpit_config_home)/nvim/cockpit-diff.lua}"
+
+printf 'Vim diff: %d changed file(s); q closes each file, then advances.\n' "${#paths[@]}"
+
+for path in "${paths[@]}"; do
+  old="$scratch/old"
+  new="$scratch/new"
+  : >"$old"
+
+  if "${git_cmd[@]}" cat-file -e "HEAD:$path" 2>/dev/null; then
+    "${git_cmd[@]}" show "HEAD:$path" >"$old"
+  fi
+
+  current="$git_root/$path"
+  if [[ -f "$current" ]]; then
+    new="$current"
+  else
+    : >"$new"
+  fi
+
+  printf '\n%s\n' "$path"
+  if [[ "$editor" == nvim ]]; then
+    if [[ -f "$theme_init" ]]; then
+      export COCKPIT_NVIM_THEME_INIT="$theme_init"
+      nvim -n -R -d "$old" "$new" \
+        -c 'set diffopt+=internal,algorithm:histogram' \
+        -c 'windo setlocal readonly nomodifiable' \
+        -c 'lua dofile(vim.env.COCKPIT_NVIM_THEME_INIT).setup()'
+    else
+      nvim -n -R -d "$old" "$new" \
+        -c 'set diffopt+=internal,algorithm:histogram' \
+        -c 'windo setlocal readonly nomodifiable'
+    fi
+  else
+    vim -n -R -d "$old" "$new" \
+      -c 'set diffopt+=internal,algorithm:histogram' \
+      -c 'windo setlocal readonly nomodifiable'
+  fi
+done

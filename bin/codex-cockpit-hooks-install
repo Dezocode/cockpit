@@ -1,20 +1,12 @@
 #!/usr/bin/env bash
-# Idempotent global hooks. `set-hook -ag` used to stack a new adapt on every
-# overlay source-file, so attach/resize forked several layout morphs.
+# Legacy compatibility entrypoint; canonical implementation is under the cockpit namespace.
 set -euo pipefail
-
-export PATH="$HOME/.local/bin:$PATH"
-
-while IFS= read -r name; do
-  [[ -n "$name" ]] || continue
-  tmux set-hook -ug "$name" 2>/dev/null || true
-done < <(
-  tmux show-hooks -g 2>/dev/null |
-    awk '/codex-cockpit-adapt/{print $1}'
-)
-
-# Fixed indices so sourcing the overlay replaces instead of appending.
-tmux set-hook -g client-attached[91] \
-  'if-shell -F "#{m:codex-cockpit*,#{client_session}}" { run-shell -b "codex-cockpit-adapt attached \"#{client_session}\" #{client_width} #{client_height} #{client_pid}" }'
-tmux set-hook -g client-resized[91] \
-  'if-shell -F "#{m:codex-cockpit*,#{client_session}}" { run-shell -b "codex-cockpit-adapt resized \"#{client_session}\" #{client_width} #{client_height} #{client_pid}" }'
+legacy_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+legacy_name="${BASH_SOURCE[0]##*/}"
+case "$legacy_name" in
+  codex-cockpit) canonical_name=cockpit-main ;;
+  codex-mermaid-watch) canonical_name=cockpit-mermaid-watch ;;
+  codex-cockpit-*) canonical_name="cockpit-${legacy_name#codex-cockpit-}" ;;
+  *) printf "unknown legacy entrypoint: %s\n" "$legacy_name" >&2; exit 2 ;;
+esac
+exec "$legacy_root/$canonical_name" "$@"

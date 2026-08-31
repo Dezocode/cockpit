@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+# Refresh the provider-targeted agent configuration metadata for a live
+# Cockpit session. This hook is intentionally read-only with respect to the
+# project: it validates and records state in tmux user options only.
+set -euo pipefail
+
+export PATH="$HOME/.local/bin:$PATH"
+script_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=cockpit-auth-lib
+source "$script_root/cockpit-auth-lib"
+# shellcheck source=cockpit-agent-lib
+source "$script_root/cockpit-agent-lib"
+
+session="${1:-$(cockpit_session_name)}"
+if [[ -z "$session" && -n "${TMUX:-}" ]]; then
+  session="$(tmux display-message -p '#{session_name}' 2>/dev/null || true)"
+fi
+session="${session:-$(cockpit_session_name)}"
+cockpit_session_is_managed "$session" || exit 0
+tmux has-session -t "$session" 2>/dev/null || exit 0
+
+runtime_pane="$(tmux list-panes -s -t "$session" -F '#{pane_id} #{@cockpit_role}' 2>/dev/null |
+  awk '$2 == "runtime" { print $1; exit }')"
+[[ -n "$runtime_pane" ]] || exit 0
+
+provider="$(tmux show-options -v -t "$session" @cockpit_runtime 2>/dev/null || true)"
+[[ -n "$provider" ]] || provider="$(tmux display-message -p -t "$runtime_pane" '#{@cockpit_runtime_id}' 2>/dev/null || true)"
+provider="${provider:-codex}"
+project="$(tmux display-message -p -t "$runtime_pane" '#{pane_current_path}' 2>/dev/null || true)"
+[[ -n "$project" && -d "$project" ]] || exit 0
+
+cockpit_agent_inspect "$project" "$provider" || true
+state="${COCKPIT_AGENT_TARGET_STATE:-unknown}"
+missing="${COCKPIT_AGENT_MISSING_SKILLS:-}"
+[[ -n "$missing" ]] || missing=none
+
+tmux set-option -t "$session" @cockpit_agent_provider "$provider" 2>/dev/null || true
+tmux set-option -t "$session" @cockpit_agent_project "${COCKPIT_AGENT_PROJECT:-$project}" 2>/dev/null || true
+tmux set-option -t "$session" @cockpit_agent_target "${COCKPIT_AGENT_TARGET:-}" 2>/dev/null || true
+tmux set-option -t "$session" @cockpit_agent_target_rel "${COCKPIT_AGENT_TARGET_REL:-}" 2>/dev/null || true
+tmux set-option -t "$session" @cockpit_agent_target_state "$state" 2>/dev/null || true
+tmux set-option -t "$session" @cockpit_agent_profile_enabled "${COCKPIT_AGENT_PROFILE_ENABLED:-0}" 2>/dev/null || true
+tmux set-option -t "$session" @cockpit_agent_skill_count "${COCKPIT_AGENT_SKILL_COUNT:-0}" 2>/dev/null || true
+tmux set-option -t "$session" @cockpit_agent_missing_skills "$missing" 2>/dev/null || true
+tmux set-option -t "$session" @cockpit_agent_hook_version 1 2>/dev/null || true
+
+if [[ "${COCKPIT_AGENT_HOOK_OUTPUT:-0}" == 1 ]]; then
+  printf 'provider=%s\nproject=%s\ntarget=%s\ntarget_state=%s\nmissing_profile_skills=%s\n' \
+    "$provider" "${COCKPIT_AGENT_PROJECT:-$project}" \
+    "${COCKPIT_AGENT_TARGET_REL:-missing}" "$state" "$missing"
+fi
+
+if [[ "$state" == valid && -z "${COCKPIT_AGENT_MISSING_SKILLS:-}" ]]; then
+  exit 0
+fi
+exit 1

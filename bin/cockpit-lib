@@ -1,0 +1,547 @@
+# Shared event policy for cockpit watchers. Sourced, not executed.
+# Idle: block on inotify. Hidden tabs keep a dirty bit. Visible tabs
+# coalesce bursts, skip noise, and skip redraws when the fingerprint is unchanged.
+
+: "${COCKPIT_DEBOUNCE:=0.40}"
+: "${XDG_RUNTIME_DIR:=/tmp}"
+
+cockpit_noise_exclude='(^|/)(\.git|node_modules|\.cache|dist|build|target|\.local|\.npm)(/|$)|(\.swp|\.swo|\.swn|~$|\.tmp$|\.sock$)'
+
+# Cockpit is the canonical public namespace. The old codex-cockpit locations
+# remain readable so an existing installation can be upgraded in place.
+cockpit_config_home() {
+  if [[ -n "${COCKPIT_CONFIG_HOME:-}" ]]; then
+    printf '%s\n' "$COCKPIT_CONFIG_HOME"
+  elif [[ -n "${COCKPIT_AUTH_HOME:-}" ]]; then
+    printf '%s\n' "$COCKPIT_AUTH_HOME"
+  else
+    printf '%s/cockpit\n' "${XDG_CONFIG_HOME:-$HOME/.config}"
+  fi
+}
+
+cockpit_legacy_config_home() {
+  printf '%s\n' "${COCKPIT_LEGACY_CONFIG_HOME:-${XDG_CONFIG_HOME:-$HOME/.config}/codex-cockpit}"
+}
+
+cockpit_config_read_path() {
+  local relative=$1 canonical legacy
+  canonical="$(cockpit_config_home)/$relative"
+  legacy="$(cockpit_legacy_config_home)/$relative"
+  if [[ -e "$canonical" || ! -e "$legacy" ]]; then
+    printf '%s\n' "$canonical"
+  else
+    printf '%s\n' "$legacy"
+  fi
+}
+
+cockpit_overlay_path() {
+  local canonical legacy
+  if [[ -n "${COCKPIT_OVERLAY_FILE:-}" ]]; then
+    printf '%s\n' "$COCKPIT_OVERLAY_FILE"
+    return 0
+  fi
+  canonical="${XDG_CONFIG_HOME:-$HOME/.config}/tmux/cockpit.conf"
+  legacy="${XDG_CONFIG_HOME:-$HOME/.config}/tmux/codex-cockpit.conf"
+  if [[ -f "$canonical" || ! -f "$legacy" ]]; then
+    printf '%s\n' "$canonical"
+  else
+    printf '%s\n' "$legacy"
+  fi
+}
+
+cockpit_session_name() {
+  printf '%s\n' "${COCKPIT_SESSION:-${CODEX_COCKPIT_SESSION:-cockpit}}"
+}
+
+cockpit_session_is_managed() {
+  local session=${1:-}
+  [[ "$session" == cockpit || "$session" == cockpit-* ||
+    "$session" == codex-cockpit || "$session" == codex-cockpit-* ]]
+}
+
+cockpit_migrate_legacy_session() {
+  local target=${1:-$(cockpit_session_name)}
+  local legacy=${COCKPIT_LEGACY_SESSION:-codex-cockpit}
+  [[ "$target" == cockpit && "$legacy" != "$target" ]] || return 1
+  tmux has-session -t "$target" 2>/dev/null && return 1
+  tmux has-session -t "$legacy" 2>/dev/null || return 1
+  tmux rename-session -t "$legacy" "$target" 2>/dev/null
+}
+
+cockpit_runtime_home() {
+  printf '%s/cockpit\n' "$XDG_RUNTIME_DIR"
+}
+
+cockpit_legacy_runtime_home() {
+  printf '%s/codex-cockpit\n' "$XDG_RUNTIME_DIR"
+}
+
+declare -gA COCKPIT_THEME_HEX_CACHE=()
+
+cockpit_shell_quote() {
+  local value=${1:-}
+  value=${value//\\/\\\\}
+  value=${value//\'/\'\\\'\'}
+  printf "'%s'" "$value"
+}
+
+# mise's shim may try to mutate its installation on every invocation. That is
+# a poor fit for a long-lived tmux pane, and it also fails on read-only or
+# offline hosts even when a usable Codex binary is already installed. Keep the
+# explicit override authoritative, otherwise use the newest local mise binary
+# only when the PATH entry is the mutating shim.
+cockpit_resolve_codex_bin() {
+  local configured=${CODEX_CLI_BIN:-} candidate direct
+
+  if [[ -n "$configured" ]]; then
+    [[ -x "$configured" ]] || return 1
+    printf '%s\n' "$configured"
+    return 0
+  fi
+
+  candidate="$(command -v codex 2>/dev/null || true)"
+  [[ -n "$candidate" ]] || return 1
+
+  if [[ -f "$candidate" ]] && command -v rg >/dev/null 2>&1 &&
+    rg -q 'mise[[:space:]]+(use|x)' "$candidate" 2>/dev/null; then
+    direct="$(find "$HOME/.local/share/mise/installs/codex" \
+      -mindepth 3 -maxdepth 3 -type f -path '*/bin/codex' -perm -111 \
+      -print 2>/dev/null | sort -V | tail -1 || true)"
+    if [[ -n "$direct" && -x "$direct" ]]; then
+      printf '%s\n' "$direct"
+      return 0
+    fi
+  fi
+
+  [[ -x "$candidate" ]] || return 1
+  printf '%s\n' "$candidate"
+}
+
+# Replace only the stock `codex` provider command. Custom provider commands
+# remain untouched, while `codex --oss` still uses the resolved binary.
+cockpit_codex_runtime_command() {
+  local command=${1:-} codex_bin=${2:-} quoted
+  [[ -n "$command" && -n "$codex_bin" ]] || return 1
+  quoted="$(cockpit_shell_quote "$codex_bin")"
+  case "$command" in
+    codex) printf '%s\n' "$quoted" ;;
+    'codex '*) printf '%s%s\n' "$quoted" "${command#codex}" ;;
+    *) printf '%s\n' "$command" ;;
+  esac
+}
+
+cockpit_runtime_color_setup() {
+  # Preserve the terminal's negotiated TERM, but provide a sane truecolor
+  # fallback for SSH clients that omit COLORTERM. Clear inherited CI/no-color
+  # switches before the provider starts; they are common in Codex shell
+  # snapshots and suppress the native TUI palette.
+  printf '%s' 'export TERM="${TERM:-tmux-256color}" COLORTERM="${COLORTERM:-truecolor}" CLICOLOR=1 CLICOLOR_FORCE=1 FORCE_COLOR=1; unset NO_COLOR CARGO_TERM_COLOR CODEX_CI;'
+}
+
+# Resolve colors from the active Omarchy theme when one is available. The
+# terminal panes use truecolor SGR sequences so the same source theme feeds
+# Foot, tmux, and Termius without baking a particular theme into the app.
+cockpit_theme_colors_file() {
+  local path="${COCKPIT_THEME_COLORS_FILE:-${HOME}/.local/state/omarchy/current/theme/colors.toml}"
+  [[ -r "$path" ]] && printf '%s\n' "$path"
+}
+
+cockpit_theme_hex() {
+  local key=${1:-} fallback=${2:-} path value
+  if [[ -n "$key" ]]; then
+    if [[ ${COCKPIT_THEME_HEX_CACHE[$key]+present} ]]; then
+      printf '%s\n' "${COCKPIT_THEME_HEX_CACHE[$key]}"
+      return 0
+    fi
+  fi
+  path="$(cockpit_theme_colors_file || true)"
+  if [[ -n "$path" ]]; then
+    value="$(awk -F= -v wanted="$key" '
+      $1 ~ "^[[:space:]]*" wanted "[[:space:]]*$" {
+        value=$2
+        gsub(/[[:space:]]/, "", value)
+        gsub(/"/, "", value)
+        if (value ~ /^#[[:xdigit:]]{6}$/) print value
+        exit
+      }
+    ' "$path")"
+    if [[ -n "$value" ]]; then
+      [[ -n "$key" ]] && COCKPIT_THEME_HEX_CACHE[$key]=$value
+      printf '%s\n' "$value"
+      return 0
+    fi
+  fi
+  [[ -n "$key" ]] && COCKPIT_THEME_HEX_CACHE[$key]=$fallback
+  printf '%s\n' "$fallback"
+}
+
+cockpit_theme_load_cache() {
+  local path key value
+  path="$(cockpit_theme_colors_file || true)"
+  [[ -n "$path" ]] || return 0
+  while IFS=$'\t' read -r key value; do
+    [[ -n "$key" && -n "$value" ]] || continue
+    COCKPIT_THEME_HEX_CACHE[$key]=$value
+  done < <(awk -F= '
+    /^[[:space:]]*[[:alnum:]_]+[[:space:]]*=/ {
+      key=$1
+      value=$2
+      gsub(/[[:space:]]/, "", key)
+      gsub(/[[:space:]]/, "", value)
+      gsub(/"/, "", value)
+      if (value ~ /^#[[:xdigit:]]{6}$/) print key "\t" value
+    }
+  ' "$path")
+}
+
+cockpit_theme_load_cache
+
+cockpit_theme_color_is_saturated() {
+  local hex=${1:-}
+  [[ "$hex" =~ ^#([[:xdigit:]]{2})([[:xdigit:]]{2})([[:xdigit:]]{2})$ ]] || return 1
+  local r=$((16#${BASH_REMATCH[1]}))
+  local g=$((16#${BASH_REMATCH[2]}))
+  local b=$((16#${BASH_REMATCH[3]}))
+  local max=$r min=$r
+  ((g > max)) && max=$g
+  ((b > max)) && max=$b
+  ((g < min)) && min=$g
+  ((b < min)) && min=$b
+  ((max - min >= 28))
+}
+
+cockpit_theme_contrast_key() {
+  local hex=${1:-}
+  [[ "$hex" =~ ^#([[:xdigit:]]{2})([[:xdigit:]]{2})([[:xdigit:]]{2})$ ]] || {
+    printf '%s\n' foreground
+    return 0
+  }
+  local r=$((16#${BASH_REMATCH[1]}))
+  local g=$((16#${BASH_REMATCH[2]}))
+  local b=$((16#${BASH_REMATCH[3]}))
+  if ((r * 299 + g * 587 + b * 114 > 255 * 580)); then
+    printf '%s\n' background
+  else
+    printf '%s\n' foreground
+  fi
+}
+
+cockpit_theme_load_diff_cache() {
+  local add=${COCKPIT_DIFF_ADD_BG:-} delete=${COCKPIT_DIFF_DELETE_BG:-}
+  local themed_add themed_delete themed_bright_delete
+
+  if [[ ! "$add" =~ ^#[[:xdigit:]]{6}$ ]]; then
+    themed_add="$(cockpit_theme_hex green '')"
+    if cockpit_theme_color_is_saturated "$themed_add"; then
+      add=$themed_add
+    else
+      themed_add="$(cockpit_theme_hex bright_green '')"
+      if cockpit_theme_color_is_saturated "$themed_add"; then
+        add=$themed_add
+      else
+        # Solitude intentionally makes regular green neutral. Keep its dark
+        # base, but restore the semantic hue the diff needs to be readable.
+        add='#2b6e4f'
+      fi
+    fi
+  fi
+
+  if [[ ! "$delete" =~ ^#[[:xdigit:]]{6}$ ]]; then
+    themed_delete="$(cockpit_theme_hex red '')"
+    themed_bright_delete="$(cockpit_theme_hex bright_red '')"
+    if cockpit_theme_color_is_saturated "$themed_delete"; then
+      delete=$themed_delete
+    elif cockpit_theme_color_is_saturated "$themed_bright_delete"; then
+      delete=$themed_bright_delete
+    else
+      delete='#8f3f35'
+    fi
+  fi
+
+  COCKPIT_THEME_HEX_CACHE[diff_add]=$add
+  COCKPIT_THEME_HEX_CACHE[diff_delete]=$delete
+  COCKPIT_THEME_DIFF_ADD_FG="$(cockpit_theme_contrast_key "$add")"
+  COCKPIT_THEME_DIFF_DELETE_FG="$(cockpit_theme_contrast_key "$delete")"
+}
+
+cockpit_theme_load_diff_cache
+
+cockpit_theme_style() {
+  local fg_key=${1:-} bg_key=${2:-} bold=${3:-0}
+  local fg_hex bg_hex seq='' r g b
+
+  if [[ "$bold" == "1" ]]; then
+    seq='1'
+  fi
+
+  fg_hex="$(cockpit_theme_hex "$fg_key" '')"
+  if [[ "$fg_hex" =~ ^#([[:xdigit:]]{2})([[:xdigit:]]{2})([[:xdigit:]]{2})$ ]]; then
+    r=$((16#${BASH_REMATCH[1]}))
+    g=$((16#${BASH_REMATCH[2]}))
+    b=$((16#${BASH_REMATCH[3]}))
+    [[ -n "$seq" ]] && seq+=';'
+    seq+="38;2;${r};${g};${b}"
+  else
+    case "$fg_key" in
+      accent|blue) fg_hex='34' ;;
+      muted|bright_black) fg_hex='90' ;;
+      red|bright_red) fg_hex='31' ;;
+      green|bright_green) fg_hex='32' ;;
+      yellow|bright_yellow) fg_hex='33' ;;
+      foreground|bright_foreground) fg_hex='97' ;;
+      background) fg_hex='30' ;;
+      *) fg_hex='39' ;;
+    esac
+    [[ -n "$seq" ]] && seq+=';'
+    seq+="$fg_hex"
+  fi
+
+  bg_hex="$(cockpit_theme_hex "$bg_key" '')"
+  if [[ -n "$bg_key" && "$bg_hex" =~ ^#([[:xdigit:]]{2})([[:xdigit:]]{2})([[:xdigit:]]{2})$ ]]; then
+    r=$((16#${BASH_REMATCH[1]}))
+    g=$((16#${BASH_REMATCH[2]}))
+    b=$((16#${BASH_REMATCH[3]}))
+    [[ -n "$seq" ]] && seq+=';'
+    seq+="48;2;${r};${g};${b}"
+  elif [[ -n "$bg_key" ]]; then
+    case "$bg_key" in
+      accent|blue) bg_hex='44' ;;
+      muted|bright_black) bg_hex='100' ;;
+      red|bright_red) bg_hex='41' ;;
+      green|bright_green) bg_hex='42' ;;
+      yellow|bright_yellow) bg_hex='43' ;;
+      background) bg_hex='49' ;;
+      *) bg_hex='49' ;;
+    esac
+    [[ -n "$seq" ]] && seq+=';'
+    seq+="$bg_hex"
+  fi
+
+  printf '\033[%sm' "${seq:-0}"
+}
+
+cockpit_theme_reset() {
+  printf '\033[0m'
+}
+
+cockpit_theme_heading() {
+  cockpit_theme_style accent '' 1
+}
+
+cockpit_theme_muted() {
+  cockpit_theme_style muted '' 0
+}
+
+cockpit_theme_add() {
+  cockpit_theme_style "$COCKPIT_THEME_DIFF_ADD_FG" diff_add 0
+}
+
+cockpit_theme_delete() {
+  cockpit_theme_style "$COCKPIT_THEME_DIFF_DELETE_FG" diff_delete 0
+}
+
+cockpit_theme_change() {
+  cockpit_theme_style background accent 0
+}
+
+cockpit_diff_colorize() {
+  local line
+  local add delete change heading heading_bold reset
+  add="$(cockpit_theme_add)"
+  delete="$(cockpit_theme_delete)"
+  change="$(cockpit_theme_change)"
+  heading="$(cockpit_theme_style accent '' 0)"
+  heading_bold="$(cockpit_theme_style accent '' 1)"
+  reset="$(cockpit_theme_reset)"
+
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    case "$line" in
+      'diff --git '*) printf '%s%s%s\n' "$heading_bold" "$line" "$reset" ;;
+      '+++'*|'---'*) printf '%s%s%s\n' "$heading" "$line" "$reset" ;;
+      '@@'*) printf '%s%s%s\n' "$change" "$line" "$reset" ;;
+      '+'*) printf '%s%s\033[K%s\n' "$add" "$line" "$reset" ;;
+      '-'*) printf '%s%s\033[K%s\n' "$delete" "$line" "$reset" ;;
+      *) printf '%s\n' "$line" ;;
+    esac
+  done
+}
+
+cockpit_diff_status_colorize() {
+  local line code style reset
+  local add delete change muted
+  add="$(cockpit_theme_add)"
+  delete="$(cockpit_theme_delete)"
+  change="$(cockpit_theme_change)"
+  muted="$(cockpit_theme_muted)"
+  reset="$(cockpit_theme_reset)"
+
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    code=${line:0:2}
+    case "$code" in
+      '??'|*A*) style=$add ;;
+      *D*) style=$delete ;;
+      *M*|*R*|*C*) style=$change ;;
+      *) style=$muted ;;
+    esac
+    printf '%s%s\033[K%s\n' "$style" "$line" "$reset"
+  done
+}
+
+cockpit_is_text_ext() {
+  case "${1##*.}" in
+    md|mmd|mermaid|txt|json|toml|yml|yaml|lua|py|rs|go|js|ts|tsx|jsx|css|html|sh|bash|zsh|rb|c|h|cc|cpp|hpp|java|kt|swift|nix|sql|graphql|xml|svg|csv|env|ini|conf|cfg|r|php|ex|exs|erl|hs|ml|vim)
+      return 0
+      ;;
+  esac
+  case "$1" in
+    *Dockerfile*|*Makefile*|*README*|*LICENSE*|*.gitignore|*.gitmodules)
+      return 0
+      ;;
+  esac
+  return 1
+}
+
+cockpit_is_noise_path() {
+  local path=$1 base=${1##*/}
+  case "$path" in
+    */.git/*|*/node_modules/*|*/.cache/*|*/dist/*|*/build/*|*/target/*) return 0 ;;
+  esac
+  case "$base" in
+    *.swp|*.swo|*.swn|*~|*.tmp|*.sock|.DS_Store) return 0 ;;
+  esac
+  return 1
+}
+
+cockpit_view_visible() {
+  local pane=${TMUX_PANE:-}
+  local active zoomed pane_active
+  [[ -n "$pane" ]] || return 0
+  active="$(tmux display-message -p -t "$pane" '#{window_active}' 2>/dev/null || echo 0)"
+  [[ "$active" == "1" ]] || return 1
+  zoomed="$(tmux display-message -p -t "$pane" '#{window_zoomed_flag}' 2>/dev/null || echo 0)"
+  pane_active="$(tmux display-message -p -t "$pane" '#{pane_active}' 2>/dev/null || echo 0)"
+  if [[ "$zoomed" == "1" && "$pane_active" != "1" ]]; then
+    return 1
+  fi
+  return 0
+}
+
+cockpit_wake_dir() {
+  local session=${1:-${COCKPIT_SESSION:-unknown}}
+  printf '%s/%s' "$(cockpit_runtime_home)" "$session"
+}
+
+cockpit_legacy_wake_dir() {
+  local session=${1:-${COCKPIT_SESSION:-unknown}}
+  printf '%s/%s' "$(cockpit_legacy_runtime_home)" "$session"
+}
+
+cockpit_install_wake() {
+  local session=${1:-} name=${2:-}
+  COCKPIT_WAKE=0
+  mkdir -p "$(cockpit_wake_dir "$session")"
+  printf '%s\n' "${BASHPID:-$$}" >"$(cockpit_wake_dir "$session")/${name}.pid"
+  trap 'COCKPIT_WAKE=1' USR1
+}
+
+# Block on inotify + tab-open (USR1). No idle polling.
+cockpit_event_open() {
+  local session=$1 name=$2
+  local dir fifo
+  dir="$(cockpit_wake_dir "$session")"
+  mkdir -p "$dir"
+  fifo="$dir/${name}.$$.fifo"
+  rm -f "$fifo"
+  mkfifo -m 600 "$fifo"
+  exec {COCKPIT_EVENT_FD}<>"$fifo"
+  COCKPIT_EVENT_FIFO=$fifo
+  COCKPIT_INOTIFY_PIDS=()
+  COCKPIT_WAKE=0
+  trap 'printf "WAKE\n" >&$COCKPIT_EVENT_FD' USR1
+  printf '%s\n' "${BASHPID:-$$}" >"$dir/${name}.pid"
+}
+
+cockpit_event_watch() {
+  local path=$1
+  shift
+  [[ -e "$path" ]] || return 0
+  command -v inotifywait >/dev/null 2>&1 || return 0
+  inotifywait -m -q "$@" --format '%w%f' "$path" >&"$COCKPIT_EVENT_FD" 2>/dev/null &
+  COCKPIT_INOTIFY_PIDS+=($!)
+}
+
+cockpit_event_read() {
+  IFS= read -r COCKPIT_EVENT <&"$COCKPIT_EVENT_FD"
+}
+
+cockpit_event_drain() {
+  local extra
+  while IFS= read -r -t 0.02 -u "$COCKPIT_EVENT_FD" extra; do
+    if [[ "$extra" == "WAKE" ]]; then
+      COCKPIT_WAKE=1
+      continue
+    fi
+    [[ -n "$extra" ]] && printf '%s\n' "$extra"
+  done || true
+}
+
+cockpit_event_close() {
+  local pid
+  for pid in "${COCKPIT_INOTIFY_PIDS[@]+"${COCKPIT_INOTIFY_PIDS[@]}"}"; do
+    kill "$pid" 2>/dev/null || true
+  done
+  exec {COCKPIT_EVENT_FD}>&- 2>/dev/null || true
+  [[ -n "${COCKPIT_EVENT_FIFO:-}" ]] && rm -f "$COCKPIT_EVENT_FIFO"
+}
+
+cockpit_hush_session() {
+  local session=${1:-} w
+  [[ -n "$session" ]] || return 0
+  tmux set-option -t "$session" bell-action none 2>/dev/null || true
+  tmux set-option -t "$session" visual-bell off 2>/dev/null || true
+  tmux set-option -t "$session" activity-action none 2>/dev/null || true
+  tmux set-option -t "$session" silence-action none 2>/dev/null || true
+  tmux set-option -t "$session" allow-passthrough off 2>/dev/null || true
+  tmux set-option -t "$session" set-titles off 2>/dev/null || true
+  tmux set-option -t "$session" allow-rename off 2>/dev/null || true
+  tmux set-hook -t "$session" alert-bell '' 2>/dev/null || true
+  while IFS= read -r w; do
+    [[ -n "$w" ]] || continue
+    tmux set-option -w -t "$w" monitor-bell off 2>/dev/null || true
+    tmux set-option -w -t "$w" monitor-activity off 2>/dev/null || true
+    tmux set-option -w -t "$w" monitor-silence 0 2>/dev/null || true
+    tmux set-option -w -t "$w" allow-rename off 2>/dev/null || true
+  done < <(tmux list-windows -t "$session" -F '#{window_id}' 2>/dev/null || true)
+}
+
+cockpit_coalesce() {
+  local extra
+  while IFS= read -r -t "$COCKPIT_DEBOUNCE" extra; do
+    :
+  done || true
+  return 0
+}
+
+cockpit_state_file() {
+  printf '%s/state\n' "$(cockpit_config_home)"
+}
+
+cockpit_state_write() {
+  local session=${1:-} modality=${2:-} endpoint=${3:-}
+  local dir
+  dir="$(dirname -- "$(cockpit_state_file)")"
+  mkdir -p "$dir"
+  printf 'session=%s\nmodality=%s\nendpoint=%s\n' "$session" "$modality" "$endpoint" \
+    >"$(cockpit_state_file).tmp"
+  mv "$(cockpit_state_file).tmp" "$(cockpit_state_file)"
+}
+
+cockpit_fingerprint_files() {
+  local root=$1
+  shift
+  if (($# == 0)); then
+    printf 'empty\n'
+    return 0
+  fi
+  stat -c '%n %Y %s' "$@" 2>/dev/null | sort
+}

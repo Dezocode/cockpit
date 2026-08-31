@@ -1,0 +1,385 @@
+# Provider registry. Sourced, not executed.
+
+cockpit_auth_lib_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]:-$0}")" && pwd)"
+if [[ -f "$cockpit_auth_lib_root/cockpit-lib" ]]; then
+  # Keep paths and session selection canonical even when this library is
+  # sourced directly by a helper that does not otherwise load the shared lib.
+  # shellcheck source=cockpit-lib
+  source "$cockpit_auth_lib_root/cockpit-lib"
+fi
+
+cockpit_auth_home="${COCKPIT_AUTH_HOME:-$(cockpit_config_home)}"
+cockpit_auth_file="${cockpit_auth_home}/providers.conf"
+cockpit_auth_dir="${cockpit_auth_home}/providers.d"
+
+cockpit_auth_ensure_config() {
+  mkdir -p "$cockpit_auth_home" "$cockpit_auth_dir"
+  if [[ ! -f "$cockpit_auth_file" ]]; then
+    local src="" cand
+    for cand in \
+      "$(cockpit_legacy_config_home)/providers.conf" \
+      "${COCKPIT_ROOT:-}/stage/auth/providers.conf" \
+      "$(cd -- "$(dirname -- "${BASH_SOURCE[0]:-$0}")/.." 2>/dev/null && pwd)/stage/auth/providers.conf"; do
+      [[ -n "$cand" && -f "$cand" && "$cand" != "$cockpit_auth_file" ]] || continue
+      src=$cand
+      break
+    done
+    if [[ -n "$src" ]]; then
+      cp "$src" "$cockpit_auth_file"
+    else
+      cat >"$cockpit_auth_file" <<'EOF'
+[github]
+label=GitHub
+kind=cli-oauth
+check=gh auth status -h github.com
+login=gh auth login -h github.com -p https -w
+on_ready=MISE_YES=1 ghui
+EOF
+    fi
+  fi
+}
+
+cockpit_auth_files() {
+  cockpit_auth_ensure_config
+  printf '%s\n' "$cockpit_auth_file"
+  shopt -s nullglob
+  local f
+  for f in "$cockpit_auth_dir"/*.conf; do
+    printf '%s\n' "$f"
+  done
+}
+
+cockpit_auth_kind() {
+  cockpit_auth_field "$1" kind || true
+}
+
+cockpit_auth_ids() {
+  local f id kind want=${1:-}
+  while IFS= read -r f; do
+    [[ -f "$f" ]] || continue
+    while IFS= read -r id; do
+      [[ -n "$id" ]] || continue
+      if [[ -n "$want" ]]; then
+        kind="$(cockpit_auth_kind "$id")"
+        [[ "$kind" == "$want" ]] || continue
+      fi
+      printf '%s\n' "$id"
+    done < <(awk '/^\[.+\]/{gsub(/[][]/,""); print}' "$f")
+  done < <(cockpit_auth_files)
+}
+
+cockpit_auth_field() {
+  local id=$1 field=$2 f section="" line key val
+  while IFS= read -r f; do
+    [[ -f "$f" ]] || continue
+    section=""
+    while IFS= read -r line || [[ -n "$line" ]]; do
+      case "$line" in
+        ''|\#*) continue ;;
+        \[*\])
+          section=${line#\[}
+          section=${section%\]}
+          ;;
+        *=*)
+          if [[ "$section" == "$id" ]]; then
+            key=${line%%=*}
+            val=${line#*=}
+            if [[ "$key" == "$field" ]]; then
+              printf '%s\n' "$val"
+              return 0
+            fi
+          fi
+          ;;
+      esac
+    done <"$f"
+  done < <(cockpit_auth_files)
+  return 1
+}
+
+cockpit_auth_run_probe() {
+  local command=$1 timeout_value
+  [[ -n "$command" ]] || return 1
+  timeout_value="${COCKPIT_AUTH_TIMEOUT:-1.5s}"
+  if command -v timeout >/dev/null 2>&1; then
+    timeout "$timeout_value" bash -lc "$command" >/dev/null 2>&1
+  else
+    bash -lc "$command" >/dev/null 2>&1
+  fi
+}
+
+# Grok has a login command but no `login status` subcommand. Its documented
+# local session is an OIDC record with an access key, refresh token, and
+# expiry. Validate that record instead of treating any non-empty auth.json as
+# a signed-in session.
+cockpit_auth_grok_cache_ready() {
+  local auth_file=${GROK_AUTH_FILE:-$HOME/.grok/auth.json}
+  local now expiry mode key_len refresh_len expires_at
+  [[ -s "$auth_file" ]] || return 1
+  now="$(date -u +%s 2>/dev/null || true)"
+  [[ "$now" =~ ^[0-9]+$ ]] || return 1
+
+  if command -v jq >/dev/null 2>&1; then
+    while IFS=$'\t' read -r mode key_len refresh_len expires_at; do
+      [[ "$mode" == oidc || "$mode" == oauth ]] || continue
+      [[ "$key_len" =~ ^[1-9][0-9]*$ ]] || continue
+      [[ "$refresh_len" =~ ^[1-9][0-9]*$ ]] || continue
+      [[ -n "$expires_at" ]] || continue
+      expiry="$(date -u -d "$expires_at" +%s 2>/dev/null || true)"
+      [[ "$expiry" =~ ^[0-9]+$ ]] || continue
+      # A short grace period avoids a false negative during token rollover;
+      # a stale cache still needs the native `grok login --oauth` flow.
+      if ((expiry > now - 300)); then
+        return 0
+      fi
+    done < <(
+      jq -r '
+        to_entries[]? |
+        (.value // {}) |
+        [(.auth_mode // ""), ((.key // "") | tostring | length),
+         ((.refresh_token // "") | tostring | length), (.expires_at // "")] |
+        @tsv
+      ' "$auth_file" 2>/dev/null || true
+    )
+    return 1
+  fi
+
+  # jq is preferred because it is already used by the Codex plugin CLI. Keep
+  # a standard-library fallback so the auth indicator remains useful on a
+  # minimal host without making Python part of the normal runtime path.
+  if command -v python3 >/dev/null 2>&1; then
+    python3 - "$auth_file" "$now" <<'PY'
+import datetime
+import json
+import sys
+
+try:
+    with open(sys.argv[1], encoding="utf-8") as stream:
+        data = json.load(stream)
+    now = int(sys.argv[2])
+except (OSError, ValueError, TypeError, json.JSONDecodeError):
+    raise SystemExit(1)
+
+for record in data.values() if isinstance(data, dict) else []:
+    if not isinstance(record, dict):
+        continue
+    if record.get("auth_mode") not in {"oidc", "oauth"}:
+        continue
+    if not isinstance(record.get("key"), str) or not record["key"]:
+        continue
+    if not isinstance(record.get("refresh_token"), str) or not record["refresh_token"]:
+        continue
+    expires_at = record.get("expires_at")
+    if not isinstance(expires_at, str) or not expires_at:
+        continue
+    try:
+        expiry = datetime.datetime.fromisoformat(expires_at.replace("Z", "+00:00")).timestamp()
+    except (TypeError, ValueError, OverflowError):
+        continue
+    if expiry > now - 300:
+        raise SystemExit(0)
+
+raise SystemExit(1)
+PY
+    return $?
+  fi
+  return 1
+}
+
+cockpit_auth_probe_configured() {
+  local id=$1 probe auth_check
+  probe="$(cockpit_auth_field "$id" probe 2>/dev/null || true)"
+  auth_check="$(cockpit_auth_field "$id" auth_check 2>/dev/null || true)"
+  [[ -n "$probe" || -n "$auth_check" || "$id" == codex || "$id" == grok ]]
+}
+
+cockpit_auth_probe() {
+  local id=$1 probe command
+  probe="$(cockpit_auth_field "$id" probe 2>/dev/null || true)"
+
+  # Preserve compatibility with existing local provider files that predate
+  # the explicit probe= field. These are provider-owned checks, so a stale
+  # file-exists auth_check cannot downgrade their accuracy.
+  if [[ "$id" == codex && -z "$probe" ]]; then
+    cockpit_auth_run_probe 'codex login status'
+    return $?
+  fi
+  if [[ "$id" == grok && -z "$probe" ]]; then
+    cockpit_auth_grok_cache_ready
+    return $?
+  fi
+
+  case "$probe" in
+    codex-login|codex-login-status)
+      cockpit_auth_run_probe 'codex login status'
+      return $?
+      ;;
+    grok-cache|grok-auth-cache)
+      cockpit_auth_grok_cache_ready
+      return $?
+      ;;
+  esac
+
+  command="$(cockpit_auth_field "$id" auth_check 2>/dev/null || true)"
+  [[ -z "$probe" && -z "$command" ]] && return 0
+  [[ -n "$command" ]] || command=$probe
+  cockpit_auth_run_probe "$command"
+}
+
+cockpit_auth_check() {
+  local id=$1 cmd
+  cmd="$(cockpit_auth_field "$id" check || true)"
+  [[ -n "$cmd" ]] || return 1
+  cockpit_auth_run_probe "$cmd"
+}
+
+# Local CLI session, not a second OAuth. Missing auth_check means "binary is
+# enough" unless the provider has a built-in probe above.
+cockpit_auth_signed_in() {
+  local id=$1
+  cockpit_auth_check "$id" || return 1
+  cockpit_auth_probe "$id"
+}
+
+cockpit_auth_state() {
+  local id=$1
+  if ! cockpit_auth_check "$id"; then
+    printf '%s\n' 'cli-missing'
+    return 1
+  fi
+  if cockpit_auth_signed_in "$id"; then
+    printf '%s\n' 'ready'
+    return 0
+  fi
+  printf '%s\n' 'auth-needed'
+  return 2
+}
+
+# Termius iOS does not paint tmux overlay popups. Phone/touch uses a real
+# window; q / Esc / command exit / tapping a main tab returns to the caller.
+cockpit_popup_use_window() {
+  local modality endpoint w h
+  [[ -n "${TMUX:-}" ]] || return 1
+  modality="$(tmux show-options -v @cockpit_modality 2>/dev/null || true)"
+  endpoint="$(tmux show-options -v @cockpit_endpoint 2>/dev/null || true)"
+  [[ "$modality" == "touch" ]] && return 0
+  [[ "$endpoint" == "termius-ios" ]] && return 0
+  w="$(tmux display-message -p '#{client_width}' 2>/dev/null || echo 200)"
+  h="$(tmux display-message -p '#{client_height}' 2>/dev/null || echo 50)"
+  [[ "$w" =~ ^[0-9]+$ ]] || w=200
+  [[ "$h" =~ ^[0-9]+$ ]] || h=50
+  if ((w < 100 || h < 32)); then
+    return 0
+  fi
+  return 1
+}
+
+cockpit_popup_slug() {
+  local s
+  s="$(printf '%s' "$1" | tr '[:lower:]' '[:upper:]' | tr -cd 'A-Z0-9' | cut -c1-12)"
+  [[ -n "$s" ]] || s=POP
+  printf '%s\n' "$s"
+}
+
+cockpit_popup_any() {
+  tmux list-windows -F '#{@cockpit_popup}' 2>/dev/null | grep -qx 1
+}
+
+cockpit_popup_home() {
+  local sess=${1:-} pane
+  pane="$(
+    tmux list-panes -s ${sess:+-t "$sess"} -F '#{window_id} #{@cockpit_role}' 2>/dev/null |
+      awk '$2 == "runtime" { print $1; exit }'
+  )"
+  if [[ -n "$pane" ]]; then
+    tmux select-window -t "$pane" 2>/dev/null || true
+    tmux select-pane -t "$pane" 2>/dev/null || true
+    return 0
+  fi
+  tmux select-window -t ${sess:+"$sess:"}AGENT 2>/dev/null || \
+    tmux select-window -t ${sess:+"$sess:"}CODEX 2>/dev/null || true
+}
+
+cockpit_popup_dismiss() {
+  local sess=${1:-} pop
+  cockpit_popup_home "$sess"
+  while IFS= read -r pop; do
+    [[ -n "$pop" ]] || continue
+    tmux kill-window -t "$pop" 2>/dev/null || true
+  done < <(tmux list-windows ${sess:+-t "$sess"} -F '#{window_id} #{@cockpit_popup}' 2>/dev/null | awk '$2 == 1 { print $1 }')
+}
+
+cockpit_popup_gc() {
+  local cur pop flag
+  [[ -n "${TMUX:-}" ]] || return 0
+  flag="$(tmux show-options -wv @cockpit_popup 2>/dev/null || true)"
+  if [[ "$flag" == "1" ]]; then
+    return 0
+  fi
+  if ! cockpit_popup_any; then
+    return 0
+  fi
+  # A tap meant to close the nested flow must not land on FILES/DIFF/MAP/PRS.
+  cockpit_popup_dismiss
+}
+
+cockpit_popup() {
+  local title=$1
+  shift
+  local inner=$*
+  [[ -n "${TMUX:-}" ]] || { bash -lc "$inner"; return $?; }
+  if ! cockpit_popup_use_window; then
+    tmux display-popup -E -w 88% -h 82% -T "$title" "$inner"
+    return $?
+  fi
+  local ret token slug sess
+  ret="$(tmux display-message -p '#{window_id}')"
+  sess="$(tmux display-message -p '#{session_name}')"
+  token="cockpit-pop-$$-$RANDOM"
+  slug="$(cockpit_popup_slug "$title")"
+  if ! tmux new-window -t "${sess}:" -n "$slug" \
+    "exec cockpit-popup run $(printf %q "$ret") $(printf %q "$token") $(printf %q "$title") $(printf %q "$inner")"; then
+    bash -lc "$inner"
+    return $?
+  fi
+  tmux wait-for "$token"
+}
+
+# If already signed in locally, do nothing. Otherwise nested login box (click-out).
+cockpit_auth_ensure() {
+  local id=$1 login
+  cockpit_auth_ensure_config
+  cockpit_auth_check "$id" || return 1
+  if cockpit_auth_signed_in "$id"; then
+    return 0
+  fi
+  login="$(cockpit_auth_login_cmd "$id" || true)"
+  [[ -n "$login" ]] || return 1
+  if [[ -n "${TMUX:-}" ]]; then
+    cockpit_popup "Auth · $(cockpit_auth_label "$id")" "cockpit-auth run $(printf %q "$id")"
+  else
+    bash -lc "$login" || true
+  fi
+  cockpit_auth_signed_in "$id"
+}
+
+cockpit_auth_login_cmd() {
+  local id=$1 command
+  command="$(cockpit_auth_field "$id" login 2>/dev/null || true)"
+  if [[ -n "$command" ]]; then
+    printf '%s\n' "$command"
+    return 0
+  fi
+  case "$id" in
+    codex) printf 'codex login\n' ;;
+    grok) printf 'grok login --oauth\n' ;;
+    *) return 1 ;;
+  esac
+}
+
+cockpit_auth_ready_cmd() {
+  cockpit_auth_field "$1" on_ready || true
+}
+
+cockpit_auth_label() {
+  cockpit_auth_field "$1" label || printf '%s\n' "$1"
+}

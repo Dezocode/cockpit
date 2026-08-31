@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# Standalone equivalent of the interactive `cpr` shell function.
+set -euo pipefail
+exec cockpit-plugin run cpr "$@"

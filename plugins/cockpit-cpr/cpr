@@ -1,0 +1,265 @@
+#!/usr/bin/env bash
+# Canonical live updater for Cockpit. Safe mode never respawns a pane.
+set -euo pipefail
+
+export PATH="$HOME/.local/bin:$PATH"
+
+script_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+for lib_candidate in \
+  "$script_root/../../bin/cockpit-lib" \
+  "$HOME/.local/bin/cockpit-lib"; do
+  if [[ -f "$lib_candidate" ]]; then
+    # shellcheck source=/dev/null
+    source "$lib_candidate"
+    break
+  fi
+done
+
+config_file="${COCKPIT_CPR_CONFIG:-$(cockpit_config_read_path cockpit.conf)}"
+session="$(cockpit_session_name)"
+mode=apply
+overlay_enabled=''
+hooks_enabled=''
+agent_validation_enabled=''
+refresh_bar=''
+adapt_layout=''
+refresh_derived=''
+ensure_bar=''
+require_agent_validation=''
+overlay_override=''
+hooks_override=''
+agent_validation_override=''
+ensure_bar_override=''
+refresh_derived_override=''
+
+usage() {
+  cat <<'EOF'
+Usage: cpr [OPTIONS]
+
+Apply the canonical Cockpit overlay to an existing live session without
+respawning its panes. The default is live apply; use --check to preview.
+
+Options:
+  --check, --dry-run     validate and show the plan without changing tmux
+  --apply                apply the plan (the default)
+  --session NAME         use a specific Cockpit session
+  --no-overlay            do not source the tmux overlay
+  --no-hooks              do not refresh Cockpit hooks
+  --no-agent-validation   do not run the provider-target validation hook
+  --ensure-bar            repair a missing toolbar (may create one pane)
+  --refresh-derived       explicitly respawn DIFF/MAP derived views
+  --config PATH           use a different [cpr] config file
+EOF
+}
+
+config_field() {
+  local wanted=$1 line section='' key value
+  [[ -f "$config_file" ]] || return 1
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    line="${line#"${line%%[![:space:]]*}"}"
+    line="${line%"${line##*[![:space:]]}"}"
+    case "$line" in
+      ''|'#'*|';'*) continue ;;
+      \[*\]) section=${line#\[}; section=${section%\]} ;;
+      *=*)
+        [[ "$section" == cpr ]] || continue
+        key=${line%%=*}; value=${line#*=}
+        [[ "$key" == "$wanted" ]] || continue
+        printf '%s\n' "${value#"${value%%[![:space:]]*}"}"
+        return 0
+        ;;
+    esac
+  done <"$config_file"
+  return 1
+}
+
+bool_value() {
+  case "${1,,}" in
+    1|yes|true|on|enabled) printf '1\n' ;;
+    *) printf '0\n' ;;
+  esac
+}
+
+load_config() {
+  overlay_enabled="$(bool_value "$(config_field overlay 2>/dev/null || printf 1)")"
+  hooks_enabled="$(bool_value "$(config_field hooks 2>/dev/null || printf 1)")"
+  agent_validation_enabled="$(bool_value "$(config_field agent_validation 2>/dev/null || printf 1)")"
+  refresh_bar="$(config_field refresh_bar 2>/dev/null || printf signal)"
+  adapt_layout="$(bool_value "$(config_field adapt_layout 2>/dev/null || printf 0)")"
+  refresh_derived="$(bool_value "$(config_field refresh_derived 2>/dev/null || printf 0)")"
+  ensure_bar="$(bool_value "$(config_field ensure_bar 2>/dev/null || printf 0)")"
+  require_agent_validation="$(bool_value "$(config_field require_agent_validation 2>/dev/null || printf 0)")"
+}
+
+while (($#)); do
+  case "$1" in
+    --check|--dry-run) mode=check ;;
+    --apply) mode=apply ;;
+    --session) session="${2:-}"; shift ;;
+    --config) config_file="${2:-}"; shift ;;
+    --no-overlay) overlay_override=0 ;;
+    --no-hooks) hooks_override=0 ;;
+    --no-agent-validation) agent_validation_override=0 ;;
+    --ensure-bar) ensure_bar_override=1 ;;
+    --refresh-derived) refresh_derived_override=1 ;;
+    -h|--help) usage; exit 0 ;;
+    *) printf 'Unknown cpr option: %s\n\n' "$1" >&2; usage >&2; exit 2 ;;
+  esac
+  shift
+done
+
+load_config
+# CLI switches are explicit overrides and must win over config defaults.
+[[ -n "$overlay_override" ]] && overlay_enabled=$overlay_override
+[[ -n "$hooks_override" ]] && hooks_enabled=$hooks_override
+[[ -n "$agent_validation_override" ]] && agent_validation_enabled=$agent_validation_override
+[[ -n "$ensure_bar_override" ]] && ensure_bar=$ensure_bar_override
+[[ -n "$refresh_derived_override" ]] && refresh_derived=$refresh_derived_override
+
+if [[ -z "$session" && -n "${TMUX:-}" ]]; then
+  session="$(tmux display-message -p '#{session_name}' 2>/dev/null || true)"
+fi
+session="${session:-$(cockpit_session_name)}"
+cockpit_session_is_managed "$session" || {
+  printf 'Refusing non-Cockpit session: %s\n' "$session" >&2
+  exit 2
+}
+
+if ! tmux has-session -t "$session" 2>/dev/null; then
+  printf 'No live Cockpit session: %s (no tmux server/session was created)\n' "$session"
+  exit 2
+fi
+
+overlay="$(cockpit_overlay_path)"
+if [[ "$overlay_enabled" == 1 && ! -f "$overlay" ]]; then
+  printf 'Overlay is missing: %s\n' "$overlay" >&2
+  exit 1
+fi
+
+validate_overlay() {
+  local socket="cockpit-cpr-$$-$RANDOM"
+  tmux -L "$socket" kill-server >/dev/null 2>&1 || true
+  if ! tmux -L "$socket" -f /dev/null new-session -d -s validation -n t 'sleep 3' >/dev/null 2>&1; then
+    tmux -L "$socket" kill-server >/dev/null 2>&1 || true
+    printf 'overlay_validation=unavailable\n'
+    return 0
+  fi
+  if tmux -L "$socket" source-file "$overlay" >/dev/null 2>&1; then
+    tmux -L "$socket" kill-server >/dev/null 2>&1 || true
+    printf 'overlay_validation=ok\n'
+    return 0
+  fi
+  tmux -L "$socket" kill-server >/dev/null 2>&1 || true
+  printf 'overlay_validation=failed\n'
+  return 1
+}
+
+overlay_validation=skipped
+overlay_hash=''
+if [[ "$overlay_enabled" == 1 ]]; then
+  overlay_validation=failed
+  if validate_overlay; then
+    overlay_validation=ok
+  else
+    printf 'Overlay validation failed; live session was not changed.\n' >&2
+    exit 1
+  fi
+  overlay_hash="$(sha256sum "$overlay" 2>/dev/null | awk '{print $1}' || true)"
+fi
+old_hash="$(tmux show-options -v -t "$session" @cockpit_overlay_hash 2>/dev/null || true)"
+overlay_action=skip
+if [[ "$overlay_enabled" == 1 ]]; then
+  if [[ -n "$overlay_hash" && "$overlay_hash" == "$old_hash" ]]; then
+    overlay_action=unchanged
+  else
+    overlay_action=source
+  fi
+else
+  overlay_action=disabled
+fi
+
+runtime="$(tmux list-panes -s -t "$session" -F '#{pane_id} #{@cockpit_role}' 2>/dev/null |
+  awk '$2 == "runtime" { print $1; exit }')"
+bar="$(tmux list-panes -s -t "$session" -F '#{pane_id} #{@cockpit_role}' 2>/dev/null |
+  awk '$2 == "bar" { print $1; exit }')"
+
+printf 'COCKPIT CPR\n'
+printf 'session=%s\n' "$session"
+printf 'overlay=%s\n' "$overlay"
+printf 'overlay_action=%s\n' "$overlay_action"
+printf 'overlay_validation=%s\n' "$overlay_validation"
+printf 'hooks=%s\n' "$([[ "$hooks_enabled" == 1 ]] && printf enabled || printf disabled)"
+printf 'agent_validation=%s\n' "$([[ "$agent_validation_enabled" == 1 ]] && printf enabled || printf disabled)"
+printf 'toolbar=%s\n' "$([[ -n "$bar" ]] && printf 'signal-refresh' || printf missing)"
+printf 'derived_views=%s\n' "$([[ "$refresh_derived" == 1 ]] && printf 'explicit-refresh' || printf preserved)"
+printf 'preserved=Agent,FILES,SETUP,DIFF,MAP\n'
+
+if [[ "$mode" == check ]]; then
+  printf 'mode=check\n'
+  exit 0
+fi
+
+if [[ "$overlay_action" == source ]]; then
+  if ! tmux source-file "$overlay" >/dev/null 2>&1; then
+    printf 'Could not source the validated overlay; live session was left running.\n' >&2
+    exit 1
+  fi
+  [[ -n "$overlay_hash" ]] && tmux set-option -t "$session" @cockpit_overlay_hash "$overlay_hash"
+fi
+
+# These options are the session's liveness guard. They do not create, kill,
+# respawn, or reorder panes.
+tmux set-option -s exit-empty off 2>/dev/null || true
+tmux set-option -t "$session" destroy-unattached off 2>/dev/null || true
+tmux set-option -t "$session" detach-on-destroy off 2>/dev/null || true
+if [[ -n "$runtime" ]]; then
+  tmux set-option -p -t "$runtime" remain-on-exit on 2>/dev/null || true
+fi
+
+if [[ "$hooks_enabled" == 1 ]] && command -v cockpit-hooks-install >/dev/null 2>&1; then
+  cockpit-hooks-install >/dev/null 2>&1 || true
+fi
+
+agent_status=skipped
+if [[ "$agent_validation_enabled" == 1 ]] && command -v cockpit-agent-hook >/dev/null 2>&1; then
+  if cockpit-agent-hook "$session" >/dev/null 2>&1; then
+    agent_status=valid
+  else
+    agent_status=warning
+  fi
+fi
+
+if [[ "$refresh_bar" == signal && -n "$bar" ]]; then
+  bar_pid="$(tmux display-message -p -t "$bar" '#{pane_pid}' 2>/dev/null || true)"
+  if [[ "$bar_pid" =~ ^[0-9]+$ ]]; then
+    kill -WINCH "$bar_pid" 2>/dev/null || true
+  fi
+elif [[ "$ensure_bar" == 1 ]] && command -v cockpit-ensure-bar >/dev/null 2>&1; then
+  cockpit-ensure-bar "$session" >/dev/null 2>&1 || true
+fi
+
+if [[ "$adapt_layout" == 1 ]] && command -v cockpit-adapt >/dev/null 2>&1; then
+  client="$(tmux list-clients -t "$session" -F '#{client_width} #{client_height} #{client_pid}' 2>/dev/null | head -1 || true)"
+  read -r width height client_pid <<<"$client"
+  cockpit-adapt attached "$session" "${width:-0}" "${height:-0}" "${client_pid:-}" >/dev/null 2>&1 || true
+fi
+
+if [[ "$refresh_derived" == 1 ]]; then
+  printf 'warning=--refresh-derived explicitly permits DIFF/MAP respawn\n'
+  command -v cockpit-reload-views >/dev/null 2>&1 &&
+    cockpit-reload-views "$session" >/dev/null 2>&1 || true
+fi
+
+printf 'mode=applied\n'
+printf 'agent_status=%s\n' "$agent_status"
+printf 'overlay_changed=%s\n' "$([[ "$overlay_action" == source ]] && printf 1 || printf 0)"
+printf 'pane_processes_respawned=0\n'
+if [[ "$refresh_derived" == 1 ]]; then
+  printf 'derived_processes_respawned=1\n'
+else
+  printf 'derived_processes_respawned=0\n'
+fi
+if [[ "$require_agent_validation" == 1 && "$agent_status" != valid ]]; then
+  printf 'required_agent_validation=failed\n'
+  exit 1
+fi

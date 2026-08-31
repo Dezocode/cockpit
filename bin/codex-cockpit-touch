@@ -1,53 +1,12 @@
 #!/usr/bin/env bash
+# Legacy compatibility entrypoint; canonical implementation is under the cockpit namespace.
 set -euo pipefail
-
-session="${1:-}"
-view="${2:-runtime}"
-
-if [[ -z "$session" ]]; then
-  exit 0
-fi
-if ! tmux has-session -t "$session" 2>/dev/null; then
-  exit 0
-fi
-
-role=$view
-case "$view" in
-  runtime|codex|agent|CODEX) role=runtime; window=CODEX ;;
-  files|FILES|nvim) role=files; window=FILES ;;
-  diff|DIFF) role=diff; window=DIFF ;;
-  map|mermaid|MAP|MERMAID) role=map; window=MAP ;;
-  prs|PRS|github) role=prs; window=PRS ;;
-  help|HELP)
-    export PATH="$HOME/.local/bin:$PATH"
-    exec codex-cockpit-popup HELP codex-cockpit-help
-    ;;
-  *) exit 0 ;;
+legacy_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+legacy_name="${BASH_SOURCE[0]##*/}"
+case "$legacy_name" in
+  codex-cockpit) canonical_name=cockpit-main ;;
+  codex-mermaid-watch) canonical_name=cockpit-mermaid-watch ;;
+  codex-cockpit-*) canonical_name="cockpit-${legacy_name#codex-cockpit-}" ;;
+  *) printf "unknown legacy entrypoint: %s\n" "$legacy_name" >&2; exit 2 ;;
 esac
-
-tmux set-option -t "$session" @cockpit_last "$view" >/dev/null 2>&1 || true
-
-if [[ "$role" == "prs" ]]; then
-  tmux select-window -t "$session:PRS" 2>/dev/null || \
-    tmux new-window -t "$session:" -n PRS -c "#{pane_current_path}" "exec codex-cockpit-prs"
-  exit 0
-fi
-
-pane="$(
-  tmux list-panes -s -t "$session" -F '#{pane_id} #{@cockpit_role}' 2>/dev/null |
-    awk -v r="$role" '$2 == r { print $1; exit }'
-)"
-
-if [[ -n "$pane" ]]; then
-  tmux select-window -t "$pane"
-  tmux select-pane -t "$pane"
-  pane_count="$(tmux display-message -p -t "$pane" '#{window_panes}')"
-  zoomed="$(tmux display-message -p -t "$pane" '#{window_zoomed_flag}')"
-  if [[ "${pane_count:-1}" -gt 1 && "$zoomed" != "1" ]]; then
-    tmux resize-pane -Z -t "$pane"
-  fi
-  codex-cockpit-wake "$session" "$window" || true
-  exit 0
-fi
-
-tmux select-window -t "$session:$window" 2>/dev/null || true
+exec "$legacy_root/$canonical_name" "$@"

@@ -1,0 +1,121 @@
+#!/usr/bin/env bash
+# Canonical Cockpit command. The legacy codex-cockpit-* entrypoints remain
+# installed only as compatibility names for existing hooks and user scripts.
+set -euo pipefail
+
+script_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=cockpit-lib
+source "$script_root/cockpit-lib"
+export PATH="$script_root:$HOME/.local/bin:$PATH"
+
+session="$(cockpit_session_name)"
+
+prepare_session() {
+  local migrated=0
+  if command -v tmux >/dev/null 2>&1 && cockpit_migrate_legacy_session "$session"; then
+    migrated=1
+  fi
+  if ((migrated)) && command -v "$script_root/cockpit-reload-views" >/dev/null 2>&1; then
+    "$script_root/cockpit-reload-views" "$session" >/dev/null 2>&1 || true
+  fi
+}
+
+case "${1:-}" in
+  ''|--workspace|workspace)
+    [[ $# -eq 0 ]] || shift
+    exec "$script_root/cockpit-main" "$@"
+    ;;
+  --help|-h|help)
+    if [[ $# -gt 1 ]]; then
+      shift
+      exec "$script_root/cockpit-help" "$@"
+    fi
+    cat <<'EOF'
+Usage: cockpit [COMMAND|PROJECT]
+
+Launch or attach the Cockpit workspace. The Codex CLI remains `codex`.
+
+Commands:
+  agent | runtime       focus the live Agent pane
+  config                sync Cockpit profile files
+  cpr | update          validate/apply the live Cockpit overlay
+  plugin [COMMAND]      manage Cockpit-native plugins
+  setup                 open the persistent setup flow
+  audit                 inspect provider and tmux health
+  profile [ARGS...]     inspect/apply provider project profiles
+  files|diff|map|prs    focus a workspace view
+  vimdiff               open the on-demand Vim diff view
+  restart               relaunch the active Agent in place
+EOF
+    ;;
+  config)
+    shift
+    exec "$script_root/cockpit-config" "$@"
+    ;;
+  agent|runtime)
+    exec "$script_root/cockpit-main" "$@"
+    ;;
+  cpr|update)
+    shift
+    prepare_session
+    exec "$script_root/cockpit-plugin" cpr "$@"
+    ;;
+  apply)
+    shift
+    exec "$script_root/cockpit-apply" "$@"
+    ;;
+  plugin|plugins)
+    shift
+    exec "$script_root/cockpit-plugin" "${1:-list}" "${@:2}"
+    ;;
+  setup)
+    shift
+    exec "$script_root/cockpit-setup" "$@"
+    ;;
+  audit|health)
+    shift
+    prepare_session
+    exec "$script_root/cockpit-audit" "${1:-$session}" "${@:2}"
+    ;;
+  profile)
+    shift
+    exec "$script_root/cockpit-agent-config" "$@"
+    ;;
+  profile-detect)
+    shift
+    exec "$script_root/cockpit-profile" "$@"
+    ;;
+  files|diff|map|mermaid|prs|help)
+    view="$1"
+    shift
+    [[ "$view" == mermaid ]] && view=map
+    prepare_session
+    exec "$script_root/cockpit-touch" "$session" "$view" "$@"
+    ;;
+  vimdiff)
+    shift
+    prepare_session
+    exec "$script_root/cockpit-vimdiff" "$session" "$@"
+    ;;
+  restart)
+    shift
+    prepare_session
+    exec "$script_root/cockpit-restart" "$session" "$@"
+    ;;
+  reload)
+    shift
+    prepare_session
+    exec "$script_root/cockpit-reload-views" "$session" "$@"
+    ;;
+  auth)
+    shift
+    exec "$script_root/cockpit-auth" "$@"
+    ;;
+  client)
+    shift
+    exec "$script_root/cockpit-client" "$@"
+    ;;
+  *)
+    exec "$script_root/cockpit-main" "$@"
+    ;;
+esac

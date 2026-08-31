@@ -1,0 +1,96 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+lib="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/cockpit-lib"
+# shellcheck source=cockpit-lib
+source "$lib"
+
+script_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+config_home="$(cockpit_config_home)"
+nvim_theme_init="${COCKPIT_NVIM_THEME_INIT:-$config_home/nvim/cockpit-diff.lua}"
+if [[ ! -f "$nvim_theme_init" ]]; then
+  nvim_theme_init="$script_root/../stage/nvim/lua/config/cockpit-diff.lua"
+fi
+files_layout_init="${COCKPIT_NVIM_FILES_LAYOUT_INIT:-$config_home/nvim/cockpit-files.lua}"
+if [[ ! -f "$files_layout_init" ]]; then
+  files_layout_init="$script_root/../stage/nvim/lua/config/cockpit-files.lua"
+fi
+
+root="${1:-$PWD}"
+root="$(cd -- "$root" && pwd -P)"
+session="$(tmux display-message -p '#{session_name}' 2>/dev/null || echo unknown)"
+listen="$(cockpit_runtime_home)/nvim.$$.sock"
+mkdir -p "$(cockpit_runtime_home)"
+last_path=""
+COCKPIT_DEBOUNCE=0.30
+
+cleanup() {
+  if [[ -n "${watcher_pid:-}" ]]; then
+    kill "$watcher_pid" 2>/dev/null || true
+  fi
+  rm -f "$listen"
+  rm -f "$(cockpit_wake_dir "$session")/FILES.pid"
+}
+trap 'cockpit_event_close; cleanup' EXIT
+
+printf '\033[2J\033[H'
+printf '%sFILES%s  idle\n\n' "$(cockpit_theme_heading)" "$(cockpit_theme_reset)"
+printf 'Neovim starts when you open this tab.\n'
+
+cockpit_event_open "$session" FILES
+if ! cockpit_view_visible; then
+  while cockpit_event_read; do
+    [[ "$COCKPIT_EVENT" == "WAKE" ]] && break
+    cockpit_view_visible && break
+  done
+fi
+
+open_in_nvim() {
+  local path=$1 lua_path
+  [[ -S "$listen" ]] || return 0
+  [[ -f "$path" ]] || return 0
+  lua_path=${path//\\/\\\\}
+  lua_path=${lua_path//\"/\\\"}
+  nvim --server "$listen" --remote-send \
+    "<Cmd>lua CodexCockpitOpen(\"${lua_path}\")<CR>" >/dev/null 2>&1 || true
+}
+
+follow_edits() {
+  [[ "$root" == "$HOME" ]] && return 0
+  cockpit_event_watch "$root" -r \
+    -e close_write,moved_to \
+    --exclude "$cockpit_noise_exclude"
+  while cockpit_event_read; do
+    if [[ "$COCKPIT_EVENT" == "WAKE" ]]; then
+      if [[ -n "$last_path" ]] && cockpit_view_visible; then
+        open_in_nvim "$last_path"
+      else
+        nvim --server "$listen" --remote-send "<Cmd>checktime<CR>" >/dev/null 2>&1 || true
+      fi
+      continue
+    fi
+    sleep "$COCKPIT_DEBOUNCE"
+    cockpit_event_drain >/dev/null
+    cockpit_is_noise_path "$COCKPIT_EVENT" && continue
+    cockpit_is_text_ext "$COCKPIT_EVENT" || continue
+    [[ -f "$COCKPIT_EVENT" ]] || continue
+    last_path=$COCKPIT_EVENT
+    if cockpit_view_visible; then
+      open_in_nvim "$last_path"
+    fi
+  done
+}
+
+follow_edits &
+watcher_pid=$!
+
+nvim_args=(--listen "$listen")
+if [[ -f "$nvim_theme_init" ]]; then
+  export COCKPIT_NVIM_THEME_INIT="$nvim_theme_init"
+  nvim_args+=(-c 'lua dofile(vim.env.COCKPIT_NVIM_THEME_INIT).setup()')
+fi
+if [[ -f "$files_layout_init" ]]; then
+  export COCKPIT_NVIM_FILES_LAYOUT_INIT="$files_layout_init"
+  nvim_args+=(-c 'lua dofile(vim.env.COCKPIT_NVIM_FILES_LAYOUT_INIT).setup()')
+fi
+exec nvim "${nvim_args[@]}" -c 'set errorbells visualbell belloff=all' .

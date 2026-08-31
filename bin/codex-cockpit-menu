@@ -1,18 +1,12 @@
 #!/usr/bin/env bash
+# Legacy compatibility entrypoint; canonical implementation is under the cockpit namespace.
 set -euo pipefail
-
-session="${1:-}"
-[[ -n "$session" ]] || exit 0
-
-tmux display-menu -T "Cockpit" -x M -y M \
-  "Runtime" r "run-shell 'codex-cockpit-touch \"$session\" runtime'" \
-  "Switch runtime" e "run-shell 'codex-cockpit-runtime popup \"$session\"'" \
-  "Files" f "run-shell 'codex-cockpit-touch \"$session\" files'" \
-  "Diff" d "run-shell 'codex-cockpit-touch \"$session\" diff'" \
-  "Map" m "run-shell 'codex-cockpit-touch \"$session\" map'" \
-  "PRs" p "run-shell 'codex-cockpit-touch \"$session\" prs'" \
-  "" \
-  "Auth GitHub" G "run-shell 'codex-cockpit-auth popup github'" \
-  "Auth…" A "run-shell 'codex-cockpit-auth popup'" \
-  "" \
-  "Help" h "run-shell 'codex-cockpit-touch \"$session\" help'"
+legacy_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+legacy_name="${BASH_SOURCE[0]##*/}"
+case "$legacy_name" in
+  codex-cockpit) canonical_name=cockpit-main ;;
+  codex-mermaid-watch) canonical_name=cockpit-mermaid-watch ;;
+  codex-cockpit-*) canonical_name="cockpit-${legacy_name#codex-cockpit-}" ;;
+  *) printf "unknown legacy entrypoint: %s\n" "$legacy_name" >&2; exit 2 ;;
+esac
+exec "$legacy_root/$canonical_name" "$@"

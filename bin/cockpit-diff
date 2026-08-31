@@ -1,0 +1,208 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+lib="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/cockpit-lib"
+# shellcheck source=cockpit-lib
+source "$lib"
+
+root="${1:-$PWD}"
+root="$(cd -- "$root" && pwd -P)"
+session="$(tmux display-message -p '#{session_name}' 2>/dev/null || echo unknown)"
+COCKPIT_DEBOUNCE=0.45
+
+export GIT_PAGER=cat PAGER=cat LESS=FRX GIT_OPTIONAL_LOCKS=1
+
+use_git=0
+git_root="$root"
+scope="."
+if git -C "$root" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  project_root="$(git -C "$root" rev-parse --show-toplevel 2>/dev/null || true)"
+  if [[ -n "$project_root" ]]; then
+    project_root="$(cd -- "$project_root" && pwd -P)"
+    if [[ "$project_root" != "$HOME" ]]; then
+      use_git=1
+      git_root="$project_root"
+      if [[ "$root" != "$git_root" ]]; then
+        scope="${root#"$git_root"/}"
+      fi
+    elif git -C "$root" rev-parse --verify HEAD >/dev/null 2>&1; then
+      use_git=1
+      git_root="$project_root"
+    fi
+  fi
+fi
+
+git_cmd=(git -C "$git_root" --no-pager -c core.pager=cat)
+
+recent=()
+
+tmux_fg() {
+  local key=$1 fallback=$2
+  printf '#[fg=%s]' "$(cockpit_theme_hex "$key" "$fallback")"
+}
+
+update_git_chrome() {
+  local status=${1:-} worktree branch state state_style label
+  if ((use_git == 1)); then
+    worktree="${git_root##*/}"
+    branch="$("${git_cmd[@]}" symbolic-ref --short -q HEAD 2>/dev/null ||
+      "${git_cmd[@]}" rev-parse --short HEAD 2>/dev/null || true)"
+    [[ -n "$branch" ]] || branch=detached
+    if [[ -n "$status" ]]; then
+      state='!'
+      state_style="$(tmux_fg diff_change "$(cockpit_theme_hex accent '#798186')")"
+    else
+      state='✓'
+      state_style="$(tmux_fg diff_add "$(cockpit_theme_hex green '#2b6e4f')")"
+    fi
+    label="$(tmux_fg accent '#798186')${worktree}$(tmux_fg muted '#4b4e55') ${branch} ${state_style}${state}#[default]"
+  else
+    worktree="${root##*/}"
+    label="$(tmux_fg muted '#4b4e55')${worktree} ?#[default]"
+  fi
+  tmux set-option -t "$session" @cockpit_worktree "$worktree"
+  tmux set-option -t "$session" @cockpit_git_label "$label"
+}
+
+refresh_git_chrome() {
+  local status=''
+  if ((use_git == 1)); then
+    status="$("${git_cmd[@]}" status --porcelain --untracked-files=normal -- "$scope" 2>/dev/null || true)"
+  fi
+  update_git_chrome "$status"
+}
+
+clear_screen() {
+  printf '\033[2J\033[H'
+}
+
+remember() {
+  local path=$1 i
+  [[ -n "$path" ]] || return 0
+  [[ "$path" == WAKE ]] && return 0
+  cockpit_is_noise_path "$path" && return 0
+  for i in "${recent[@]+"${recent[@]}"}"; do
+    [[ "$i" == "$path" ]] && return 0
+  done
+  recent=("$path" "${recent[@]+"${recent[@]}"}")
+  if ((${#recent[@]} > 16)); then
+    recent=("${recent[@]:0:16}")
+  fi
+}
+
+render() {
+  local status tracked_diff staged_diff untracked file patch count
+
+  clear_screen
+  printf '%sDIFF%s  %s\n' "$(cockpit_theme_heading)" "$(cockpit_theme_reset)" "$root"
+  printf '%sLive on tab-open and file events · Vim: prefix + V%s\n\n' \
+    "$(cockpit_theme_muted)" "$(cockpit_theme_reset)"
+
+  if ((use_git == 1)); then
+    status="$("${git_cmd[@]}" status --porcelain --untracked-files=normal -- "$scope" 2>/dev/null || true)"
+    update_git_chrome "$status"
+    if [[ -z "$status" ]]; then
+      printf 'Working tree clean.\n'
+      printf '\nWrites in this project show here.\n'
+      return 0
+    fi
+    printf '%sFILES%s  (working tree)\n' "$(cockpit_theme_style foreground '' 1)" "$(cockpit_theme_reset)"
+    printf '%s\n\n' "$(printf '%s\n' "$status" | sed -n '1,60p' | cockpit_diff_status_colorize)"
+    tracked_diff="$("${git_cmd[@]}" diff --no-ext-diff --no-color --unified=2 -- "$scope" 2>/dev/null || true)"
+    staged_diff="$("${git_cmd[@]}" diff --cached --no-ext-diff --no-color --unified=2 -- "$scope" 2>/dev/null || true)"
+    # Reuse status output instead of launching a second Git walk just to find
+    # untracked files. Git status is already required for the FILES section.
+    untracked="$(printf '%s\n' "$status" | sed -n 's/^?? //p')"
+    if [[ -n "$staged_diff" || -n "$tracked_diff" || -n "$untracked" ]]; then
+      printf '%sPATCH%s\n' "$(cockpit_theme_style foreground '' 1)" "$(cockpit_theme_reset)"
+      if [[ -n "$staged_diff" ]]; then
+        printf '%sSTAGED%s\n' "$(cockpit_theme_style accent '' 1)" "$(cockpit_theme_reset)"
+        printf '%s\n' "$staged_diff" | cockpit_diff_colorize
+      fi
+      if [[ -n "$tracked_diff" ]]; then
+        printf '%sWORKTREE%s\n' "$(cockpit_theme_style accent '' 1)" "$(cockpit_theme_reset)"
+        printf '%s\n' "$tracked_diff" | cockpit_diff_colorize
+      fi
+      # Git status includes untracked files, but git diff does not. Render
+      # those files against /dev/null so a newly initialized project gets the
+      # same full green additions as an ordinary patch.
+      count=0
+      while IFS= read -r file; do
+        [[ -n "$file" ]] || continue
+        if ((count == 0)); then
+          printf '%sUNTRACKED%s\n' "$(cockpit_theme_style accent '' 1)" "$(cockpit_theme_reset)"
+        fi
+        count=$((count + 1))
+        ((count > 20)) && break
+        patch="$("${git_cmd[@]}" diff --no-index --no-ext-diff --no-color --unified=2 /dev/null "$file" 2>/dev/null || true)"
+        [[ -n "$patch" ]] && printf '%s\n' "$patch" | cockpit_diff_colorize
+      done < <(printf '%s\n' "$untracked")
+    fi
+    return 0
+  fi
+
+  printf '%sNo Git root for this project. Recent writes:%s\n\n' "$(cockpit_theme_muted)" "$(cockpit_theme_reset)"
+  if ((${#recent[@]} == 0)); then
+    printf 'Waiting for the first edit.\n'
+    return 0
+  fi
+  count=0
+  for file in "${recent[@]}"; do
+    count=$((count + 1))
+    if ((count > 12)); then
+      break
+    fi
+    if [[ -f "$file" ]]; then
+      printf '%sM  %s%s\n' "$(cockpit_theme_add)" "${file#"$root"/}" "$(cockpit_theme_reset)"
+    else
+      printf '%sD  %s%s\n' "$(cockpit_theme_delete)" "${file#"$root"/}" "$(cockpit_theme_reset)"
+    fi
+  done
+}
+
+maybe_render() {
+  if cockpit_view_visible; then
+    render
+  else
+    # Keep the shared status-right metadata current without repainting a
+    # hidden pane. This runs only after an inotify event or tab-open wake.
+    refresh_git_chrome
+  fi
+}
+
+if [[ "$root" == "$HOME" ]]; then
+  printf 'Refusing to watch $HOME.\n'
+  while true; do sleep 3600; done
+fi
+
+cockpit_event_open "$session" DIFF
+trap 'cockpit_event_close; rm -f "$(cockpit_wake_dir "$session")/DIFF.pid"' EXIT
+
+if cockpit_view_visible; then
+  render
+else
+  refresh_git_chrome
+  printf '\033[2J\033[H'
+  printf '%sDIFF%s  idle\n\n' "$(cockpit_theme_heading)" "$(cockpit_theme_reset)"
+  printf 'Patch view refreshes when you open this tab.\n'
+fi
+
+cockpit_event_watch "$root" -r \
+  -e close_write,moved_to,create,delete,move \
+  --exclude "$cockpit_noise_exclude"
+
+while cockpit_event_read; do
+  if [[ "$COCKPIT_EVENT" == "WAKE" ]]; then
+    maybe_render
+    continue
+  fi
+  remember "$COCKPIT_EVENT"
+  sleep "$COCKPIT_DEBOUNCE"
+  while IFS= read -r extra; do
+    remember "$extra"
+  done < <(cockpit_event_drain)
+  if ((COCKPIT_WAKE == 1)); then
+    COCKPIT_WAKE=0
+  fi
+  maybe_render
+done

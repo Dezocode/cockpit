@@ -1,0 +1,131 @@
+#!/usr/bin/env bash
+# Keyboard-only desktop | touch chooser. After idle, the next key is desktop
+# and the next click/tap is touch. Prints: keyboard | touch
+set -euo pipefail
+
+idle_secs=${COCKPIT_GATE_IDLE:-8}
+choice=desktop
+hint="$(cockpit-profile $$ 2>/dev/null || echo foot)"
+if [[ "$hint" == "termius-ios" ]]; then
+  choice=touch
+fi
+cols=${COLUMNS:-$(tput cols 2>/dev/null || echo 80)}
+rows=${LINES:-$(tput lines 2>/dev/null || echo 24)}
+if ((cols < 100 || rows < 32)); then
+  choice=touch
+fi
+
+theme_lib="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/cockpit-lib"
+# shellcheck source=cockpit-lib
+source "$theme_lib"
+blue="$(cockpit_theme_style accent '' 0)"
+muted="$(cockpit_theme_muted)"
+bright="$(cockpit_theme_style foreground '' 1)"
+reset="$(cockpit_theme_reset)"
+hide=$'\033[?25l'
+show=$'\033[?25h'
+
+cleanup() {
+  printf '\033[?1000l\033[?1006l%s' "$show" >/dev/tty 2>/dev/null || true
+  stty sane </dev/tty 2>/dev/null || true
+}
+trap cleanup EXIT INT TERM
+
+draw() {
+  local idle_note=$1
+  printf '\033[2J\033[H' >/dev/tty
+  printf '%s\n' "${blue}COCKPIT${reset}" >/dev/tty
+  printf '%s\n\n' "${muted}keyboard only · d desktop · t touch · enter confirms${reset}" >/dev/tty
+  if [[ "$choice" == "desktop" ]]; then
+    printf '  %s[ desktop ]%s    touch\n' "$bright" "$reset" >/dev/tty
+  else
+    printf '    desktop     %s[ touch ]%s\n' "$bright" "$reset" >/dev/tty
+  fi
+  printf '\n%sdesktop%s  2x2 pad, Omarchy keys, no pointer needed\n' "$blue" "$reset" >/dev/tty
+  printf '%stouch%s     full-screen tabs, tap / long-press / F1-F6\n' "$blue" "$reset" >/dev/tty
+  printf '\n%sendpoint%s  %sx%s  %s\n' "$muted" "$reset" "${cols}x${rows}" "$hint" >/dev/tty
+  if [[ -n "$idle_note" ]]; then
+    printf '\n%s%s%s\n' "$muted" "$idle_note" "$reset" >/dev/tty
+  fi
+}
+
+read_byte() {
+  local t=$1
+  if [[ "$t" == "0" ]]; then
+    IFS= read -rsn1 -t 0.01 _b </dev/tty && { printf '%s' "$_b"; return 0; }
+    return 1
+  fi
+  IFS= read -rsn1 -t "$t" _b </dev/tty && { printf '%s' "$_b"; return 0; }
+  return 1
+}
+
+# After idle, mouse reporting is on so a tap is distinguishable from a key.
+enable_mouse() {
+  printf '\033[?1000h\033[?1006h' >/dev/tty
+}
+
+parse_idle_event() {
+  local b rest
+  b=$(read_byte 60) || return 1
+  if [[ "$b" == $'\033' ]]; then
+    rest=$(read_byte 0 || true)
+    if [[ "$rest" == "[" ]]; then
+      # CSI mouse (SGR): ESC [ < ... M/m   or  ESC [ M
+      local acc="" c
+      c=$(read_byte 0 || true)
+      if [[ "$c" == "<" || "$c" == "M" ]]; then
+        printf 'touch\n'
+        return 0
+      fi
+    fi
+    printf 'keyboard\n'
+    return 0
+  fi
+  printf 'keyboard\n'
+}
+
+stty -echo -icanon min 1 time 0 </dev/tty 2>/dev/null || true
+printf '%s' "$hide" >/dev/tty
+draw "idle ${idle_secs}s → first key = desktop, first tap = touch"
+
+# Keyboard-only until idle. Clicks are ignored here (no mouse reporting).
+key=""
+if key=$(read_byte "$idle_secs"); then
+  while true; do
+    case "$key" in
+      d|D|1) choice=desktop; break ;;
+      t|T|2) choice=touch; break ;;
+      "") break ;;
+      $'\n'|$'\r') break ;;
+      $'\033')
+        extra=$(read_byte 0 || true)
+        if [[ "$extra" == "[" ]]; then
+          extra=$(read_byte 0 || true)
+          case "$extra" in
+            D) choice=desktop ;;
+            C) choice=touch ;;
+          esac
+          draw "idle ${idle_secs}s → first key = desktop, first tap = touch"
+        fi
+        ;;
+    esac
+    key=$(read_byte 60) || break
+  done
+else
+  draw "idle · type a key for desktop, tap the window for touch"
+  enable_mouse
+  idle_choice=$(parse_idle_event || true)
+  if [[ "$idle_choice" == "touch" ]]; then
+    choice=touch
+  elif [[ "$idle_choice" == "keyboard" ]]; then
+    choice=desktop
+  fi
+fi
+
+cleanup
+trap - EXIT INT TERM
+if [[ "$choice" == "touch" ]]; then
+  printf 'touch\n'
+else
+  printf 'keyboard\n'
+fi

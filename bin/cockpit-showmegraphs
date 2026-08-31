@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# MAP's local Show Me adapter. The historical “Show Me” product is a chat/web
+# plugin, not a terminal executable. Keep this adapter dependency-light: it
+# hands Mermaid to an already-installed renderer and otherwise preserves the
+# raw source fallback.
+
+diagram="${1:-}"
+if [[ -z "$diagram" || ! -f "$diagram" ]]; then
+  printf 'Show Me graphs: Mermaid file not found: %s\n' "${diagram:-<none>}" >&2
+  exit 1
+fi
+
+if command -v mermaid-ascii >/dev/null 2>&1; then
+  exec mermaid-ascii -f "$diagram" -x 2 -y 1
+fi
+
+if command -v merman-cli >/dev/null 2>&1; then
+  exec merman-cli render "$diagram" --format unicode --output -
+fi
+
+cat -- "$diagram"
+printf '\n(ascii renderer optional: mermaid-ascii)\n'

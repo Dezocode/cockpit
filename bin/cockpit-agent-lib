@@ -1,0 +1,522 @@
+#!/usr/bin/env bash
+# Shared, provider-aware project instruction/profile helpers.
+#
+# This file is sourced by the validator, SETUP, and the tmux hook.  It never
+# writes a project file while being sourced.  Profile application is an
+# explicit operation in cockpit-agent-config and is protected by a caller
+# confirmation/--yes flag.
+
+if [[ "${COCKPIT_AGENT_LIB_LOADED:-0}" == 1 ]]; then
+  return 0 2>/dev/null || exit 0
+fi
+COCKPIT_AGENT_LIB_LOADED=1
+
+cockpit_agent_lib_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]:-$0}")" && pwd)"
+if ! declare -F cockpit_config_home >/dev/null 2>&1 && [[ -f "$cockpit_agent_lib_root/cockpit-lib" ]]; then
+  # shellcheck source=cockpit-lib
+  source "$cockpit_agent_lib_root/cockpit-lib"
+fi
+cockpit_agent_config_dir="${COCKPIT_AUTH_HOME:-${COCKPIT_CONFIG_HOME:-$(cockpit_config_home)}}"
+cockpit_agent_profile_file="${COCKPIT_PROFILE_FILE:-$cockpit_agent_config_dir/profile.conf}"
+cockpit_agent_skills_dir="${COCKPIT_SKILLS_DIR:-$cockpit_agent_config_dir/skills.d}"
+
+cockpit_agent_trim() {
+  local value=${1:-}
+  value="${value#"${value%%[![:space:]]*}"}"
+  value="${value%"${value##*[![:space:]]}"}"
+  printf '%s' "$value"
+}
+
+cockpit_agent_profile_field() {
+  local wanted=$1 file=${COCKPIT_PROFILE_FILE:-$cockpit_agent_profile_file}
+  local section='' line key value
+  [[ -f "$file" ]] || return 1
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    line="$(cockpit_agent_trim "$line")"
+    case "$line" in
+      ''|'#'*|';'*) continue ;;
+      \[*\])
+        section=${line#\[}
+        section=${section%\]}
+        ;;
+      *=*)
+        [[ "$section" == profile ]] || continue
+        key="$(cockpit_agent_trim "${line%%=*}")"
+        [[ "$key" == "$wanted" ]] || continue
+        value="$(cockpit_agent_trim "${line#*=}")"
+        printf '%s\n' "$value"
+        return 0
+        ;;
+    esac
+  done <"$file"
+  return 1
+}
+
+cockpit_agent_expand_path() {
+  local value=${1:-}
+  case "$value" in
+    '~') printf '%s\n' "$HOME" ;;
+    '~/'*) value="${value#'~/'}"; printf '%s/%s\n' "$HOME" "$value" ;;
+    /*) printf '%s\n' "$value" ;;
+    *) printf '%s\n' "$value" ;;
+  esac
+}
+
+cockpit_agent_profile_skills_dir() {
+  local configured
+  configured="$(cockpit_agent_profile_field skills_dir 2>/dev/null || true)"
+  if [[ -n "$configured" ]]; then
+    configured="$(cockpit_agent_expand_path "$configured")"
+    case "$configured" in
+      /*) printf '%s\n' "$configured" ;;
+      *) printf '%s/%s\n' "$cockpit_agent_config_dir" "$configured" ;;
+    esac
+  else
+    printf '%s\n' "$(cockpit_agent_expand_path "$cockpit_agent_skills_dir")"
+  fi
+}
+
+cockpit_agent_profile_enabled() {
+  local enabled
+  enabled="$(cockpit_agent_profile_field enabled 2>/dev/null || true)"
+  case "${enabled,,}" in
+    0|no|false|off|disabled) return 1 ;;
+    *) return 0 ;;
+  esac
+}
+
+cockpit_agent_skill_id() {
+  local path=${1:-} name
+  name=${path##*/}
+  name=${name%.md}
+  name=${name%.mdc}
+  printf '%s\n' "$name"
+}
+
+cockpit_agent_skill_allowed() {
+  local id=$1 spec list item
+  list="$(cockpit_agent_profile_field skills 2>/dev/null || true)"
+  [[ -n "$list" ]] || return 0
+  list="${list//|/,}"
+  list="${list//$'\n'/,}"
+  IFS=',' read -r -a _cockpit_agent_skill_specs <<<"$list"
+  for item in "${_cockpit_agent_skill_specs[@]}"; do
+    spec="$(cockpit_agent_trim "$item")"
+    [[ -n "$spec" ]] || continue
+    spec=${spec##*/}
+    spec=${spec%.md}
+    spec=${spec%.mdc}
+    [[ "$spec" == "$id" ]] && return 0
+  done
+  return 1
+}
+
+cockpit_agent_skill_files() {
+  local dir=${1:-$(cockpit_agent_profile_skills_dir)} path id
+  [[ -d "$dir" ]] || return 0
+  while IFS= read -r path; do
+    [[ -f "$path" && -r "$path" ]] || continue
+    id="$(cockpit_agent_skill_id "$path")"
+    cockpit_agent_skill_allowed "$id" || continue
+    printf '%s\n' "$path"
+  done < <(find "$dir" -maxdepth 1 -type f \( -name '*.md' -o -name '*.mdc' \) -print 2>/dev/null | sort)
+}
+
+cockpit_agent_skill_count() {
+  local dir=${1:-$(cockpit_agent_profile_skills_dir)}
+  cockpit_agent_skill_files "$dir" | awk 'NF {n++} END {print n+0}'
+}
+
+cockpit_agent_provider_family() {
+  local provider=${1:-generic}
+  case "${provider,,}" in
+    codex*) printf 'codex\n' ;;
+    grok|xai) printf 'grok\n' ;;
+    anthropic|claude*) printf 'anthropic\n' ;;
+    cursor|cursor-agent) printf 'cursor\n' ;;
+    *) printf 'generic\n' ;;
+  esac
+}
+
+cockpit_agent_default_paths() {
+  local family
+  family="$(cockpit_agent_provider_family "${1:-generic}")"
+  case "$family" in
+    codex)
+      printf '%s\n' '.codex/AGENTS.md' '.codex' '.agents/AGENTS.md' '.agent/AGENTS.md' '.agent' 'AGENTS.md' 'AGENT.md'
+      ;;
+    grok)
+      printf '%s\n' '.agent/AGENTS.md' '.agent' '.agents/AGENTS.md' 'AGENTS.md' 'AGENT.md' '.grok/AGENTS.md' '.codex/AGENTS.md' '.codex'
+      ;;
+    anthropic)
+      printf '%s\n' 'CLAUDE.md' '.claude/CLAUDE.md' '.agent/AGENTS.md' '.agent' '.agents/AGENTS.md' 'AGENTS.md' 'AGENT.md'
+      ;;
+    cursor)
+      printf '%s\n' '.cursor/rules/cockpit.md' '.cursor/rules' '.agent/AGENTS.md' '.agent' '.agents/AGENTS.md' 'AGENTS.md' 'AGENT.md'
+      ;;
+    *)
+      printf '%s\n' '.agent/AGENTS.md' '.agent' '.agents/AGENTS.md' 'AGENTS.md' 'AGENT.md' '.codex/AGENTS.md' '.codex'
+      ;;
+  esac
+}
+
+cockpit_agent_configured_paths() {
+  local provider=$1 raw key
+  for key in agent_file agent_files agent_paths; do
+    raw="$(cockpit_auth_field "$provider" "$key" 2>/dev/null || true)"
+    [[ -n "$raw" ]] || continue
+    raw="${raw//|/$'\n'}"
+    raw="${raw//,/$'\n'}"
+    while IFS= read -r path; do
+      path="$(cockpit_agent_trim "$path")"
+      [[ -n "$path" ]] && printf '%s\n' "$path"
+    done <<<"$raw"
+    return 0
+  done
+  cockpit_agent_default_paths "$provider"
+}
+
+cockpit_agent_paths_are_configured() {
+  local provider=$1 raw key
+  for key in agent_file agent_files agent_paths; do
+    raw="$(cockpit_auth_field "$provider" "$key" 2>/dev/null || true)"
+    [[ -n "$raw" ]] && return 0
+  done
+  return 1
+}
+
+cockpit_agent_root() {
+  local root=${1:-}
+  [[ -d "$root" ]] || return 1
+  (cd -- "$root" && pwd -P)
+}
+
+cockpit_agent_home_scope() {
+  local root=${1:-}
+  [[ "$(cockpit_agent_root "$root" 2>/dev/null || true)" == "$(cd -- "$HOME" && pwd -P)" ]]
+}
+
+cockpit_agent_safe_spec() {
+  local spec=${1:-}
+  [[ -n "$spec" && "$spec" != /* ]] || return 1
+  case "$spec" in
+    ..|../*|*/../*|*/..|.*/*/../*) return 1 ;;
+  esac
+}
+
+cockpit_agent_relpath() {
+  local root=$1 path=$2 root_abs path_abs
+  root_abs="$(cockpit_agent_root "$root")" || return 1
+  if [[ -e "$path" || -L "$path" ]]; then
+    path_abs="$(cd -- "$(dirname -- "$path")" && pwd -P)/$(basename -- "$path")"
+  else
+    path_abs="$root_abs/$path"
+  fi
+  case "$path_abs" in
+    "$root_abs"/*) printf '%s\n' "${path_abs#"$root_abs"/}" ;;
+    "$root_abs") printf '.\n' ;;
+    *) return 1 ;;
+  esac
+}
+
+cockpit_agent_candidate_for_spec() {
+  local root=$1 spec=$2 path child
+  cockpit_agent_safe_spec "$spec" || return 1
+  root="$(cockpit_agent_root "$root")" || return 1
+  path="$root/$spec"
+  if [[ -f "$path" ]]; then
+    cockpit_agent_relpath "$root" "$path"
+    return 0
+  fi
+  if [[ -d "$path" ]]; then
+    for child in AGENTS.md AGENT.md Agents.md agent.md instructions.md profile.md cockpit-profile.md; do
+      if [[ -f "$path/$child" ]]; then
+        cockpit_agent_relpath "$root" "$path/$child"
+        return 0
+      fi
+    done
+    # A directory marker is a valid place to create the provider's instruction
+    # file, but the caller still needs explicit confirmation before creation.
+    printf '%s\n' "$spec/AGENTS.md"
+    return 0
+  fi
+  # `path` is already rooted here and may not exist yet. Keep the proposed
+  # target relative to the project; passing it through relpath would prefix
+  # the root twice for a non-existent file.
+  printf '%s\n' "$spec"
+}
+
+cockpit_agent_is_home_hidden_target() {
+  local root=$1 rel=$2
+  cockpit_agent_home_scope "$root" || return 1
+  case "$rel" in
+    .codex|.codex/*|.agent|.agent/*|.agents|.agents/*|.grok|.grok/*|.claude|.claude/*|.cursor|.cursor/*)
+      return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+cockpit_agent_marker_list() {
+  local root=$1 path rel
+  for rel in .codex .agent .agents AGENTS.md AGENT.md .codex/AGENTS.md .agent/AGENTS.md .agents/AGENTS.md; do
+    path="$root/$rel"
+    [[ -e "$path" || -L "$path" ]] || continue
+    if cockpit_agent_is_home_hidden_target "$root" "$rel"; then
+      continue
+    fi
+    printf '%s\n' "$rel"
+  done
+}
+
+cockpit_agent_file_style() {
+  local path=${1:-} name ext first
+  name=${path##*/}
+  ext=${name##*.}
+  case "${ext,,}" in
+    json|jsonc) printf 'unsupported\n' ; return 0 ;;
+    toml|ini|cfg|conf|yaml|yml) printf 'hash\n' ; return 0 ;;
+  esac
+  if [[ -f "$path" ]]; then
+    first="$(sed -n 's/^[[:space:]]*//p' "$path" 2>/dev/null | sed -n '1p')"
+    case "$first" in
+      \{*|\[* ) printf 'unsupported\n' ; return 0 ;;
+    esac
+  fi
+  printf 'markdown\n'
+}
+
+cockpit_agent_managed_present() {
+  local path=$1
+  [[ -f "$path" ]] && grep -Fq 'cockpit-profile:begin' "$path" 2>/dev/null
+}
+
+cockpit_agent_skill_present() {
+  local path=$1 id=$2
+  [[ -f "$path" ]] && grep -Fq "cockpit-profile:skill:$id" "$path" 2>/dev/null
+}
+
+cockpit_agent_inspect() {
+  local root=$1 provider=$2 spec candidate rel proposed='' path markers
+  local target_existing=0 target_state=missing explicit=0
+  local target_real profile_count skill_path skill_id missing_skills=''
+
+  COCKPIT_AGENT_PROJECT="$(cockpit_agent_root "$root" 2>/dev/null || true)"
+  COCKPIT_AGENT_PROVIDER="$provider"
+  COCKPIT_AGENT_PROVIDER_FAMILY="$(cockpit_agent_provider_family "$provider")"
+  COCKPIT_AGENT_TARGET=''
+  COCKPIT_AGENT_TARGET_REL=''
+  COCKPIT_AGENT_TARGET_STATE=missing
+  COCKPIT_AGENT_TARGET_EXISTING=0
+  COCKPIT_AGENT_TARGET_EXPLICIT=0
+  COCKPIT_AGENT_MARKERS=''
+  COCKPIT_AGENT_MANAGED=0
+  COCKPIT_AGENT_PROFILE_ENABLED=0
+  COCKPIT_AGENT_SKILL_COUNT=0
+  COCKPIT_AGENT_MISSING_SKILLS=''
+  COCKPIT_AGENT_ERROR=''
+
+  [[ -n "$COCKPIT_AGENT_PROJECT" ]] || {
+    COCKPIT_AGENT_ERROR='project directory is missing'
+    return 1
+  }
+  markers="$(cockpit_agent_marker_list "$COCKPIT_AGENT_PROJECT" | paste -sd, - 2>/dev/null || true)"
+  COCKPIT_AGENT_MARKERS="$markers"
+  if cockpit_agent_home_scope "$COCKPIT_AGENT_PROJECT" &&
+    [[ "${COCKPIT_ALLOW_HOME_AGENT_TARGET:-0}" != 1 ]]; then
+    COCKPIT_AGENT_TARGET_STATE=home-scope
+    COCKPIT_AGENT_ERROR='HOME is not an eligible project instruction target'
+  fi
+
+  if cockpit_agent_paths_are_configured "$provider"; then
+    explicit=1
+  fi
+  while IFS= read -r spec; do
+    [[ -n "$spec" ]] || continue
+    candidate="$(cockpit_agent_candidate_for_spec "$COCKPIT_AGENT_PROJECT" "$spec" 2>/dev/null || true)"
+    [[ -n "$candidate" ]] || continue
+    if [[ -z "$proposed" ]]; then proposed="$candidate"; fi
+    path="$COCKPIT_AGENT_PROJECT/$candidate"
+    if [[ -f "$path" ]]; then
+      target_existing=1
+      rel="$candidate"
+      COCKPIT_AGENT_TARGET="$path"
+      COCKPIT_AGENT_TARGET_REL="$rel"
+      break
+    fi
+  done < <(cockpit_agent_configured_paths "$provider")
+  if [[ -z "$COCKPIT_AGENT_TARGET" && -n "$proposed" ]]; then
+    COCKPIT_AGENT_TARGET="$COCKPIT_AGENT_PROJECT/$proposed"
+    COCKPIT_AGENT_TARGET_REL="$proposed"
+  fi
+  # A home-level provider directory is deliberately detected but never
+  # selected as a project target unless the user opts in explicitly.
+  if [[ -n "$COCKPIT_AGENT_TARGET" ]] &&
+    cockpit_agent_is_home_hidden_target "$COCKPIT_AGENT_PROJECT" "$COCKPIT_AGENT_TARGET_REL" &&
+    [[ "${COCKPIT_ALLOW_HOME_AGENT_TARGET:-0}" != 1 ]]; then
+    COCKPIT_AGENT_TARGET_STATE=home-scope
+    COCKPIT_AGENT_ERROR='HOME provider state is not a project instruction file'
+  elif [[ -z "$COCKPIT_AGENT_TARGET" ]]; then
+    COCKPIT_AGENT_TARGET_STATE=missing
+    COCKPIT_AGENT_ERROR='no provider instruction target was detected'
+  elif [[ "$target_existing" != 1 ]]; then
+    COCKPIT_AGENT_TARGET_STATE=missing
+    COCKPIT_AGENT_ERROR='provider instruction target is not present'
+  else
+    target_real="$(readlink -f -- "$COCKPIT_AGENT_TARGET" 2>/dev/null || true)"
+    if [[ -z "$target_real" ]] || ! cockpit_agent_relpath "$COCKPIT_AGENT_PROJECT" "$target_real" >/dev/null 2>&1; then
+      COCKPIT_AGENT_TARGET_STATE=outside-project
+      COCKPIT_AGENT_ERROR='provider instruction target resolves outside the project'
+    elif [[ ! -r "$COCKPIT_AGENT_TARGET" ]]; then
+      COCKPIT_AGENT_TARGET_STATE=unreadable
+      COCKPIT_AGENT_ERROR='provider instruction target is not readable'
+    elif [[ "$(cockpit_agent_file_style "$COCKPIT_AGENT_TARGET")" == unsupported ]]; then
+      COCKPIT_AGENT_TARGET_STATE=unsupported
+      COCKPIT_AGENT_ERROR='provider instruction target is structured JSON and is not edited by Cockpit'
+    else
+      COCKPIT_AGENT_TARGET_STATE=valid
+    fi
+  fi
+  [[ "$explicit" == 1 ]] && COCKPIT_AGENT_TARGET_EXPLICIT=1
+  [[ "$target_existing" == 1 ]] && COCKPIT_AGENT_TARGET_EXISTING=1
+
+  if [[ "${COCKPIT_AGENT_TARGET_STATE}" == valid ||
+    "${COCKPIT_AGENT_TARGET_STATE}" == unsupported ]]; then
+    cockpit_agent_managed_present "$COCKPIT_AGENT_TARGET" && COCKPIT_AGENT_MANAGED=1
+  fi
+  if cockpit_agent_profile_enabled; then
+    COCKPIT_AGENT_PROFILE_ENABLED=1
+    profile_count=0
+    while IFS= read -r skill_path; do
+      [[ -n "$skill_path" ]] || continue
+      profile_count=$((profile_count + 1))
+      skill_id="$(cockpit_agent_skill_id "$skill_path")"
+      if [[ "${COCKPIT_AGENT_TARGET_STATE}" == valid ]] &&
+        ! cockpit_agent_skill_present "$COCKPIT_AGENT_TARGET" "$skill_id"; then
+        if [[ -n "$missing_skills" ]]; then missing_skills+=','; fi
+        missing_skills+="$skill_id"
+      fi
+    done < <(cockpit_agent_skill_files)
+    COCKPIT_AGENT_SKILL_COUNT=$profile_count
+    COCKPIT_AGENT_MISSING_SKILLS="$missing_skills"
+  fi
+  [[ "$COCKPIT_AGENT_TARGET_STATE" == valid ]]
+}
+
+cockpit_agent_target_state_label() {
+  case "${COCKPIT_AGENT_TARGET_STATE:-unknown}" in
+    valid) printf 'valid\n' ;;
+    missing) printf 'missing\n' ;;
+    home-scope) printf 'home-scope\n' ;;
+    outside-project) printf 'outside-project\n' ;;
+    unreadable) printf 'unreadable\n' ;;
+    unsupported) printf 'unsupported\n' ;;
+    *) printf '%s\n' "${COCKPIT_AGENT_TARGET_STATE:-unknown}" ;;
+  esac
+}
+
+cockpit_agent_render_block() {
+  local target=$1 style path id line
+  style="$(cockpit_agent_file_style "$target")"
+  [[ "$style" != unsupported ]] || return 1
+  if [[ "$style" == hash ]]; then
+    printf '\n# cockpit-profile:begin\n'
+    printf '# Managed by Cockpit profile; edit skills in %s.\n' "$(cockpit_agent_profile_skills_dir)"
+  else
+    printf '\n<!-- cockpit-profile:begin -->\n'
+    printf '<!-- Managed by Cockpit profile; edit skills in %s. -->\n' "$(cockpit_agent_profile_skills_dir)"
+  fi
+  while IFS= read -r path; do
+    [[ -n "$path" ]] || continue
+    id="$(cockpit_agent_skill_id "$path")"
+    if [[ "$style" == hash ]]; then
+      printf '# cockpit-profile:skill:%s\n' "$id"
+      while IFS= read -r line || [[ -n "$line" ]]; do
+        if [[ -n "$line" ]]; then printf '# %s\n' "$line"; else printf '#\n'; fi
+      done <"$path"
+      printf '# cockpit-profile:skill-end:%s\n' "$id"
+    else
+      printf '<!-- cockpit-profile:skill:%s -->\n' "$id"
+      sed 's/\r$//' "$path"
+      printf '<!-- cockpit-profile:skill-end:%s -->\n' "$id"
+    fi
+  done < <(cockpit_agent_skill_files)
+  if [[ "$style" == hash ]]; then
+    printf '# cockpit-profile:end\n'
+  else
+    printf '<!-- cockpit-profile:end -->\n'
+  fi
+}
+
+cockpit_agent_remove_managed_block() {
+  local source=$1 destination=$2 line skipping=0
+  awk '
+    index($0, "cockpit-profile:begin") { skipping=1; next }
+    skipping && index($0, "cockpit-profile:end") { skipping=0; next }
+    !skipping { print }
+  ' "$source" >"$destination"
+}
+
+cockpit_agent_apply_profile() {
+  local root=$1 provider=$2 allow_create=${3:-0} dry_run=${4:-1} backup=${5:-1}
+  local tmp backup_path target_dir style existing_size
+  COCKPIT_AGENT_APPLY_STATUS=0
+  COCKPIT_AGENT_APPLY_MESSAGE=''
+  COCKPIT_AGENT_BACKUP_PATH=''
+  cockpit_agent_inspect "$root" "$provider" || true
+  if [[ "${COCKPIT_AGENT_PROFILE_ENABLED:-0}" != 1 ]]; then
+    COCKPIT_AGENT_APPLY_MESSAGE='Cockpit profile is disabled.'
+    return 0
+  fi
+  if [[ "${COCKPIT_AGENT_SKILL_COUNT:-0}" == 0 ]]; then
+    COCKPIT_AGENT_APPLY_MESSAGE='No enabled profile skills were found.'
+    return 0
+  fi
+  if [[ -z "${COCKPIT_AGENT_PROJECT:-}" || -z "${COCKPIT_AGENT_TARGET:-}" ]]; then
+    COCKPIT_AGENT_APPLY_STATUS=1
+    COCKPIT_AGENT_APPLY_MESSAGE='No safe project instruction target is available.'
+    return 1
+  fi
+  if [[ "${COCKPIT_AGENT_TARGET_STATE}" == home-scope ||
+    "${COCKPIT_AGENT_TARGET_STATE}" == outside-project ||
+    "${COCKPIT_AGENT_TARGET_STATE}" == unsupported ||
+    "${COCKPIT_AGENT_TARGET_STATE}" == unreadable ]]; then
+    COCKPIT_AGENT_APPLY_STATUS=1
+    COCKPIT_AGENT_APPLY_MESSAGE="Cannot update ${COCKPIT_AGENT_TARGET_REL:-the selected target}: ${COCKPIT_AGENT_ERROR}"
+    return 1
+  fi
+  if [[ "${COCKPIT_AGENT_TARGET_EXISTING:-0}" != 1 && "$allow_create" != 1 ]]; then
+    COCKPIT_AGENT_APPLY_STATUS=1
+    COCKPIT_AGENT_APPLY_MESSAGE="Target ${COCKPIT_AGENT_TARGET_REL:-missing} does not exist; creation requires explicit confirmation."
+    return 1
+  fi
+  target_dir="$(dirname -- "$COCKPIT_AGENT_TARGET")"
+  if [[ "$dry_run" == 1 ]]; then
+    COCKPIT_AGENT_APPLY_MESSAGE="Would update ${COCKPIT_AGENT_TARGET_REL:-target} with ${COCKPIT_AGENT_SKILL_COUNT} profile skill(s)."
+    return 0
+  fi
+  mkdir -p -- "$target_dir"
+  tmp="$(mktemp "${COCKPIT_AGENT_TARGET}.cockpit.XXXXXX")"
+  if [[ -f "$COCKPIT_AGENT_TARGET" ]]; then
+    cockpit_agent_remove_managed_block "$COCKPIT_AGENT_TARGET" "$tmp"
+  else
+    : >"$tmp"
+  fi
+  cockpit_agent_render_block "$COCKPIT_AGENT_TARGET" >>"$tmp"
+  if [[ -f "$COCKPIT_AGENT_TARGET" ]] && cmp -s "$tmp" "$COCKPIT_AGENT_TARGET"; then
+    rm -f -- "$tmp"
+    COCKPIT_AGENT_APPLY_MESSAGE="${COCKPIT_AGENT_TARGET_REL} already contains the configured profile."
+    return 0
+  fi
+  if [[ -f "$COCKPIT_AGENT_TARGET" && "$backup" == 1 ]]; then
+    backup_path="${COCKPIT_AGENT_TARGET}.cockpit-backup.$(date -u +%Y%m%dT%H%M%SZ)"
+    cp -p -- "$COCKPIT_AGENT_TARGET" "$backup_path"
+    COCKPIT_AGENT_BACKUP_PATH="$backup_path"
+  fi
+  if [[ -f "$COCKPIT_AGENT_TARGET" ]]; then
+    existing_size="$(stat -c '%a' -- "$COCKPIT_AGENT_TARGET" 2>/dev/null || true)"
+    [[ -n "$existing_size" ]] && chmod "$existing_size" "$tmp" 2>/dev/null || true
+  fi
+  mv -f -- "$tmp" "$COCKPIT_AGENT_TARGET"
+  COCKPIT_AGENT_APPLY_MESSAGE="Updated ${COCKPIT_AGENT_TARGET_REL} with ${COCKPIT_AGENT_SKILL_COUNT} profile skill(s)."
+  return 0
+}

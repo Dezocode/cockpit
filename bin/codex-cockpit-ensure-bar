@@ -1,107 +1,12 @@
 #!/usr/bin/env bash
-# Put PRS / provider / MODEL / RESTART above the live Agent pane. Never
-# respawns the Agent. hide: park the bar so the composer stays on screen above
-# the keyboard.
+# Legacy compatibility entrypoint; canonical implementation is under the cockpit namespace.
 set -euo pipefail
-
-session="${1:-codex-cockpit}"
-action="${2:-show}"
-tmux has-session -t "$session" 2>/dev/null || exit 0
-export PATH="$HOME/.local/bin:$PATH"
-
-# Two rows on touch so Termius fat-finger taps actually hit the chips.
-BAR_H=1
-if [[ "$(tmux show-options -v -t "$session" @cockpit_profile 2>/dev/null || true)" == "termius-ios" ]]; then
-  BAR_H=2
-fi
-
-runtime="$(
-  tmux list-panes -s -t "$session" -F '#{pane_id} #{@cockpit_role}' 2>/dev/null |
-    awk '$2 == "runtime" { print $1; exit }'
-)"
-[[ -n "$runtime" ]] || exit 0
-tmux set-option -t "$session" @cockpit_runtime_pane "$runtime"
-
-bar="$(
-  tmux list-panes -s -t "$session" -F '#{pane_id} #{@cockpit_role}' 2>/dev/null |
-    awk '$2 == "bar" { print $1; exit }'
-)"
-
-window_of() {
-  tmux display-message -p -t "$1" '#{window_id}' 2>/dev/null || true
-}
-
-tag_bar() {
-  local pane=$1
-  tmux select-pane -t "$pane" -T BAR 2>/dev/null || true
-  tmux set-option -p -t "$pane" @cockpit_role bar
-  tmux set-option -t "$session" @cockpit_bar_pane "$pane"
-  tmux resize-pane -t "$pane" -y "$BAR_H" 2>/dev/null || true
-}
-
-hide_from_tabs() {
-  local pane=$1
-  tmux set-option -w -t "$pane" window-status-format '' 2>/dev/null || true
-  tmux set-option -w -t "$pane" window-status-current-format '' 2>/dev/null || true
-  tmux set-option -w -t "$pane" automatic-rename off 2>/dev/null || true
-  tmux set-option -w -t "$pane" allow-rename off 2>/dev/null || true
-  tmux set-option -w -t "$pane" monitor-bell off 2>/dev/null || true
-  tmux set-option -w -t "$pane" monitor-activity off 2>/dev/null || true
-}
-
-if [[ "$action" == "hide" ]]; then
-  if [[ -n "$bar" ]]; then
-    if [[ "$(window_of "$bar")" == "$(window_of "$runtime")" ]]; then
-      tmux break-pane -d -s "$bar" -n '.bar' 2>/dev/null || true
-      hide_from_tabs "$bar"
-    fi
-    tmux set-option -t "$session" @cockpit_bar_hidden 1
-    tmux select-pane -t "$runtime" 2>/dev/null || true
-  fi
-  exit 0
-fi
-
-if [[ -n "$bar" ]]; then
-  if [[ "$(window_of "$bar")" != "$(window_of "$runtime")" ]]; then
-    # Only restore when looking at the agent, so FILES/DIFF are not stolen.
-    rt_active="$(tmux display-message -p -t "$runtime" '#{window_active}' 2>/dev/null || echo 0)"
-    if [[ "$rt_active" == "1" ]]; then
-      tmux join-pane -v -b -l "$BAR_H" -s "$bar" -t "$runtime" 2>/dev/null || true
-      tmux select-pane -t "$runtime" 2>/dev/null || true
-    else
-      exit 0
-    fi
-  fi
-  tmux set-option -t "$session" @cockpit_bar_hidden 0
-  start="$(tmux display-message -p -t "$bar" '#{pane_start_command}' 2>/dev/null || true)"
-  dead="$(tmux display-message -p -t "$bar" '#{pane_dead}' 2>/dev/null || true)"
-  have="$(tmux display-message -p -t "$bar" '#{pane_height}' 2>/dev/null || echo 0)"
-  tag_bar "$bar"
-  if [[ "$dead" == "1" || "$start" != *codex-cockpit-bar* ]]; then
-    tmux respawn-pane -k -t "$bar" "exec codex-cockpit-bar ${session}" 2>/dev/null || true
-  elif [[ "$have" != "$BAR_H" ]]; then
-    pid="$(tmux display-message -p -t "$bar" '#{pane_pid}' 2>/dev/null || true)"
-    [[ -n "$pid" ]] && kill -WINCH "$pid" 2>/dev/null || true
-  fi
-  exit 0
-fi
-
-if [[ "$(tmux show-options -v -t "$session" @cockpit_bar_hidden 2>/dev/null || true)" == "1" ]]; then
-  exit 0
-fi
-
-tmux split-window -v -b -l "$BAR_H" -t "$runtime" "exec codex-cockpit-bar ${session}"
-sleep 0.15
-bar="$(
-  tmux list-panes -t "$runtime" -F '#{pane_id} #{@cockpit_role} #{pane_start_command}' |
-    awk '$2 == "bar" || $3 ~ /codex-cockpit-bar/ { print $1; exit }'
-)"
-if [[ -z "$bar" ]]; then
-  bar="$(
-    tmux list-panes -t "$runtime" -F '#{pane_id} #{pane_height} #{@cockpit_role}' |
-      awk '$3 != "runtime" { print $1; exit }'
-  )"
-fi
-[[ -n "$bar" ]] || exit 0
-tag_bar "$bar"
-tmux select-pane -t "$runtime"
+legacy_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+legacy_name="${BASH_SOURCE[0]##*/}"
+case "$legacy_name" in
+  codex-cockpit) canonical_name=cockpit-main ;;
+  codex-mermaid-watch) canonical_name=cockpit-mermaid-watch ;;
+  codex-cockpit-*) canonical_name="cockpit-${legacy_name#codex-cockpit-}" ;;
+  *) printf "unknown legacy entrypoint: %s\n" "$legacy_name" >&2; exit 2 ;;
+esac
+exec "$legacy_root/$canonical_name" "$@"

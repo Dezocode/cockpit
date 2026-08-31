@@ -1,48 +1,12 @@
 #!/usr/bin/env bash
-# After idle (desktop only): next key → remember keyboard; next click → touch.
-# The key/click is delivered FIRST. Modality runs in the background so Codex
-# never waits on a shell. Phone clients stay on the root table.
+# Legacy compatibility entrypoint; canonical implementation is under the cockpit namespace.
 set -euo pipefail
-
-ver=11
-if [[ "$(tmux show-options -gv @cockpit_probe_installed 2>/dev/null || true)" == "$ver" ]]; then
-  exit 0
-fi
-
-tmp="${XDG_RUNTIME_DIR:-/tmp}/cockpit-probe-$$.conf"
-{
-  printf 'bind-key -T cockpit-probe Any switch-client -T root\n'
-  printf 'unbind-key -a -T cockpit-probe\n'
-  emit() {
-    local key=$1
-    shift
-    printf 'bind-key -T cockpit-probe -n %s switch-client -T root \\; send-keys %s \\; run-shell -b '\''codex-cockpit-modality keyboard "#{client_session}" #{client_width} #{client_height}'\''\n' "$key" "$*"
-  }
-  for c in {a..z} {A..Z} {0..9}; do
-    emit "$c" "$c"
-  done
-  printf 'bind-key -T cockpit-probe -n Space switch-client -T root \\; send-keys -l " " \\; run-shell -b '\''codex-cockpit-modality keyboard "#{client_session}" #{client_width} #{client_height}'\''\n'
-  for k in Enter BSpace Tab Escape DC C-Space Left Right Up Down Home End PageUp PageDown; do
-    emit "$k" "$k"
-  done
-  n=1
-  while ((n <= 12)); do
-    emit "F$n" "F$n"
-    n=$((n + 1))
-  done
-  for c in {a..z}; do
-    emit "C-$c" "C-$c"
-  done
-  # The canonical probe preserves normal pane clicks, but sends toolbar taps
-  # through the same bounded bar dispatcher used by the root table.
-  printf 'bind-key -T cockpit-probe MouseDown1Pane switch-client -T root \\; run-shell -b '\''PATH="$HOME/.local/bin:$PATH" codex-cockpit-pointer pane "#{mouse_x}" "#{mouse_y}" "#{mouse_pane}" "#{session_name}" "#{mouse_window}"'\''\n'
-  printf 'bind-key -T cockpit-probe MouseDown1Status switch-client -T root \\; run-shell -b '\''PATH="$HOME/.local/bin:$PATH" codex-cockpit-pointer status "#{session_name}" "#{mouse_status_range}" "#{mouse_window}"'\''\n'
-  printf 'bind-key -T cockpit-probe MouseDown1StatusLeft switch-client -T root \\; run-shell -b '\''PATH="$HOME/.local/bin:$PATH" codex-cockpit-pointer status-left "#{session_name}"'\''\n'
-  printf 'bind-key -T cockpit-probe MouseDrag1Pane switch-client -T root\n'
-  printf 'bind-key -T cockpit-probe DoubleClick1Pane switch-client -T root \\; run-shell -b "codex-cockpit-agent '\''#{mouse_session}'\'' '\''#{mouse_window}'\'' '\''#{mouse_pane}'\''" \\; run-shell -b '\''codex-cockpit-modality touch "#{client_session}" #{client_width} #{client_height}'\''\n'
-  printf 'bind-key -T cockpit-probe MouseDown3Pane switch-client -T root \\; run-shell -b "codex-cockpit-menu '\''#{mouse_session}'\''" \\; run-shell -b '\''codex-cockpit-modality touch "#{client_session}" #{client_width} #{client_height}'\''\n'
-  printf 'set-option -g @cockpit_probe_installed %s\n' "$ver"
-} >"$tmp"
-
-tmux source-file "$tmp"
-rm -f "$tmp"
+legacy_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+legacy_name="${BASH_SOURCE[0]##*/}"
+case "$legacy_name" in
+  codex-cockpit) canonical_name=cockpit-main ;;
+  codex-mermaid-watch) canonical_name=cockpit-mermaid-watch ;;
+  codex-cockpit-*) canonical_name="cockpit-${legacy_name#codex-cockpit-}" ;;
+  *) printf "unknown legacy entrypoint: %s\n" "$legacy_name" >&2; exit 2 ;;
+esac
+exec "$legacy_root/$canonical_name" "$@"

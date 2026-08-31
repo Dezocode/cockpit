@@ -1,0 +1,330 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+script_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+shared_lib="$script_root/cockpit-lib"
+# shellcheck source=cockpit-lib
+source "$shared_lib"
+
+if [[ "${1:-}" == "config" ]]; then
+  shift
+  exec "$script_root/cockpit-config" "$@"
+fi
+
+# Escape hatch when tab/chip navigation is stuck. Does not need a project path.
+attach_client() {
+  local session=$1 self_dir client
+  self_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+  client="$self_dir/cockpit-client"
+  if [[ -x "$client" ]]; then
+    exec "$client" tmux attach-session -t "$session"
+  fi
+  if command -v cockpit-client >/dev/null 2>&1; then
+    exec cockpit-client tmux attach-session -t "$session"
+  fi
+  exec tmux attach-session -t "$session"
+}
+
+if [[ "${1:-}" == "agent" || "${1:-}" == "runtime" ]]; then
+  export PATH="$HOME/.local/bin:$PATH"
+  session="$(cockpit_session_name)"
+  tmux start-server 2>/dev/null || true
+  cockpit_migrate_legacy_session "$session" || true
+  if ! tmux has-session -t "$session" 2>/dev/null; then
+    printf 'cockpit agent: no session %s. Run `cockpit` from a project first.\n' "$session" >&2
+    exit 1
+  fi
+  tmux switch-client -t "$session" -T root 2>/dev/null || true
+  pane="$(
+    tmux list-panes -s -t "$session" -F '#{pane_id} #{@cockpit_role} #{pane_current_command}' 2>/dev/null |
+      awk '$2 == "runtime" { print $1; exit }'
+  )"
+  if [[ -z "$pane" ]]; then
+    pane="$(
+      tmux list-panes -s -t "$session" -F '#{pane_id} #{pane_current_command} #{window_name}' 2>/dev/null |
+        awk '$2 == "codex" || $2 == "grok" || $2 == "claude" || $2 == "cursor-agent" || $3 == "AGENT" || $3 == "CODEX" { print $1; exit }'
+    )"
+  fi
+  if [[ -z "$pane" ]]; then
+    tmux select-window -t "$session:AGENT" 2>/dev/null || tmux select-window -t "$session:CODEX" 2>/dev/null || true
+    pane="$(tmux display-message -p -t "$session:" '#{pane_id}' 2>/dev/null || true)"
+  fi
+  if [[ -n "$pane" ]]; then
+    zoomed="$(tmux display-message -p -t "$pane" '#{window_zoomed_flag}' 2>/dev/null || echo 0)"
+    if [[ "$zoomed" == "1" ]]; then
+      tmux resize-pane -Z -t "$pane" 2>/dev/null || true
+    fi
+    tmux select-window -t "$pane" 2>/dev/null || true
+    tmux select-pane -t "$pane" 2>/dev/null || true
+    tmux set-option -t "$session" @cockpit_runtime_pane "$pane" 2>/dev/null || true
+  fi
+  if [[ -n "${TMUX:-}" ]]; then
+    tmux switch-client -t "$session" 2>/dev/null || true
+    exit 0
+  fi
+  if [[ -t 1 ]]; then
+    attach_client "$session"
+  fi
+  printf 'cockpit agent: selected live Agent pane in %s\n' "$session"
+  exit 0
+fi
+
+root="${1:-$PWD}"
+diagram="${2:-}"
+explicit_root=$(( $# > 0 ? 1 : 0 ))
+
+if [[ ! -d "$root" ]]; then
+  printf 'cockpit: directory not found: %s\n' "$root" >&2
+  exit 1
+fi
+
+root="$(cd -- "$root" && pwd -P)"
+
+is_project_dir() {
+  local dir=$1
+  [[ -d "$dir/.git" || -f "$dir/README.md" || -f "$dir/package.json" ||
+    -f "$dir/go.mod" || -f "$dir/Cargo.toml" || -f "$dir/pyproject.toml" ||
+    -f "$dir/Makefile" ]]
+}
+
+# A freshly initialized home directory is technically a Git worktree, but it
+# is a disastrous cockpit root. Treat an empty home worktree as a container
+# for projects instead of as the project itself.
+usable_git_root() {
+  local dir=$1
+  if [[ "$dir" == "$HOME" ]] && ! git -C "$dir" rev-parse --verify HEAD >/dev/null 2>&1; then
+    return 1
+  fi
+  return 0
+}
+
+git_root="$(git -C "$root" rev-parse --show-toplevel 2>/dev/null || true)"
+if [[ -n "$git_root" ]] && usable_git_root "$git_root"; then
+  root="$(cd -- "$git_root" && pwd -P)"
+elif is_project_dir "$root"; then
+  :
+elif (( explicit_root == 0 )) && [[ -t 0 && -t 1 ]] && command -v fzf >/dev/null 2>&1; then
+  candidates="$(find "$HOME/Work" -mindepth 1 -maxdepth 2 -type d \
+    \( -name .git -o -name node_modules -o -name .cache \) -prune -o \
+    -type d -print 2>/dev/null | while IFS= read -r candidate; do
+      if is_project_dir "$candidate"; then
+        printf '%s\n' "$candidate"
+      fi
+    done | sort -u || true)"
+  if [[ -n "$candidates" ]]; then
+    selected="$(printf '%s\n' "$candidates" | fzf \
+      --height=55% --layout=reverse --border=rounded \
+      --prompt='project › ' \
+      --header='Choose a project  •  Enter open  •  Esc cancel' \
+      --preview='git -C {} status --short --branch 2>/dev/null | head -20 || find {} -maxdepth 1 -type f -printf "%f\\n" | head -20' \
+      --preview-window=right:45%:wrap || true)"
+    if [[ -z "$selected" ]]; then
+      exit 0
+    fi
+    root="$(cd -- "$selected" && pwd -P)"
+  else
+    printf 'cockpit: no projects found under %s\n' "$HOME/Work" >&2
+    exit 1
+  fi
+else
+  printf 'cockpit: %s is not a project directory\n' "$root" >&2
+  printf 'Run `cockpit` inside a project, or pass its path: cockpit /path/to/project\n' >&2
+  exit 1
+fi
+
+# Keep the FILES and DIFF tabs useful for project directories that have not
+# been initialized yet. This creates only the local .git metadata; set
+# COCKPIT_GIT_INIT=0 to preserve a deliberately non-Git project.
+if [[ "${COCKPIT_GIT_INIT:-1}" != "0" && ! -e "$root/.git" ]] &&
+  command -v git >/dev/null 2>&1; then
+  git -C "$root" init -q 2>/dev/null || true
+fi
+
+# One canonical runtime. Project path is the pane cwd, not extra sessions.
+session="$(cockpit_session_name)"
+
+reap_ghost_sessions() {
+  local name attached
+  while read -r name attached; do
+    [[ "$name" == "$session" ]] && continue
+    cockpit_session_is_managed "$name" || continue
+    if [[ "${attached:-0}" == "0" ]]; then
+      tmux kill-session -t "$name" 2>/dev/null || true
+    fi
+  done < <(tmux list-sessions -F '#{session_name} #{session_attached}' 2>/dev/null || true)
+}
+
+quote_sh() {
+  local value=$1
+  value=${value//\\/\\\\}
+  value=${value//\'/\'\\\'\'}
+  printf "'%s'" "$value"
+}
+
+root_q="$(quote_sh "$root")"
+mermaid_args="$root_q"
+if [[ -n "$diagram" ]]; then
+  mermaid_args+=" $(quote_sh "$diagram")"
+fi
+
+export PATH="$HOME/.local/bin:$PATH"
+
+if command -v tmux >/dev/null 2>&1; then
+  tmux start-server 2>/dev/null || true
+  migrated=0
+  if cockpit_migrate_legacy_session "$session"; then
+    migrated=1
+  fi
+  if ((migrated)) && command -v cockpit-reload-views >/dev/null 2>&1; then
+    cockpit-reload-views "$session" >/dev/null 2>&1 || true
+  fi
+  reap_ghost_sessions
+fi
+
+# GitHub: use local gh CLI status. Already signed in → no prompt.
+# Unsigned → one nested box (click-out skips). Does not touch Codex/Grok OAuth.
+
+# Already running: attach immediately. Do not show the gate (that race
+# dropped Termius onto a dying server with "[server exited]").
+if tmux has-session -t "$session" 2>/dev/null; then
+  if [[ -t 1 ]]; then
+    tmux set-option -t "$session" @cockpit_modality \
+      "${COCKPIT_MODALITY:-$(tmux show-options -v -t "$session" @cockpit_modality 2>/dev/null || echo touch)}" \
+      2>/dev/null || true
+    tmux switch-client -t "$session" -T root 2>/dev/null || true
+    cockpit-idle "$session" >/dev/null 2>&1 &
+    attach_client "$session"
+  fi
+  printf 'cockpit: session %s already running\n' "$session"
+  exit 0
+fi
+
+modality=${COCKPIT_MODALITY:-}
+if [[ -z "$modality" && -t 0 && -t 1 && -z "${COCKPIT_SKIP_GATE:-}" ]]; then
+  modality="$(cockpit-gate 2>/dev/null || true)"
+fi
+if [[ "$modality" != "keyboard" && "$modality" != "touch" ]]; then
+  if [[ "$(cockpit-profile $$ 2>/dev/null || true)" == "termius-ios" ]]; then
+    modality=touch
+  else
+    modality=keyboard
+  fi
+fi
+
+codex_bin="$(cockpit_resolve_codex_bin || true)"
+if [[ -z "$codex_bin" || ! -x "$codex_bin" ]]; then
+  printf 'cockpit: Codex CLI is not executable or not on PATH\n' >&2
+  exit 1
+fi
+
+if ! command -v nvim >/dev/null 2>&1; then
+  printf 'cockpit: nvim is not on PATH\n' >&2
+  exit 1
+fi
+
+if ! command -v tmux >/dev/null 2>&1; then
+  printf 'cockpit: tmux is not on PATH\n' >&2
+  exit 1
+fi
+
+overlay="$(cockpit_overlay_path)"
+if [[ ! -f "$overlay" ]]; then
+  overlay="$script_root/../stage/tmux/cockpit.conf"
+fi
+if [[ -f "$overlay" ]]; then
+  tmux source-file "$overlay" 2>/dev/null || true
+fi
+cockpit-hooks-install >/dev/null 2>&1 || true
+cockpit-probe-install >/dev/null 2>&1 || true
+
+authlib="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/cockpit-auth-lib"
+# shellcheck source=cockpit-auth-lib
+[[ -f "$authlib" ]] && source "$authlib"
+cockpit_auth_ensure_config 2>/dev/null || true
+if [[ -t 0 && -t 1 && -z "${COCKPIT_SKIP_GH_AUTH:-}" ]]; then
+  cockpit_auth_signed_in github 2>/dev/null || cockpit_auth_ensure github || true
+fi
+runtime_id=codex
+state_file="$(cockpit_config_read_path state)"
+if [[ -f "$state_file" ]]; then
+  runtime_id="$(awk -F= '/^runtime=/{print $2}' "$state_file" | tail -1)"
+fi
+[[ -n "$runtime_id" ]] || runtime_id=codex
+if [[ -n "${authlib:-}" ]] && ! cockpit_auth_check "$runtime_id" 2>/dev/null; then
+  runtime_id=codex
+fi
+runtime_cmd="$(cockpit_auth_field "$runtime_id" start 2>/dev/null || true)"
+if [[ -n "$runtime_cmd" ]]; then
+  runtime_cmd="$(cockpit_codex_runtime_command "$runtime_cmd" "$codex_bin")"
+else
+  runtime_cmd="$(cockpit_shell_quote "$codex_bin")"
+fi
+runtime_env="$(cockpit_runtime_color_setup)"
+
+profile="$(cockpit-profile $$ 2>/dev/null || echo foot)"
+
+tag() {
+  local target=$1 title=$2 role=$3
+  tmux select-pane -t "$target" -T "$title"
+  tmux set-option -p -t "$target" @cockpit_role "$role"
+}
+
+# One create path: windows, then adapt morphs pad vs tabs from modality + size.
+tmux new-session -d -s "$session" -n AGENT -c "$root" \
+  "$runtime_env cd -- $root_q && exec $runtime_cmd"
+tmux set-option -t "$session" @cockpit_worktree "${root##*/}"
+tmux set-option -t "$session" @cockpit_git_label "${root##*/}"
+tag "$session:AGENT" AGENT runtime
+tmux set-option -p -t "$session:AGENT" @cockpit_runtime_id "$runtime_id"
+tmux set-option -p -t "$session:AGENT" remain-on-exit on
+tmux set-option -t "$session" @cockpit_runtime_pane "$(tmux display-message -p -t "$session:AGENT" '#{pane_id}')"
+
+tmux new-window -d -t "$session:" -n FILES -c "$root" \
+  "cd -- $root_q && exec cockpit-files $root_q"
+tag "$session:FILES" FILES files
+
+tmux new-window -d -t "$session:" -n DIFF -c "$root" \
+  "cd -- $root_q && exec cockpit-diff $root_q"
+tag "$session:DIFF" DIFF diff
+
+tmux new-window -d -t "$session:" -n SETUP -c "$root" \
+  "cd -- $root_q && exec cockpit-setup"
+tag "$session:SETUP" SETUP setup
+
+tmux new-window -d -t "$session:" -n MAP -c "$root" \
+  "cd -- $root_q && exec cockpit-mermaid-watch $mermaid_args"
+tag "$session:MAP" MAP map
+
+tmux new-window -d -t "$session:" -n PRS -c "$root" "exec cockpit-prs"
+tag "$session:PRS" PRS prs
+
+tmux select-window -t "$session:1"
+tmux select-pane -t "$session:1.1"
+tmux set-option -t "$session" @cockpit 1
+tmux set-option -t "$session" @cockpit_modality "$modality"
+tmux set-option -t "$session" @cockpit_runtime "$runtime_id"
+tmux set-hook -t "$session" after-select-window \
+  'run-shell -b "cockpit-wake #{session_name} #{window_name}"; run-shell -b "cockpit-popup gc"; run-shell -b "cockpit-agent-hook \"#{session_name}\""'
+tmux set-hook -t "$session" after-new-window \
+  'set-option -w monitor-bell off ; set-option -w monitor-activity off ; set-option -w monitor-silence 0 ; run-shell -b "cockpit-agent-hook \"#{session_name}\""'
+
+tmux list-windows -t "$session" -F '#{window_id}' | while IFS= read -r wid; do
+  tmux set-option -w -t "$wid" automatic-rename off
+  tmux set-option -w -t "$wid" allow-rename off
+done
+
+if command -v omarchy-theme-set-tmux >/dev/null 2>&1; then
+  omarchy-theme-set-tmux >/dev/null 2>&1 || true
+fi
+
+cockpit-adapt attached "$session" "${COLUMNS:-0}" "${LINES:-0}" "$$" || true
+cockpit-ensure-bar "$session" >/dev/null 2>&1 || true
+cockpit-probe-install >/dev/null 2>&1 || true
+cockpit-agent-hook "$session" >/dev/null 2>&1 || true
+cockpit-idle "$session" >/dev/null 2>&1 &
+
+if [[ -t 1 ]]; then
+  attach_client "$session"
+fi
+
+printf 'cockpit: started session %s (%s, %s)\n' "$session" "$profile" "$modality"

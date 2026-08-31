@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+script_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=cockpit-lib
+source "$script_root/cockpit-lib"
+
+session="${1:-${COCKPIT_SESSION:-${TMUX_SESSION:-}}}"
+if [[ -z "$session" && -n "${TMUX:-}" ]]; then
+  session="$(tmux display-message -p '#{session_name}' 2>/dev/null || true)"
+fi
+session="${session:-$(cockpit_session_name)}"
+
+lib="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/cockpit-auth-lib"
+# shellcheck source=cockpit-auth-lib
+source "$lib"
+theme_lib="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/cockpit-lib"
+# shellcheck source=cockpit-lib
+source "$theme_lib"
+
+pane="$(tmux list-panes -s -t "$session" -F '#{pane_id} #{@cockpit_role}' 2>/dev/null |
+  awk '$2 == "runtime" { print $1; exit }')"
+[[ -n "$pane" ]] || exit 0
+
+runtime_id="$(tmux display-message -p -t "$pane" '#{@cockpit_runtime_id}' 2>/dev/null || true)"
+[[ -n "$runtime_id" ]] || runtime_id=codex
+root="$(tmux display-message -p -t "$pane" '#{pane_current_path}' 2>/dev/null || pwd)"
+start="$(cockpit_auth_field "$runtime_id" start 2>/dev/null || true)"
+[[ -n "$start" ]] || start=codex
+
+if [[ "$runtime_id" == codex* ]]; then
+  codex_bin="$(cockpit_resolve_codex_bin || true)"
+  [[ -n "$codex_bin" ]] && start="$(cockpit_codex_runtime_command "$start" "$codex_bin")"
+fi
+
+runtime_env="$(cockpit_runtime_color_setup)"
+tmux respawn-pane -k -t "$pane" -c "$root" "$runtime_env exec $start"
+tmux select-window -t "$pane" 2>/dev/null || true
+tmux select-pane -t "$pane" 2>/dev/null || true

@@ -1,0 +1,335 @@
+#!/usr/bin/env bash
+# Agent toolbar: PRS · provider · MODEL · RESTART as fixed hit zones.
+# Keyboard and first tap. Never wraps the live Agent PTY. Never forwards CSI.
+set -euo pipefail
+
+lib="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/cockpit-auth-lib"
+# shellcheck source=cockpit-auth-lib
+[[ -f "$lib" ]] && source "$lib"
+theme_lib="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/cockpit-lib"
+# shellcheck source=cockpit-lib
+[[ -f "$theme_lib" ]] && source "$theme_lib"
+
+reset=$'\033[0m'
+# Match the active Foot/Omarchy palette: muted idle chip vs accented current.
+# Same chips as the touch tab row: muted idle, black-on-blue current.
+idle="$(cockpit_theme_style muted '' 0)"
+on="$(cockpit_theme_style background accent 1)"
+
+session="${1:-}"
+if [[ "${1:-}" == "click" ]]; then
+  session="${4:-}"
+fi
+if [[ -z "$session" && -n "${TMUX:-}" ]]; then
+  session="$(tmux display-message -p '#{session_name}')"
+fi
+session="${session:-$(cockpit_session_name)}"
+
+rid() {
+  tmux show-options -v -t "$session" @cockpit_runtime 2>/dev/null || echo codex
+}
+
+label() {
+  local id=$1
+  if command -v cockpit_auth_label >/dev/null 2>&1; then
+    cockpit_auth_label "$id" 2>/dev/null || printf '%s\n' "$id"
+  else
+    printf '%s\n' "$id"
+  fi
+}
+
+pane_size() {
+  local p=${1:-${TMUX_PANE:-}}
+  cols=80
+  rows=6
+  if [[ -n "$p" ]]; then
+    cols="$(tmux display-message -p -t "$p" '#{pane_width}' 2>/dev/null || echo 80)"
+    rows="$(tmux display-message -p -t "$p" '#{pane_height}' 2>/dev/null || echo 6)"
+  fi
+  [[ "$cols" =~ ^[0-9]+$ ]] || cols=80
+  [[ "$rows" =~ ^[0-9]+$ ]] || rows=6
+  # The bar is a one-row tmux pane on mobile. Do not invent a minimum width:
+  # four minimum-width chips used to overflow narrow Termius panes and push
+  # the provider/model controls off the right edge.
+  if ((cols < 4)); then cols=4; fi
+  if ((rows < 1)); then rows=1; fi
+  return 0
+}
+
+chip_gap() {
+  local w=${1:-80}
+  if [[ "$(tmux show-options -v -t "$session" @cockpit_profile 2>/dev/null || true)" == "termius-ios" ]]; then
+    printf '0\n'
+    return 0
+  fi
+  if ((w < 40)); then
+    printf '0\n'
+  else
+    printf '1\n'
+  fi
+}
+
+center() {
+  local text=$1 width=$2
+  local n=${#text}
+  local left=0 right=0
+  if ((n >= width)); then
+    printf '%s' "${text:0:width}"
+    return 0
+  fi
+  left=$(( (width - n) / 2 ))
+  right=$(( width - n - left ))
+  printf '%*s%s%*s' "$left" "" "$text" "$right" ""
+  return 0
+}
+
+# One row of a status-style chip: solid bg, optional centered label.
+chip_row() {
+  local sty=$1 text=$2 width=$3 show=$4
+  printf '%s' "$sty"
+  if [[ "$show" == "1" ]]; then
+    center "$text" "$width"
+  else
+    printf '%*s' "$width" ""
+  fi
+  printf '%s' "$reset"
+}
+
+draw() {
+  local id name cols rows gap box_w label_row i show end
+  local l1 l2 l3 l4
+  pane_size "${TMUX_PANE:-}"
+  id="$(rid)"
+  name="$(label "$id")"
+  name=$(printf '%s' "$name" | tr '[:lower:]' '[:upper:]')
+  # The built-in provider is the live Agent page in Cockpit. Keep `codex` as
+  # its internal id and in the provider list, but avoid exposing that id in
+  # the page button the user taps.
+  [[ "$id" == "codex" ]] && name=AGENT
+  # Keep a little visual separation on desktop. Termius gets contiguous chips
+  # so a fat-finger tap cannot land in a one-column gutter.
+  gap="$(chip_gap "$cols")"
+  box_w=$(( (cols - gap * 3) / 4 ))
+  if ((box_w < 1)); then box_w=1; fi
+  label_row=$((rows / 2))
+  l1=PRS
+  l2=$name
+  l3=MODEL
+  l4=RESTART
+
+  printf '\033[2J\033[H'
+  for i in $(seq 0 $((rows - 1))); do
+    end=$'\n'
+    if ((i == rows - 1)); then end=; fi
+    show=0
+    if ((i == label_row)); then show=1; fi
+    chip_row "$idle" "$l1" "$box_w" "$show"
+    printf '%*s' "$gap" ""
+    chip_row "$on" "$l2" "$box_w" "$show"
+    printf '%*s' "$gap" ""
+    chip_row "$idle" "$l3" "$box_w" "$show"
+    printf '%*s' "$gap" ""
+    chip_row "$idle" "$l4" "$box_w" "$show"
+    printf '%s' "$end"
+  done
+}
+
+open_prs() {
+  local pane
+  pane="$(tmux list-panes -s -t "$session" -F '#{pane_id} #{@cockpit_role}' 2>/dev/null |
+    awk '$2 == "prs" { print $1; exit }')"
+  if [[ -n "$pane" ]]; then
+    # Select the already-running PR pane directly. This keeps the chip
+    # functional even if a mobile client has a reduced run-shell PATH.
+    tmux select-window -t "$pane" 2>/dev/null || true
+    tmux select-pane -t "$pane" 2>/dev/null || true
+  else
+    cockpit-touch "$session" prs 2>/dev/null || true
+  fi
+}
+
+open_runtime() {
+  # Keep provider switching in the persistent SETUP terminal. That gives
+  # Foot and touch clients the same flow and avoids a second popup surface.
+  cockpit-touch "$session" setup provider 2>/dev/null || true
+}
+
+open_model() {
+  cockpit-touch "$session" setup model 2>/dev/null || true
+}
+
+restart_runtime() {
+  cockpit-restart "$session" >/dev/null 2>&1 || true
+}
+
+which_btn() {
+  local x=${1:-0} w=${2:-80} gap usable box end
+  [[ "$x" =~ ^[0-9]+$ ]] || x=0
+  [[ "$w" =~ ^[0-9]+$ ]] || w=80
+  if ((w < 4)); then w=4; fi
+  gap="$(chip_gap "$w")"
+  usable=$((w - gap * 3))
+  box=$((usable / 4))
+  if ((box < 1)); then box=1; fi
+  end=$box
+  if ((x < end)); then
+    printf 'prs\n'
+  elif ((x < end + gap + box)); then
+    printf 'runtime\n'
+  elif ((x < end + (gap + box) * 2)); then
+    printf 'model\n'
+  else
+    printf 'restart\n'
+  fi
+}
+
+now_ms() {
+  local n
+  n="$(date +%s%3N 2>/dev/null || true)"
+  if [[ "$n" =~ ^[0-9]+$ ]]; then
+    printf '%s\n' "$n"
+  else
+    printf '%s000\n' "$(date +%s)"
+  fi
+}
+
+# Same stamp as cockpit-pointer so a tmux bind and a leaked SGR
+# sequence from Termius cannot fire the same chip twice.
+tap_debounce() {
+  local key=$1 dir now last last_key last_ms
+  dir="$(cockpit_runtime_home)"
+  mkdir -p "$dir"
+  now="$(now_ms)"
+  last="$(cat "$dir/pointer.stamp" 2>/dev/null || true)"
+  last_key="${last% *}"
+  last_ms="${last##* }"
+  if [[ -n "$last" && "$last_key" == "$key" && "$last_ms" =~ ^[0-9]+$ ]]; then
+    if ((now >= last_ms && now - last_ms < 240)); then
+      return 1
+    fi
+  fi
+  printf '%s %s\n' "$key" "$now" >"$dir/pointer.stamp"
+  return 0
+}
+
+# Termius over SSH often delivers mouse as CSI into this pane (escape-time
+# split, or tmux never bound the click). Coordinates are 1-based in-pane.
+handle_sgr() {
+  local seq="" ch btn x y w name
+  while IFS= read -rsn1 -t 0.25 ch; do
+    seq+="$ch"
+    case "$ch" in
+      M|m) break ;;
+    esac
+  done || true
+  btn="${seq%%;*}"
+  seq="${seq#*;}"
+  x="${seq%%;*}"
+  seq="${seq#*;}"
+  y="${seq%%[Mm]*}"
+  [[ "$x" =~ ^[0-9]+$ ]] || return 0
+  # Button 0 is left press/release. Ignore wheel, right-click, and drag.
+  [[ "$btn" == "0" ]] || return 0
+  pane_size "${TMUX_PANE:-}"
+  w=$cols
+  # SGR is 1-based.
+  x=$((x - 1))
+  if ((x < 0)); then x=0; fi
+  name="$(which_btn "$x" "$w")"
+  tap_debounce "bar $session $name" || return 0
+  run_btn "$name"
+  draw
+}
+
+run_btn() {
+  case "${1:-}" in
+    prs) open_prs ;;
+    runtime) open_runtime ;;
+    model) open_model ;;
+    restart) restart_runtime ;;
+  esac
+}
+
+if [[ "${1:-}" == "which" ]]; then
+  x=${2:-0}
+  pane=${3:-}
+  session="${4:-$session}"
+  w=80
+  if [[ -n "$pane" ]]; then
+    w="$(tmux display-message -p -t "$pane" '#{pane_width}' 2>/dev/null || echo 80)"
+  fi
+  which_btn "$x" "$w"
+  exit 0
+fi
+
+if [[ "${1:-}" == "click" ]]; then
+  x=${2:-0}
+  pane=${3:-}
+  session="${4:-$session}"
+  if [[ -z "$pane" ]]; then
+    exit 0
+  fi
+  role="$(tmux display-message -p -t "$pane" '#{@cockpit_role}' 2>/dev/null || true)"
+  if [[ "$role" != "bar" ]]; then
+    # Swallow the tap: select only. Never send CSI into FILES/DIFF/MAP/PRS.
+    tmux select-pane -t "$pane" 2>/dev/null || true
+    exit 0
+  fi
+  w="$(tmux display-message -p -t "$pane" '#{pane_width}' 2>/dev/null || echo 80)"
+  run_btn "$(which_btn "$x" "$w")"
+  pid="$(tmux display-message -p -t "$pane" '#{pane_pid}' 2>/dev/null || true)"
+  [[ -n "$pid" ]] && kill -WINCH "$pid" 2>/dev/null || true
+  exit 0
+fi
+
+printf '\033[?25l'
+trap 'printf "\033[?25h"' EXIT
+trap 'draw' WINCH
+draw
+while true; do
+  key=""
+  acc=""
+  IFS= read -rsn1 key || true
+  case "$key" in
+    a|A) run_btn prs; draw ;;
+    e|E|r) run_btn runtime; draw ;;
+    R) run_btn restart; draw ;;
+    m|M) run_btn model; draw ;;
+    '') draw ;;
+    $'\033')
+      # Termius mouse / leftover CSI. SSH can split the sequence; wait longer
+      # than the desktop escape-time so the rest of SGR still arrives here.
+      IFS= read -rsn1 -t 0.25 acc || true
+      if [[ "$acc" == "[" ]]; then
+        IFS= read -rsn1 -t 0.25 acc || true
+        if [[ "$acc" == "<" ]]; then
+          handle_sgr
+        else
+          while IFS= read -rsn1 -t 0.05 acc; do
+            case "$acc" in
+              M|m|~|[A-Z]) break ;;
+            esac
+          done || true
+          draw
+        fi
+      elif [[ "$acc" == "O" ]]; then
+        IFS= read -rsn1 -t 0.05 _ || true
+        draw
+      else
+        draw
+      fi
+      ;;
+    '[')
+      IFS= read -rsn1 -t 0.25 acc || true
+      if [[ "$acc" == "<" ]]; then
+        handle_sgr
+      else
+        draw
+      fi
+      ;;
+    '<')
+      handle_sgr
+      ;;
+    *) draw ;;
+  esac
+done

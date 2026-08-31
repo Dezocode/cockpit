@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+script_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=cockpit-lib
+source "$script_root/cockpit-lib"
+
+session="${1:-}"
+which="${2:-}"
+
+[[ -n "$session" ]] || session="$(cockpit_session_name)"
+cockpit_session_is_managed "$session" || exit 0
+[[ -n "$which" ]] || exit 0
+
+case "$which" in
+  DIFF|diff) name=DIFF ;;
+  FILES|files) name=FILES ;;
+  MAP|map|MERMAID|mermaid) name=MAP ;;
+  *) exit 0 ;;
+esac
+
+# A canonical session may still have watcher pidfiles under the legacy root
+# until those watchers naturally exit; wake both locations during migration.
+candidate_sessions=("$session")
+[[ "$session" == cockpit ]] && candidate_sessions+=(codex-cockpit)
+for candidate_session in "${candidate_sessions[@]}"; do
+  for runtime_home in "$(cockpit_runtime_home)" "$(cockpit_legacy_runtime_home)"; do
+    pidfile="$runtime_home/$candidate_session/${name}.pid"
+    [[ -f "$pidfile" ]] || continue
+    pid="$(cat "$pidfile" 2>/dev/null || true)"
+    [[ -n "$pid" && -d "/proc/$pid" ]] || continue
+    kill -USR1 "$pid" 2>/dev/null || true
+  done
+done

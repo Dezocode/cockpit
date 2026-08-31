@@ -1,21 +1,12 @@
 #!/usr/bin/env bash
+# Legacy compatibility entrypoint; canonical implementation is under the cockpit namespace.
 set -euo pipefail
-
-session="${1:-}"
-which="${2:-}"
-
-[[ -n "$session" && "$session" == codex-cockpit* ]] || exit 0
-[[ -n "$which" ]] || exit 0
-
-case "$which" in
-  DIFF|diff) name=DIFF ;;
-  FILES|files) name=FILES ;;
-  MAP|map|MERMAID|mermaid) name=MAP ;;
-  *) exit 0 ;;
+legacy_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+legacy_name="${BASH_SOURCE[0]##*/}"
+case "$legacy_name" in
+  codex-cockpit) canonical_name=cockpit-main ;;
+  codex-mermaid-watch) canonical_name=cockpit-mermaid-watch ;;
+  codex-cockpit-*) canonical_name="cockpit-${legacy_name#codex-cockpit-}" ;;
+  *) printf "unknown legacy entrypoint: %s\n" "$legacy_name" >&2; exit 2 ;;
 esac
-
-pidfile="${XDG_RUNTIME_DIR:-/tmp}/codex-cockpit/${session}/${name}.pid"
-[[ -f "$pidfile" ]] || exit 0
-pid="$(cat "$pidfile" 2>/dev/null || true)"
-[[ -n "$pid" && -d "/proc/$pid" ]] || exit 0
-kill -USR1 "$pid" 2>/dev/null || true
+exec "$legacy_root/$canonical_name" "$@"

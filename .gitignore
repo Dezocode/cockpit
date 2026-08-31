@@ -4,6 +4,9 @@
 .DS_Store
 state
 *.tmp
+nvim.log
+__pycache__/
+*.pyc
 gist.id
 .env
 .env.*
@@ -13,4 +16,5 @@ auth.json
 id_rsa
 id_ed25519
 providers.d/
-
+!stage/auth/providers.d/
+!stage/auth/providers.d/*.conf

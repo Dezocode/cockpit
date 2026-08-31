@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# PR pane launcher: same ghui, but -y so mise cannot hang the pane on a prompt.
+set -euo pipefail
+export MISE_YES=1
+mise use -g -y --quiet "npm:@kitlangton/ghui" || exit 1
+exec mise x "npm:@kitlangton/ghui" -- ghui "$@"

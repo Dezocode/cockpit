@@ -1,0 +1,176 @@
+#!/usr/bin/env bash
+# Detect and validate the project instruction file used by the stationed
+# provider. Profile application is dry-run by default; --yes is required for
+# a write and --create is additionally required for a missing target.
+set -euo pipefail
+
+export PATH="$HOME/.local/bin:$PATH"
+script_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=cockpit-auth-lib
+source "$script_root/cockpit-auth-lib"
+# shellcheck source=cockpit-agent-lib
+source "$script_root/cockpit-agent-lib"
+
+usage() {
+  cat <<'EOF'
+Usage:
+  cockpit profile detect [PROJECT] [PROVIDER]
+  cockpit profile validate [PROJECT] [PROVIDER]
+  cockpit profile
+  cockpit profile apply [--yes] [--create] [PROJECT] [PROVIDER]
+
+Options:
+  --session SESSION  derive PROJECT and PROVIDER from the live Agent pane
+  --project PATH     project root to inspect
+  --provider ID      provider id to inspect
+  --dry-run          preview profile application (the default)
+  --yes              permit the atomic profile-file update
+  --create           permit creation of a missing provider target with --yes
+EOF
+}
+
+session=""
+project=""
+provider=""
+operation=detect
+yes=0
+create=0
+
+while (($#)); do
+  case "$1" in
+    detect|validate|profile|apply) operation=$1 ;;
+    --session)
+      session="${2:-}"
+      shift
+      ;;
+    --project)
+      project="${2:-}"
+      shift
+      ;;
+    --provider)
+      provider="${2:-}"
+      shift
+      ;;
+    --yes|--apply) yes=1 ;;
+    --create) create=1 ;;
+    --dry-run) yes=0 ;;
+    -h|--help) usage; exit 0 ;;
+    --) shift; break ;;
+    -*) printf 'Unknown option: %s\n\n' "$1" >&2; usage >&2; exit 2 ;;
+    *)
+      if [[ -z "$project" && "$operation" != profile ]]; then
+        project=$1
+      elif [[ -z "$provider" && "$operation" != profile ]]; then
+        provider=$1
+      else
+        printf 'Unexpected argument: %s\n' "$1" >&2
+        usage >&2
+        exit 2
+      fi
+      ;;
+  esac
+  shift
+done
+
+if [[ -n "$session" ]]; then
+  if ! tmux has-session -t "$session" 2>/dev/null; then
+    printf 'No live Cockpit session: %s\n' "$session" >&2
+    exit 1
+  fi
+  runtime_pane="$(tmux list-panes -s -t "$session" -F '#{pane_id} #{@cockpit_role}' 2>/dev/null |
+    awk '$2 == "runtime" { print $1; exit }')"
+  [[ -n "$runtime_pane" ]] || {
+    printf 'No live Agent pane is tagged runtime in %s\n' "$session" >&2
+    exit 1
+  }
+  [[ -n "$project" ]] || project="$(tmux display-message -p -t "$runtime_pane" '#{pane_current_path}' 2>/dev/null || true)"
+  [[ -n "$provider" ]] || provider="$(tmux show-options -v -t "$session" @cockpit_runtime 2>/dev/null || true)"
+  [[ -n "$provider" ]] || provider="$(tmux display-message -p -t "$runtime_pane" '#{@cockpit_runtime_id}' 2>/dev/null || true)"
+fi
+
+[[ -n "$project" ]] || project="$PWD"
+[[ -n "$provider" ]] || provider="${COCKPIT_PROVIDER:-codex}"
+
+print_report() {
+  local label markers skills missing
+  cockpit_agent_inspect "$project" "$provider" || true
+  label="$(cockpit_auth_label "$provider" 2>/dev/null || printf '%s' "$provider")"
+  markers="${COCKPIT_AGENT_MARKERS:-none}"
+  [[ -n "$markers" ]] || markers=none
+  skills="${COCKPIT_AGENT_SKILL_COUNT:-0}"
+  missing="${COCKPIT_AGENT_MISSING_SKILLS:-none}"
+  [[ -n "$missing" ]] || missing=none
+  printf 'provider=%s (%s)\n' "$provider" "$label"
+  printf 'provider_family=%s\n' "${COCKPIT_AGENT_PROVIDER_FAMILY:-unknown}"
+  printf 'project=%s\n' "${COCKPIT_AGENT_PROJECT:-$project}"
+  printf 'markers=%s\n' "$markers"
+  printf 'target=%s\n' "${COCKPIT_AGENT_TARGET_REL:-missing}"
+  printf 'target_state=%s\n' "$(cockpit_agent_target_state_label)"
+  printf 'target_explicit=%s\n' "${COCKPIT_AGENT_TARGET_EXPLICIT:-0}"
+  printf 'managed_profile=%s\n' "${COCKPIT_AGENT_MANAGED:-0}"
+  printf 'profile=%s\n' "$([[ "${COCKPIT_AGENT_PROFILE_ENABLED:-0}" == 1 ]] && printf enabled || printf disabled)"
+  printf 'profile_skills=%s\n' "$skills"
+  printf 'missing_profile_skills=%s\n' "$missing"
+  if [[ -n "${COCKPIT_AGENT_ERROR:-}" ]]; then
+    printf 'detail=%s\n' "$COCKPIT_AGENT_ERROR"
+  fi
+}
+
+print_profile() {
+  local skill id count=0
+  printf 'profile_file=%s\n' "$cockpit_agent_profile_file"
+  printf 'skills_dir=%s\n' "$(cockpit_agent_profile_skills_dir)"
+  if cockpit_agent_profile_enabled; then
+    printf 'enabled=1\n'
+  else
+    printf 'enabled=0\n'
+  fi
+  while IFS= read -r skill; do
+    [[ -n "$skill" ]] || continue
+    id="$(cockpit_agent_skill_id "$skill")"
+    printf 'skill=%s\n' "$id"
+    count=$((count + 1))
+  done < <(cockpit_agent_skill_files)
+  printf 'skill_count=%s\n' "$count"
+}
+
+case "$operation" in
+  detect)
+    printf 'COCKPIT AGENT TARGET\n'
+    print_report
+    ;;
+  validate)
+    printf 'COCKPIT AGENT VALIDATION\n'
+    print_report
+    if [[ "${COCKPIT_AGENT_TARGET_STATE:-}" != valid ]]; then
+      exit 1
+    fi
+    if [[ "${COCKPIT_AGENT_PROFILE_ENABLED:-0}" == 1 &&
+      -n "${COCKPIT_AGENT_MISSING_SKILLS:-}" ]]; then
+      exit 1
+    fi
+    ;;
+  profile)
+    print_profile
+    ;;
+  apply)
+    printf 'COCKPIT PROFILE APPLICATION\n'
+    if ((yes == 0)); then
+      cockpit_agent_apply_profile "$project" "$provider" "$create" 1 1 || true
+      printf 'mode=dry-run\n'
+      printf 'detail=%s\n' "${COCKPIT_AGENT_APPLY_MESSAGE:-no change}"
+      printf 'hint=repeat with --yes; add --create when the target is missing\n'
+      exit 0
+    fi
+    if cockpit_agent_apply_profile "$project" "$provider" "$create" 0 1; then
+      printf 'mode=applied\n'
+      printf 'detail=%s\n' "${COCKPIT_AGENT_APPLY_MESSAGE:-updated}"
+      [[ -n "${COCKPIT_AGENT_BACKUP_PATH:-}" ]] &&
+        printf 'backup=%s\n' "$COCKPIT_AGENT_BACKUP_PATH"
+      exit 0
+    fi
+    printf 'mode=refused\n'
+    printf 'detail=%s\n' "${COCKPIT_AGENT_APPLY_MESSAGE:-profile update refused}"
+    exit 1
+    ;;
+esac

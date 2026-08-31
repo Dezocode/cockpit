@@ -1,0 +1,135 @@
+#!/usr/bin/env bash
+set -euo pipefail
+export PATH="$HOME/.local/bin:$PATH"
+
+session="${1:-}"
+view="${2:-runtime}"
+focus="${3:-}"
+
+if [[ -z "$session" ]]; then
+  exit 0
+fi
+if ! tmux has-session -t "$session" 2>/dev/null; then
+  exit 0
+fi
+
+role=$view
+case "$view" in
+  runtime|codex|agent|CODEX|AGENT) role=runtime; window=AGENT ;;
+  files|FILES|nvim) role=files; window=FILES ;;
+  diff|DIFF) role=diff; window=DIFF ;;
+  map|mermaid|MAP|MERMAID) role=map; window=MAP ;;
+  setup|SETUP|config|vim) role=setup; window=SETUP ;;
+  setup-edit|SETUP-EDIT|setup_legacy|SETUP_LEGACY) role=setup-legacy; window=SETUP-EDIT ;;
+  prs|PRS|github) role=prs; window=PRS ;;
+  help|HELP)
+    export PATH="$HOME/.local/bin:$PATH"
+    exec cockpit-popup HELP cockpit-help
+    ;;
+  *) exit 0 ;;
+esac
+
+tmux set-option -t "$session" @cockpit_last "$view" >/dev/null 2>&1 || true
+
+if [[ "$role" == "prs" ]]; then
+  pane="$(
+    tmux list-panes -s -t "$session" -F '#{pane_id} #{@cockpit_role}' 2>/dev/null |
+      awk '$2 == "prs" { print $1; exit }'
+  )"
+  if [[ -n "$pane" ]]; then
+    tmux select-window -t "$pane"
+    tmux select-pane -t "$pane"
+  else
+    tmux new-window -t "$session:" -n PRS -c "#{pane_current_path}" "exec cockpit-prs"
+    pane="$(tmux display-message -p -t "$session:PRS" '#{pane_id}' 2>/dev/null || true)"
+    if [[ -n "$pane" ]]; then
+      tmux select-pane -t "$pane" -T PRS 2>/dev/null || true
+      tmux set-option -p -t "$pane" @cockpit_role prs 2>/dev/null || true
+      tmux set-option -w -t "$pane" automatic-rename off 2>/dev/null || true
+      tmux set-option -w -t "$pane" allow-rename off 2>/dev/null || true
+    fi
+  fi
+  exit 0
+fi
+
+if [[ "$role" == "setup-legacy" ]]; then
+  pane="$(
+    tmux list-panes -s -t "$session" -F '#{pane_id} #{@cockpit_role} #{window_name}' 2>/dev/null |
+      awk '$2 == "setup-legacy" && $3 == "SETUP-EDIT" { print $1; exit }'
+  )"
+else
+  pane="$(
+    tmux list-panes -s -t "$session" -F '#{pane_id} #{@cockpit_role} #{window_name}' 2>/dev/null |
+      awk -v r="$role" -v w="$window" '$2 == r || ($2 == "" && $3 == w) { print $1; exit }'
+  )"
+fi
+
+# Derived panes can disappear when their watcher exits or while a layout
+# migration is in progress. A page button should repair that state and then
+# select the requested page, rather than silently leaving the user elsewhere.
+if [[ -z "$pane" && ( "$role" == "diff" || "$role" == "map" ) ]] &&
+  command -v cockpit-reload-views >/dev/null 2>&1; then
+  cockpit-reload-views "$session" >/dev/null 2>&1 || true
+  pane="$(
+    tmux list-panes -s -t "$session" -F '#{pane_id} #{@cockpit_role} #{window_name}' 2>/dev/null |
+      awk -v r="$role" -v w="$window" '$2 == r || ($2 == "" && $3 == w) { print $1; exit }'
+  )"
+fi
+
+# SETUP is a persistent Neovim page, but older sessions predate it. Create it
+# lazily on the first status/auth/model tap so cpr is not required just to use
+# the new button. A fixed focus value is safe to pass to the setup editor.
+if [[ "$role" == "setup" && -z "$pane" ]]; then
+  pane="$(
+    tmux list-panes -s -t "$session" -F '#{pane_id} #{@cockpit_role} #{window_name}' 2>/dev/null |
+      awk '$2 == "setup" || ($2 == "" && $3 == "SETUP") { print $1; exit }'
+  )"
+fi
+
+if [[ "$role" == "setup" && -z "$pane" ]]; then
+  root="$(tmux display-message -p -t "$session:AGENT" '#{pane_current_path}' 2>/dev/null || true)"
+  [[ -n "$root" ]] || root="$PWD"
+  setup_arg=""
+  case "$focus" in
+    auth|model) setup_arg=" $focus" ;;
+  esac
+  tmux new-window -d -t "$session:" -n SETUP -c "$root" \
+    "exec cockpit-setup$setup_arg" 2>/dev/null || true
+  pane="$(
+    tmux list-panes -s -t "$session" -F '#{pane_id} #{@cockpit_role} #{window_name}' 2>/dev/null |
+      awk '$2 == "" && $3 == "SETUP" { print $1; exit }'
+  )"
+  if [[ -n "$pane" ]]; then
+    tmux select-pane -t "$pane" -T SETUP 2>/dev/null || true
+    tmux set-option -p -t "$pane" @cockpit_role setup 2>/dev/null || true
+    tmux set-option -w -t "$pane" automatic-rename off 2>/dev/null || true
+    tmux set-option -w -t "$pane" allow-rename off 2>/dev/null || true
+  fi
+fi
+
+if [[ -n "$pane" ]]; then
+  tmux select-window -t "$pane"
+  tmux select-pane -t "$pane"
+  pane_count="$(tmux display-message -p -t "$pane" '#{window_panes}')"
+  zoomed="$(tmux display-message -p -t "$pane" '#{window_zoomed_flag}')"
+  if [[ "${pane_count:-1}" -gt 1 && "$zoomed" != "1" ]]; then
+    tmux resize-pane -Z -t "$pane"
+  fi
+  if [[ "$role" == "setup" ]]; then
+    case "$focus" in
+      auth)
+        tmux send-keys -t "$pane" a Enter
+        ;;
+      provider)
+        tmux send-keys -t "$pane" p Enter
+        ;;
+      model)
+        tmux send-keys -t "$pane" m Enter
+        ;;
+    esac
+  fi
+  cockpit-wake "$session" "$window" || true
+  exit 0
+fi
+
+tmux select-window -t "$session:$window" 2>/dev/null || true

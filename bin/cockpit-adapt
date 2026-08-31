@@ -1,0 +1,433 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+mode="${1:-resized}"
+session="${2:-}"
+width="${3:-0}"
+height="${4:-0}"
+client_pid="${5:-}"
+
+script_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+theme_lib="$script_root/cockpit-lib"
+# shellcheck source=cockpit-lib
+[[ -f "$theme_lib" ]] && source "$theme_lib"
+
+[[ -n "$session" ]] || exit 0
+cockpit_session_is_managed "$session" || exit 0
+tmux has-session -t "$session" 2>/dev/null || exit 0
+
+# Keyboard slide fires many client-resized events. Keep the last one.
+if [[ "$mode" == "resized" ]]; then
+  _rsdir="${XDG_RUNTIME_DIR:-/tmp}/cockpit/${session}"
+  mkdir -p "$_rsdir"
+  printf '%s\n' "$$" >"$_rsdir/resize.pid"
+  sleep 0.35
+  [[ "$(cat "$_rsdir/resize.pid" 2>/dev/null || true)" == "$$" ]] || exit 0
+fi
+
+export PATH="$HOME/.local/bin:$PATH"
+width=${width:-0}
+height=${height:-0}
+
+# Display labels only. Keep the canonical Cockpit session and provider ids
+# stable so existing sessions, state, and CPR continue to work.
+workspace_label='COCKPIT'
+agent_label='AGENT'
+
+endpoint=foot
+if [[ -n "$client_pid" ]]; then
+  endpoint="$(cockpit-profile "$client_pid" 2>/dev/null || echo foot)"
+else
+  endpoint="$(cockpit-profile --session "$session" 2>/dev/null || echo foot)"
+fi
+[[ -n "$endpoint" ]] || endpoint=foot
+
+modality="$(tmux show-options -v -t "$session" @cockpit_modality 2>/dev/null || true)"
+if [[ -z "$modality" ]]; then
+  if [[ "$endpoint" == "termius-ios" ]]; then
+    modality=touch
+  else
+    modality=keyboard
+  fi
+fi
+
+phone=0
+if ((width > 0 && (width < 100 || height < 32))); then
+  phone=1
+fi
+
+has_desktop=0
+has_phone=0
+has_foot=0
+while read -r cw ch cpid; do
+  [[ -n "$cw" ]] || continue
+  if ((cw >= 100 && ch >= 32)); then
+    has_desktop=1
+  else
+    has_phone=1
+  fi
+  if [[ "$(cockpit-profile "$cpid" 2>/dev/null || true)" == "foot" ]]; then
+    has_foot=1
+  fi
+done < <(tmux list-clients -t "$session" -F '#{client_width} #{client_height} #{client_pid}' 2>/dev/null || true)
+
+# Layout: phone endpoints stay tabbed. Touch modality uses the mobile tab
+# layout. Keyboard modality on a desktop-sized client uses the Omarchy pad.
+# If Foot and iPhone are both attached and modality is keyboard, keep the pad
+# so the local Foot client is not crushed.
+# Phone-only: always the touch tab row, even if a leftover @cockpit_modality
+# says keyboard (that left Termius with a top bar and empty tab formats).
+if ((has_phone == 1 && has_desktop == 0)); then
+  modality=touch
+fi
+want_tabs=0
+if ((phone == 1 && has_desktop == 0)); then
+  want_tabs=1
+elif [[ "$modality" == "touch" ]]; then
+  want_tabs=1
+fi
+if ((has_desktop == 1 && has_phone == 1)) && [[ "$modality" == "keyboard" || "$has_foot" == "1" ]]; then
+  if [[ "$modality" == "keyboard" ]]; then
+    want_tabs=0
+  fi
+fi
+
+pane_for() {
+  local role=$1
+  tmux list-panes -s -t "$session" -F '#{pane_id} #{@cockpit_role}' 2>/dev/null |
+    awk -v r="$role" '$2 == r { print $1; exit }'
+}
+
+window_for() {
+  local pane=$1
+  [[ -n "$pane" ]] || return 0
+  tmux display-message -p -t "$pane" '#{window_id}'
+}
+
+tmux_fg() {
+  local key=$1 fallback=$2
+  printf '#[fg=%s]' "$(cockpit_theme_hex "$key" "$fallback")"
+}
+
+# Refresh display-only labels on the cheap resize/cpr path. This deliberately
+# does not join panes, respawn processes, or alter the Files layout.
+refresh_display_labels() {
+  tmux set-option -t "$session" status-left "#[fg=black,bg=blue,bold] ${workspace_label} #[bg=default] "
+  if [[ "$modality" == "touch" ]]; then
+    tmux set-option -t "$session" status-position bottom
+    tmux set-option -t "$session" status-left-length 24
+    tmux set-option -t "$session" window-status-separator ' '
+    tmux set-option -t "$session" window-status-style 'fg=brightblack,bg=default'
+    tmux set-option -t "$session" window-status-current-style 'fg=black,bg=blue,bold'
+    tmux set-option -t "$session" window-status-format '#[fg=brightblack,bg=default]      #W      '
+    tmux set-option -t "$session" window-status-current-format "#[fg=black,bg=blue,bold]      #{?window_zoomed_flag,${agent_label},#W}      "
+  fi
+  tmux rename-window -t "$runtime" "$agent_label" 2>/dev/null || true
+  tmux select-pane -t "$runtime" -T "$agent_label" 2>/dev/null || true
+}
+
+update_git_chrome() {
+  local runtime root git_root worktree branch status state state_style label
+  runtime="$(pane_for runtime)"
+  [[ -n "$runtime" ]] || return 0
+  root="$(tmux display-message -p -t "$runtime" '#{pane_current_path}' 2>/dev/null || true)"
+  [[ -n "$root" ]] || return 0
+  git_root="$(git -C "$root" rev-parse --show-toplevel 2>/dev/null || true)"
+  if [[ -n "$git_root" ]]; then
+    worktree="${git_root##*/}"
+    branch="$(git -C "$git_root" symbolic-ref --short -q HEAD 2>/dev/null ||
+      git -C "$git_root" rev-parse --short HEAD 2>/dev/null || true)"
+    [[ -n "$branch" ]] || branch=detached
+    status="$(git -C "$git_root" status --porcelain --untracked-files=normal 2>/dev/null || true)"
+    if [[ -n "$status" ]]; then
+      state='!'
+      state_style="$(tmux_fg accent '#798186')"
+    else
+      state='✓'
+      state_style="$(tmux_fg green '#2b6e4f')"
+    fi
+    label="$(tmux_fg accent '#798186')${worktree}$(tmux_fg muted '#4b4e55') ${branch} ${state_style}${state}#[default]"
+  else
+    worktree="${root##*/}"
+    label="$(tmux_fg muted '#4b4e55')${worktree} ?#[default]"
+  fi
+  tmux set-option -t "$session" @cockpit_worktree "$worktree"
+  tmux set-option -t "$session" @cockpit_git_label "$label"
+}
+
+# Termius treats BEL / title OSC / activity as haptics. Keep Codex spinner
+# drawing; do not ring the phone on each frame.
+apply_hush() {
+  local w
+  tmux set-option -t "$session" bell-action none
+  tmux set-option -t "$session" visual-bell off
+  tmux set-option -t "$session" activity-action none
+  tmux set-option -t "$session" silence-action none
+  tmux set-option -t "$session" allow-passthrough off
+  tmux set-option -t "$session" monitor-bell off
+  tmux set-option -t "$session" set-titles off
+  tmux set-option -t "$session" allow-rename off
+  tmux set-hook -t "$session" alert-bell '' 2>/dev/null || true
+  while IFS= read -r w; do
+    [[ -n "$w" ]] || continue
+    tmux set-option -w -t "$w" monitor-bell off
+    tmux set-option -w -t "$w" monitor-activity off
+    tmux set-option -w -t "$w" monitor-silence 0
+    tmux set-option -w -t "$w" allow-rename off
+    tmux set-option -w -t "$w" allow-passthrough off 2>/dev/null || true
+  done < <(tmux list-windows -t "$session" -F '#{window_id}' 2>/dev/null || true)
+}
+
+apply_keyboard_chrome() {
+  apply_hush
+  tmux set-option -t "$session" mouse on
+  tmux set-option -t "$session" prefix C-Space
+  tmux set-option -t "$session" prefix2 C-b
+  tmux set-option -t "$session" escape-time 10
+  tmux set-option -t "$session" status on
+  tmux set-option -t "$session" status-position top
+  tmux set-option -t "$session" pane-border-status top
+  tmux set-option -t "$session" status-interval 0
+  tmux set-option -u -t "$session" window-status-style 2>/dev/null || true
+  tmux set-option -u -t "$session" window-status-current-style 2>/dev/null || true
+  tmux set-option -t "$session" status-left "#[fg=black,bg=blue,bold] ${workspace_label} #[bg=default] "
+  tmux set-option -t "$session" status-right '#{@cockpit_git_label} #{?pane_in_mode,COPY ,}#{?client_prefix,PREFIX ,}#{?window_zoomed_flag,ZOOM ,}#[fg=brightblack]#h '
+  tmux set-option -t "$session" window-status-format '#[fg=brightblack] #I:#W '
+  tmux set-option -t "$session" window-status-current-format '#[fg=blue,bold] #I:#W '
+  tmux set-option -t "$session" window-status-separator ''
+  tmux set-option -t "$session" @cockpit_profile foot
+}
+
+apply_touch_chrome() {
+  apply_hush
+  tmux set-option -t "$session" mouse on
+  tmux set-option -t "$session" prefix C-Space
+  tmux set-option -t "$session" prefix2 C-b
+  # Tailscale/Termius splits SGR mouse if this is ~10ms. 120ms still feels
+  # instant on a tap and lets the chip bind see a complete CSI sequence.
+  tmux set-option -t "$session" escape-time 120
+  # One fat tab row (not two copies). Extra rows steal the Agent composer
+  # when Termius shrinks the PTY for the keyboard.
+  tmux set-option -t "$session" status on
+  tmux set-option -t "$session" status-position bottom
+  tmux set-option -t "$session" pane-border-status off
+  tmux set-option -t "$session" status-interval 0
+  tmux set-option -t "$session" status-left-length 24
+  tmux set-option -t "$session" status-right-length 24
+  tmux set-option -t "$session" status-left "#[fg=black,bg=blue,bold] ${workspace_label} #[bg=default] "
+  tmux set-option -t "$session" status-right '#{@cockpit_git_label}  '
+  tmux set-option -t "$session" window-status-separator ' '
+  tmux set-option -t "$session" window-status-style 'fg=brightblack,bg=default'
+  tmux set-option -t "$session" window-status-current-style 'fg=black,bg=blue,bold'
+  tmux set-option -t "$session" window-status-format '#[fg=brightblack,bg=default]      #W      '
+  tmux set-option -t "$session" window-status-current-format "#[fg=black,bg=blue,bold]      #{?window_zoomed_flag,${agent_label},#W}      "
+  tmux set-option -t "$session" @cockpit_profile termius-ios
+}
+
+layout_tabs() {
+  local runtime=$1
+  for spec in "files:FILES" "setup:SETUP" "diff:DIFF" "map:MAP"; do
+    local role=${spec%%:*} name=${spec##*:} pane parent
+    pane="$(pane_for "$role")"
+    [[ -n "$pane" ]] || continue
+    parent="$(tmux display-message -p -t "$pane" '#{window_name}')"
+    if [[ "$parent" == "AGENT" || "$parent" == "CODEX" || "$parent" == "cockpit" ]]; then
+      tmux break-pane -d -n "$name" -s "$pane" 2>/dev/null || true
+      tmux select-pane -t "$pane" -T "$name" 2>/dev/null || true
+      tmux set-option -w -t "$pane" automatic-rename off
+      tmux set-option -w -t "$pane" allow-rename off
+    fi
+  done
+  tmux rename-window -t "$runtime" "$agent_label" 2>/dev/null || true
+  tmux set-option -w -t "$runtime" automatic-rename off
+  tmux set-option -w -t "$runtime" allow-rename off
+}
+
+layout_pad() {
+  local runtime=$1 files=$2 diff=$3 map=$4 setup=$5
+  local runtime_win files_win map_win diff_win setup_win
+  runtime_win="$(window_for "$runtime")"
+  if [[ -n "$setup" ]]; then
+    setup_win="$(window_for "$setup")"
+    if [[ -n "$setup_win" && "$setup_win" == "$runtime_win" ]]; then
+      tmux break-pane -d -n SETUP -s "$setup" 2>/dev/null || true
+      tmux select-pane -t "$setup" -T SETUP 2>/dev/null || true
+      tmux set-option -w -t "$setup" automatic-rename off
+      tmux set-option -w -t "$setup" allow-rename off
+      setup_win="$(window_for "$setup")"
+    fi
+  fi
+  files_win="$(window_for "$files")"
+  if [[ -n "$files" && -n "$files_win" && "$files_win" != "$runtime_win" ]]; then
+    tmux join-pane -h -p 42 -s "$files" -t "$runtime" 2>/dev/null || true
+  fi
+  if [[ -n "$map" ]]; then
+    map_win="$(window_for "$map")"
+    runtime_win="$(window_for "$runtime")"
+    if [[ -n "$map_win" && "$map_win" != "$runtime_win" ]]; then
+      tmux join-pane -v -p 46 -s "$map" -t "$runtime" 2>/dev/null || true
+    fi
+  fi
+  if [[ -n "$diff" ]]; then
+    diff_win="$(window_for "$diff")"
+    files_win="$(window_for "$files")"
+    if [[ -n "$files" && -n "$diff_win" && "$diff_win" != "$files_win" ]]; then
+      tmux join-pane -v -p 46 -s "$diff" -t "$files" 2>/dev/null || true
+    fi
+  fi
+  tmux select-pane -t "$runtime" -T "$agent_label" 2>/dev/null || true
+  [[ -n "$files" ]] && tmux select-pane -t "$files" -T FILES 2>/dev/null || true
+  [[ -n "$map" ]] && tmux select-pane -t "$map" -T MAP 2>/dev/null || true
+  [[ -n "$diff" ]] && tmux select-pane -t "$diff" -T DIFF 2>/dev/null || true
+  tmux rename-window -t "$runtime" "$agent_label" 2>/dev/null || true
+  tmux set-option -w -t "$runtime" automatic-rename off
+  tmux set-option -w -t "$runtime" allow-rename off
+}
+
+hide_auxiliary_tabs() {
+  local pane role window runtime_win
+  runtime_win="$(window_for "$runtime")"
+  while read -r pane role window; do
+    [[ -n "$pane" && -n "$window" ]] || continue
+    case "$role" in
+      map|prs|setup-legacy|popup|bar)
+        [[ "$window" != "$runtime_win" ]] || continue
+        tmux set-option -w -t "$window" window-status-format '' 2>/dev/null || true
+        tmux set-option -w -t "$window" window-status-current-format '' 2>/dev/null || true
+        tmux set-option -w -t "$window" automatic-rename off 2>/dev/null || true
+        tmux set-option -w -t "$window" allow-rename off 2>/dev/null || true
+        ;;
+      files|diff|setup|runtime)
+        if [[ "$modality" == "touch" ]]; then
+          tmux set-option -w -t "$window" window-status-format '#[fg=brightblack,bg=default]      #W      ' 2>/dev/null || true
+          tmux set-option -w -t "$window" window-status-current-format "#[fg=black,bg=blue,bold]      #{?window_zoomed_flag,${agent_label},#W}      " 2>/dev/null || true
+        else
+          tmux set-option -u -w -t "$window" window-status-format 2>/dev/null || true
+          tmux set-option -u -w -t "$window" window-status-current-format 2>/dev/null || true
+        fi
+        ;;
+    esac
+  done < <(tmux list-panes -s -t "$session" -F '#{pane_id} #{@cockpit_role} #{window_id}' 2>/dev/null || true)
+  while read -r window name; do
+    [[ -n "$window" ]] || continue
+    case "$name" in
+      prs|PRS|MAP|MERMAID|SETUP-OLD*|SETUP-EDIT|.bar)
+        tmux set-option -w -t "$window" window-status-format '' 2>/dev/null || true
+        tmux set-option -w -t "$window" window-status-current-format '' 2>/dev/null || true
+        ;;
+    esac
+  done < <(tmux list-windows -t "$session" -F '#{window_id} #{window_name}' 2>/dev/null || true)
+}
+
+# Keep the mobile tab row reserved for the four primary Cockpit pages. PRs,
+# MAP, and preserved setup-edit buffers remain addressable by keybind without
+# pushing FILES, DIFF, or SETUP to a different visible number.
+normalize_primary_tabs() {
+  local runtime_win pane role window current target spec
+  runtime_win="$(window_for "$runtime")"
+  if ((want_tabs == 1)); then
+    for spec in "files:2" "diff:3" "setup:4"; do
+      role=${spec%%:*}
+      target=${spec##*:}
+      pane="$(pane_for "$role")"
+      [[ -n "$pane" ]] || continue
+      window="$(window_for "$pane")"
+      [[ -n "$window" && "$window" != "$runtime_win" ]] || continue
+      current="$(tmux display-message -p -t "$window" '#{window_index}' 2>/dev/null || true)"
+      [[ "$current" =~ ^[0-9]+$ && "$current" == "$target" ]] && continue
+      tmux swap-window -s "$window" -t "$session:$target" 2>/dev/null || true
+    done
+  fi
+  hide_auxiliary_tabs
+}
+
+runtime="$(pane_for runtime)"
+files="$(pane_for files)"
+diff="$(pane_for diff)"
+map="$(pane_for map)"
+setup="$(pane_for setup)"
+[[ -n "$runtime" ]] || exit 0
+tmux set-option -t "$session" @cockpit_runtime_pane "$runtime"
+update_git_chrome
+
+# Termius shrinks the PTY when the keyboard slides up. Keep the one-row Agent
+# toolbar visible: the runtime pane is the flexible area and absorbs the
+# height change, while PRS/provider/MODEL/RESTART keep stable touch targets.
+want_compose=0
+have_compose="$(tmux show-options -v -t "$session" @cockpit_compose 2>/dev/null || echo 0)"
+
+have_mod="$(tmux show-options -v -t "$session" @cockpit_modality 2>/dev/null || true)"
+have_tabs="$(tmux show-options -v -t "$session" @cockpit_tabs 2>/dev/null || true)"
+if [[ "$have_mod" == "$modality" && "$have_tabs" == "$want_tabs" ]]; then
+  apply_hush
+  have_profile="$(tmux show-options -v -t "$session" @cockpit_profile 2>/dev/null || true)"
+  if [[ "$modality" == "touch" && "$have_profile" != "termius-ios" ]]; then
+    apply_touch_chrome
+  elif [[ "$modality" == "keyboard" && "$have_profile" != "foot" ]]; then
+    apply_keyboard_chrome
+  fi
+  normalize_primary_tabs
+  refresh_display_labels
+  tmux set-option -t "$session" @cockpit_compose "$want_compose"
+  if ((want_compose == 1)); then
+    cockpit-ensure-bar "$session" hide >/dev/null 2>&1 || true
+  elif [[ "$have_compose" == "1" ]]; then
+    cockpit-ensure-bar "$session" show >/dev/null 2>&1 || true
+  else
+    cockpit-ensure-bar "$session" >/dev/null 2>&1 || true
+  fi
+  if [[ "$mode" == "attached" ]]; then
+    cockpit-idle "$session" >/dev/null 2>&1 &
+  fi
+  exit 0
+fi
+
+lockdir="${XDG_RUNTIME_DIR:-/tmp}/cockpit-adapt-${session}.lock"
+if ! mkdir "$lockdir" 2>/dev/null; then
+  stale="$(cat "$lockdir/pid" 2>/dev/null || true)"
+  if [[ -n "$stale" && ! -d "/proc/$stale" ]]; then
+    rm -rf "$lockdir"
+    mkdir "$lockdir"
+  else
+    exit 0
+  fi
+fi
+printf '%s\n' "$$" >"$lockdir/pid"
+trap 'rm -rf "$lockdir"' EXIT
+
+tmux set-option -t "$session" @cockpit_modality "$modality"
+tmux set-option -t "$session" @cockpit_tabs "$want_tabs"
+tmux set-option -t "$session" @cockpit_endpoint "$endpoint"
+config_home="$(cockpit_config_home)"
+mkdir -p "$config_home"
+printf 'session=%s\nmodality=%s\nendpoint=%s\ntabs=%s\n' \
+  "$session" "$modality" "$endpoint" "$want_tabs" \
+  >"$config_home/state.tmp"
+mv "$config_home/state.tmp" "$config_home/state"
+
+if [[ "$modality" == "touch" ]]; then
+  apply_touch_chrome
+else
+  apply_keyboard_chrome
+fi
+
+if ((want_tabs == 1)); then
+  layout_tabs "$runtime"
+else
+  layout_pad "$runtime" "$files" "$diff" "$map" "$setup"
+fi
+normalize_primary_tabs
+refresh_display_labels
+
+tmux set-option -t "$session" @cockpit_compose "$want_compose"
+if ((want_compose == 1)); then
+  cockpit-ensure-bar "$session" hide >/dev/null 2>&1 || true
+else
+  cockpit-ensure-bar "$session" show >/dev/null 2>&1 || true
+fi
+
+if [[ "$mode" == "attached" ]]; then
+  tmux select-window -t "$runtime"
+  tmux select-pane -t "$runtime"
+  cockpit-idle "$session" >/dev/null 2>&1 &
+fi

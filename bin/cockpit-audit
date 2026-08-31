@@ -1,0 +1,209 @@
+#!/usr/bin/env bash
+# Read-only health audit for a running Cockpit session.
+set -euo pipefail
+
+export PATH="$HOME/.local/bin:$PATH"
+
+script_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+authlib="$script_root/cockpit-auth-lib"
+theme_lib="$script_root/cockpit-lib"
+# shellcheck source=cockpit-agent-lib
+agentlib="$script_root/cockpit-agent-lib"
+# shellcheck source=cockpit-auth-lib
+source "$authlib"
+# shellcheck source=cockpit-agent-lib
+source "$agentlib"
+# shellcheck source=cockpit-lib
+source "$theme_lib"
+
+session="$(cockpit_session_name)"
+if [[ "${1:-}" == "--session" ]]; then
+  session="${2:-$session}"
+elif [[ -n "${1:-}" && "${1:0:1}" != "-" ]]; then
+  session="$1"
+fi
+
+green="$(cockpit_theme_style green '' 0)"
+red="$(cockpit_theme_style red '' 0)"
+blue="$(cockpit_theme_style accent '' 0)"
+muted="$(cockpit_theme_muted)"
+bright="$(cockpit_theme_style foreground '' 1)"
+reset="$(cockpit_theme_reset)"
+
+passes=0
+warnings=0
+failures=0
+
+pass_check() {
+  passes=$((passes + 1))
+  printf '  %sOK%s     %s\n' "$green" "$reset" "$*"
+}
+
+warn_check() {
+  warnings=$((warnings + 1))
+  printf '  %sWARN%s   %s\n' "$blue" "$reset" "$*"
+}
+
+fail_check() {
+  failures=$((failures + 1))
+  printf '  %sFAIL%s   %s\n' "$red" "$reset" "$*"
+}
+
+has_command() {
+  command -v "$1" >/dev/null 2>&1
+}
+
+plugin_catalog_health() {
+  local json installed available
+  if ! has_command codex; then
+    warn_check 'Codex plugin catalog skipped (codex CLI missing)'
+    return 0
+  fi
+  if ! has_command jq; then
+    warn_check 'Codex plugin catalog skipped (jq missing)'
+    return 0
+  fi
+  if has_command timeout; then
+    json="$(timeout 1.5s codex plugin list --available --json 2>/dev/null || true)"
+  else
+    json="$(codex plugin list --available --json 2>/dev/null || true)"
+  fi
+  if [[ -z "$json" ]] || ! jq -e '(.installed? // []) and (.available? // [])' \
+    >/dev/null 2>&1 <<<"$json"; then
+    warn_check 'Codex plugin catalog is unavailable'
+    return 0
+  fi
+  installed="$(jq -r '
+    [((.installed // [])[]?), ((.available // [])[]? | select(.installed == true))]
+    | map(select(.pluginId? != null)) | unique_by(.pluginId) | length
+  ' <<<"$json")"
+  available="$(jq -r '[((.available // [])[]? | select(.installed != true))] | length' \
+    <<<"$json")"
+  pass_check "Codex plugins: ${installed} installed, ${available} available"
+}
+
+cockpit_plugin_health() {
+  local rows
+  if ! has_command cockpit-plugin; then
+    warn_check 'Cockpit-native plugin registry is not installed'
+    return 0
+  fi
+  rows="$(cockpit-plugin list 2>/dev/null || true)"
+  if grep -Eq '^cockpit\.cpr[[:space:]]+type=cockpit[[:space:]]+version=' <<<"$rows"; then
+    pass_check 'Cockpit CPR native plugin is available'
+  else
+    fail_check 'Cockpit CPR native plugin is missing or invalid'
+  fi
+}
+
+agent_target_health() {
+  local runtime_pane root provider state missing
+  runtime_pane="$(tmux list-panes -s -t "$session" -F '#{pane_id} #{@cockpit_role}' 2>/dev/null |
+    awk '$2 == "runtime" { print $1; exit }')"
+  [[ -n "$runtime_pane" ]] || return 0
+  root="$(tmux display-message -p -t "$runtime_pane" '#{pane_current_path}' 2>/dev/null || true)"
+  provider="$(tmux show-options -v -t "$session" @cockpit_runtime 2>/dev/null || true)"
+  [[ -n "$root" && -n "$provider" ]] || return 0
+  cockpit_agent_inspect "$root" "$provider" || true
+  state="${COCKPIT_AGENT_TARGET_STATE:-unknown}"
+  missing="${COCKPIT_AGENT_MISSING_SKILLS:-}"
+  case "$state" in
+    valid)
+      if [[ -n "$missing" ]]; then
+        warn_check "Agent target ${COCKPIT_AGENT_TARGET_REL} is valid; missing profile skills: ${missing}"
+      else
+        pass_check "${provider} targets ${COCKPIT_AGENT_TARGET_REL}; profile is synchronized"
+      fi
+      ;;
+    missing)
+      warn_check "${provider} has no project .codex/.agent instruction target"
+      ;;
+    home-scope)
+      warn_check 'Agent target validation skipped for HOME scope'
+      ;;
+    *)
+      fail_check "${provider} agent target ${state}: ${COCKPIT_AGENT_ERROR:-validation failed}"
+      ;;
+  esac
+}
+
+printf '%sCOCKPIT AUDIT%s  ·  session=%s\n\n' "$bright" "$reset" "$session"
+
+printf '%sCOMMANDS%s\n' "$bright" "$reset"
+for command in tmux nvim codex gh grok; do
+  if has_command "$command"; then
+    pass_check "$command CLI available"
+  else
+    fail_check "$command CLI missing"
+  fi
+done
+
+printf '\n%sAUTH · PROVIDER-OWNED PROBES%s\n' "$bright" "$reset"
+cockpit_auth_ensure_config
+for id in github codex grok; do
+  state="$(cockpit_auth_state "$id" 2>/dev/null || true)"
+  case "$state" in
+    ready) pass_check "$(cockpit_auth_label "$id") authenticated" ;;
+    auth-needed) fail_check "$(cockpit_auth_label "$id") CLI present but authentication is not ready" ;;
+    cli-missing) fail_check "$(cockpit_auth_label "$id") CLI missing or provider is not configured" ;;
+    *) fail_check "$(cockpit_auth_label "$id") probe returned no usable state" ;;
+  esac
+done
+
+printf '\n%sSESSION TOPOLOGY%s\n' "$bright" "$reset"
+if ! has_command tmux || ! tmux has-session -t "$session" 2>/dev/null; then
+  fail_check "tmux session is not running: $session"
+else
+  pass_check "tmux session is running: $session"
+  for window in AGENT FILES DIFF SETUP; do
+    if tmux list-windows -t "$session" -F '#W' 2>/dev/null | grep -Fxq "$window"; then
+      pass_check "window $window exists"
+    else
+      fail_check "window $window is missing"
+    fi
+  done
+
+  runtime_pane="$(tmux list-panes -s -t "$session" -F '#{pane_id} #{@cockpit_role}' 2>/dev/null |
+    awk '$2 == "runtime" { print $1; exit }')"
+  setup_pane="$(tmux list-panes -s -t "$session" -F '#{pane_id} #{@cockpit_role}' 2>/dev/null |
+    awk '$2 == "setup" { print $1; exit }')"
+  bar_pane="$(tmux show-options -v -t "$session" @cockpit_bar_pane 2>/dev/null || true)"
+  if [[ -n "$runtime_pane" ]]; then
+    pass_check 'live Agent pane is tagged runtime'
+  else
+    fail_check 'live Agent pane is not tagged runtime'
+  fi
+  if [[ -n "$setup_pane" ]]; then
+    setup_version="$(tmux show-options -p -v -t "$setup_pane" @cockpit_setup_version 2>/dev/null || true)"
+    if [[ "$setup_version" == 5 ]]; then
+      pass_check 'SETUP pane is the persistent v5 flow'
+    else
+      fail_check "SETUP pane version is ${setup_version:-missing}, expected 5"
+    fi
+  else
+    fail_check 'SETUP pane is not tagged setup'
+  fi
+  if [[ -n "$bar_pane" ]] && [[ "$(tmux show-options -p -v -t "$bar_pane" @cockpit_role 2>/dev/null || true)" == bar ]]; then
+    pass_check 'Agent toolbar pane is tagged bar'
+  else
+    fail_check 'Agent toolbar pane is missing or untagged'
+  fi
+
+  modality="$(tmux show-options -v -t "$session" @cockpit_modality 2>/dev/null || true)"
+  profile="$(tmux show-options -v -t "$session" @cockpit_profile 2>/dev/null || true)"
+  runtime_id="$(tmux show-options -v -t "$session" @cockpit_runtime 2>/dev/null || true)"
+  [[ -n "$modality" ]] && pass_check "modality recorded: $modality" || warn_check 'modality is not recorded'
+  [[ -n "$profile" ]] && pass_check "endpoint profile recorded: $profile" || warn_check 'endpoint profile is not recorded'
+  [[ -n "$runtime_id" ]] && pass_check "active runtime recorded: $runtime_id" || fail_check 'active runtime is not recorded'
+  agent_target_health
+fi
+
+printf '\n%sPLUGIN CATALOG%s\n' "$bright" "$reset"
+cockpit_plugin_health
+plugin_catalog_health
+
+printf '\n%sRESULT%s  %s passed · %s warnings · %s failures\n' \
+  "$bright" "$reset" "$passes" "$warnings" "$failures"
+if ((failures > 0)); then
+  exit 1
+fi

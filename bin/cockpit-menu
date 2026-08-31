@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+session="${1:-}"
+[[ -n "$session" ]] || exit 0
+
+tmux display-menu -T "Cockpit" -x M -y M \
+  "Agent" r "run-shell 'cockpit-touch \"$session\" agent'" \
+  "Restart Agent" R "run-shell -b 'cockpit-restart \"$session\"'" \
+  "Switch Agent provider" e "run-shell 'cockpit-runtime popup \"$session\"'" \
+  "Files" f "run-shell 'cockpit-touch \"$session\" files'" \
+  "Diff" d "run-shell 'cockpit-touch \"$session\" diff'" \
+  "Vim diff" V "run-shell 'cockpit-popup VIMDIFF cockpit-vimdiff \"$session\"'" \
+  "Map" m "run-shell 'cockpit-touch \"$session\" map'" \
+  "Setup (OAuth / providers / Git)" s "run-shell 'cockpit-touch \"$session\" setup'" \
+  "PRs" p "run-shell 'cockpit-touch \"$session\" prs'" \
+  "" \
+  "Auth GitHub" G "run-shell 'cockpit-auth popup github'" \
+  "Auth…" A "run-shell 'cockpit-auth popup'" \
+  "" \
+  "Help" h "run-shell 'cockpit-touch \"$session\" help'"

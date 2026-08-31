@@ -1,0 +1,121 @@
+#!/usr/bin/env bash
+# Small registry/dispatcher for Cockpit-native plugins.
+# Codex marketplace plugins have a different owner and are deliberately not
+# visible through this registry.
+set -euo pipefail
+
+export PATH="$HOME/.local/bin:$PATH"
+bin_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+bundled_root="$(cd -- "$bin_root/.." && pwd)/plugins"
+config_home="${COCKPIT_CONFIG_HOME:-${COCKPIT_AUTH_HOME:-${XDG_CONFIG_HOME:-$HOME/.config}/cockpit}}"
+installed_root="${COCKPIT_PLUGIN_HOME:-$config_home/plugins}"
+
+usage() {
+  cat <<'EOF'
+Usage:
+  cockpit plugin list
+  cockpit plugin status
+  cockpit plugin run PLUGIN [ARGS...]
+  cockpit cpr [ARGS...]
+
+This registry contains Cockpit-native plugins only. Codex marketplace plugins
+are managed separately by SETUP's `l` flow and the native Codex CLI.
+EOF
+}
+
+manifest_field() {
+  local file=$1 wanted=$2 line key value
+  [[ -f "$file" ]] || return 1
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    case "$line" in
+      ''|'#'*) continue ;;
+      *=*)
+        key=${line%%=*}
+        value=${line#*=}
+        [[ "$key" == "$wanted" ]] || continue
+        printf '%s\n' "$value"
+        return 0
+        ;;
+    esac
+  done <"$file"
+  return 1
+}
+
+plugin_dir() {
+  local id=$1 root candidate
+  [[ "$id" != */* && "$id" != .* && -n "$id" ]] || return 1
+  case "$id" in
+    cpr|cockpit.cpr) id=cockpit-cpr ;;
+  esac
+  for root in "$installed_root" "$bundled_root"; do
+    candidate="$root/$id"
+    if [[ -f "$candidate/plugin.conf" ]]; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+  done
+  return 1
+}
+
+validate_plugin() {
+  local dir=$1 id type entry
+  id="$(manifest_field "$dir/plugin.conf" id 2>/dev/null || true)"
+  type="$(manifest_field "$dir/plugin.conf" type 2>/dev/null || true)"
+  entry="$(manifest_field "$dir/plugin.conf" entrypoint 2>/dev/null || true)"
+  [[ -n "$id" && "$type" == cockpit && -n "$entry" ]] || return 1
+  [[ "$entry" != /* && "$entry" != *..* ]] || return 1
+  [[ -f "$dir/$entry" ]] || return 1
+}
+
+list_plugins() {
+  local root dir id type version
+  declare -A seen=()
+  for root in "$installed_root" "$bundled_root"; do
+    [[ -d "$root" ]] || continue
+    while IFS= read -r dir; do
+      [[ -f "$dir/plugin.conf" ]] || continue
+      validate_plugin "$dir" || continue
+      id="$(manifest_field "$dir/plugin.conf" id)"
+      [[ "${seen[$id]:-0}" == 1 ]] && continue
+      seen[$id]=1
+      type="$(manifest_field "$dir/plugin.conf" type)"
+      version="$(manifest_field "$dir/plugin.conf" version 2>/dev/null || printf '-')"
+      printf '%s\ttype=%s\tversion=%s\n' "$id" "$type" "$version"
+    done < <(find "$root" -mindepth 1 -maxdepth 1 -type d -print 2>/dev/null | sort)
+  done
+}
+
+run_plugin() {
+  local id=$1
+  shift
+  local dir entry
+  dir="$(plugin_dir "$id")" || {
+    printf 'Cockpit plugin is not installed: %s\n' "$id" >&2
+    return 1
+  }
+  validate_plugin "$dir" || {
+    printf 'Cockpit plugin is invalid: %s\n' "$id" >&2
+    return 1
+  }
+  entry="$(manifest_field "$dir/plugin.conf" entrypoint)"
+  exec "$dir/$entry" "$@"
+}
+
+command=${1:-list}
+shift || true
+case "$command" in
+  list) list_plugins ;;
+  status)
+    printf 'Cockpit-native plugins\n'
+    list_plugins
+    ;;
+  cpr) run_plugin cockpit-cpr "$@" ;;
+  run|exec)
+    [[ $# -gt 0 ]] || { usage >&2; exit 2; }
+    id=$1
+    shift
+    run_plugin "$id" "$@"
+    ;;
+  -h|--help) usage ;;
+  *) usage >&2; exit 2 ;;
+esac

@@ -1,0 +1,83 @@
+#!/usr/bin/env bash
+# Nested flow UI. Desktop: tmux display-popup (click-out). Termius/touch:
+# a real window, because overlay popups do not paint on Termius iOS.
+# Exit (q / Esc / success / kill / tap a main tab) returns to the previous
+# window — AGENT when the flow started from the live agent.
+set -euo pipefail
+
+lib="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/cockpit-auth-lib"
+# shellcheck source=cockpit-auth-lib
+[[ -f "$lib" ]] && source "$lib"
+
+cmd="${1:-}"
+
+if [[ "$cmd" == "gc" ]]; then
+  cockpit_popup_gc
+  exit 0
+fi
+
+if [[ "$cmd" == "status-tap" ]]; then
+  sess=${2:-}
+  win=${3:-}
+  if cockpit_popup_any; then
+    cockpit_popup_dismiss "$sess"
+    exit 0
+  fi
+  if [[ -n "$win" ]]; then
+    tmux select-window -t "$win" 2>/dev/null || true
+  else
+    tmux select-window -t = 2>/dev/null || true
+  fi
+  exit 0
+fi
+
+if [[ "$cmd" == "dismiss" ]]; then
+  cockpit_popup_dismiss "${2:-}"
+  exit 0
+fi
+
+if [[ "$cmd" == "run" ]]; then
+  ret=${2:-}
+  token=${3:-}
+  title=${4:-}
+  shift 4 || true
+  inner=$*
+  tmux set-option -p @cockpit_role popup 2>/dev/null || true
+  tmux set-option -w -t "${TMUX_PANE}" @cockpit_popup 1 2>/dev/null || true
+  tmux set-option -w -t "${TMUX_PANE}" window-status-format '' 2>/dev/null || true
+  tmux set-option -w -t "${TMUX_PANE}" window-status-current-format '' 2>/dev/null || true
+  tmux set-option -w -t "${TMUX_PANE}" monitor-bell off 2>/dev/null || true
+  tmux set-option -w -t "${TMUX_PANE}" monitor-activity off 2>/dev/null || true
+  tmux set-option -w -t "${TMUX_PANE}" monitor-silence 0 2>/dev/null || true
+  tmux set-option -t "$(tmux display-message -p '#{session_name}')" allow-passthrough off 2>/dev/null || true
+  tmux set-option -w -t "${TMUX_PANE}" automatic-rename off 2>/dev/null || true
+  tmux set-option -w -t "${TMUX_PANE}" allow-rename off 2>/dev/null || true
+  cleanup() {
+    if [[ -n "$ret" ]]; then
+      tmux select-window -t "$ret" 2>/dev/null || true
+    else
+      pane="$(
+        tmux list-panes -s -F '#{window_id} #{@cockpit_role}' 2>/dev/null |
+          awk '$2 == "runtime" { print $1; exit }'
+      )"
+      [[ -n "$pane" ]] && tmux select-window -t "$pane" 2>/dev/null || true
+    fi
+    if [[ -n "$token" ]]; then
+      tmux wait-for -S "$token" 2>/dev/null || true
+    fi
+  }
+  trap cleanup EXIT INT TERM HUP
+  export COCKPIT_POPUP=1
+  export COCKPIT_POPUP_TITLE="$title"
+  set +e
+  bash -lc "$inner"
+  exit 0
+fi
+
+if [[ -z "$cmd" ]]; then
+  printf 'usage: cockpit-popup TITLE COMMAND...\n' >&2
+  exit 1
+fi
+title=$1
+shift
+cockpit_popup "$title" "$*"

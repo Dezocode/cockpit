@@ -1,0 +1,219 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+script_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=cockpit-lib
+source "$script_root/cockpit-lib"
+
+# Reload only Cockpit's derived views. The runtime and FILES panes are never
+# respawned. SETUP is persistent too; only the old Neovim-only page is migrated
+# once, with its original window preserved as SETUP-EDIT.
+
+session="${1:-$(cockpit_session_name)}"
+if [[ -z "$session" && -n "${TMUX:-}" ]]; then
+  session="$(tmux display-message -p '#{session_name}' 2>/dev/null || true)"
+fi
+session="${session:-$(cockpit_session_name)}"
+
+cockpit_session_is_managed "$session" || exit 0
+tmux has-session -t "$session" 2>/dev/null || exit 0
+export PATH="$HOME/.local/bin:$PATH"
+
+shell_quote() {
+  local value=$1
+  value=${value//\\/\\\\}
+  value=${value//\'/\'\\\'\'}
+  printf "'%s'" "$value"
+}
+
+pane_for() {
+  local role=$1
+  case "$role" in
+    runtime)
+      tmux list-panes -s -t "$session" -F '#{pane_id} #{@cockpit_role} #{window_name}' 2>/dev/null |
+        awk '$2 == "runtime" || ($2 == "" && ($3 == "AGENT" || $3 == "CODEX")) { print $1; exit }'
+      return 0
+      ;;
+  esac
+  local window
+  case "$role" in
+    diff) window=DIFF ;;
+    map) window=MAP ;;
+    *) window="${role^^}" ;;
+  esac
+  tmux list-panes -s -t "$session" -F '#{pane_id} #{@cockpit_role} #{window_name}' 2>/dev/null |
+    awk -v r="$role" -v w="$window" '$2 == r || ($2 == "" && $3 == w) { print $1; exit }'
+}
+
+setup_has_editor() {
+  local pane=$1 pid
+  pid="$(tmux display-message -p -t "$pane" '#{pane_pid}' 2>/dev/null || true)"
+  [[ -n "$pid" ]] || return 1
+  pgrep -P "$pid" -a 2>/dev/null | grep -Eq '(^|[[:space:]/])nvim([[:space:]]|$)'
+}
+
+normalize_setup_edit_windows() {
+  local pane role window keep legacy_name legacy_n
+  local -a editors=()
+  while read -r pane role window; do
+    [[ "$role" == "setup-legacy" && "$window" == "SETUP-EDIT" ]] || continue
+    editors+=("$pane")
+  done < <(tmux list-panes -s -t "$session" -F '#{pane_id} #{@cockpit_role} #{window_name}' 2>/dev/null || true)
+  ((${#editors[@]} > 1)) || return 0
+  # Keep the newest preserved editor and archive older duplicate labels.
+  keep="${editors[${#editors[@]}-1]}"
+  for pane in "${editors[@]}"; do
+    [[ "$pane" == "$keep" ]] && continue
+    window="$(tmux display-message -p -t "$pane" '#{window_id}' 2>/dev/null || true)"
+    legacy_name=SETUP-OLD
+    legacy_n=1
+    while tmux list-windows -t "$session" -F '#{window_name}' 2>/dev/null |
+      grep -Fxq "$legacy_name"; do
+      legacy_n=$((legacy_n + 1))
+      legacy_name="SETUP-OLD-$legacy_n"
+    done
+    tmux rename-window -t "$window" "$legacy_name" 2>/dev/null || true
+    tmux set-option -w -t "$window" window-status-format '' 2>/dev/null || true
+    tmux set-option -w -t "$window" window-status-current-format '' 2>/dev/null || true
+  done
+}
+
+reload_bar() {
+  local bar hidden
+  bar="$(tmux list-panes -s -t "$session" -F '#{pane_id} #{@cockpit_role}' 2>/dev/null |
+    awk '$2 == "bar" { print $1; exit }')"
+  if [[ -n "$bar" ]]; then
+    tmux respawn-pane -k -t "$bar" "exec cockpit-bar ${session}" 2>/dev/null || true
+    tmux select-pane -t "$bar" -T BAR 2>/dev/null || true
+    tmux set-option -p -t "$bar" @cockpit_role bar 2>/dev/null || true
+    tmux set-option -t "$session" @cockpit_bar_pane "$bar" 2>/dev/null || true
+    return 0
+  fi
+  hidden="$(tmux show-options -v -t "$session" @cockpit_bar_hidden 2>/dev/null || true)"
+  [[ "$hidden" == "1" ]] || cockpit-ensure-bar "$session" >/dev/null 2>&1 || true
+}
+
+ensure_setup() {
+  local setup root command setup_version old_window legacy_name legacy_n setup_editing existing_edit
+  while read -r legacy legacy_role; do
+    [[ "$legacy_role" == "setup-legacy" ]] || continue
+    tmux set-option -w -t "$legacy" window-status-format '' 2>/dev/null || true
+    tmux set-option -w -t "$legacy" window-status-current-format '' 2>/dev/null || true
+  done < <(tmux list-panes -s -t "$session" -F '#{pane_id} #{@cockpit_role}' 2>/dev/null || true)
+  normalize_setup_edit_windows
+  setup="$(pane_for setup)"
+  if [[ -n "$setup" ]]; then
+    setup_version="$(tmux show-options -p -v -t "$setup" @cockpit_setup_version 2>/dev/null || true)"
+    setup_editing=0
+    if [[ "$setup_version" == "5" ]] && setup_has_editor "$setup"; then
+      setup_editing=1
+    fi
+    if [[ "$setup_version" != "5" || "$setup_editing" == "1" ]]; then
+      old_window="$(tmux display-message -p -t "$setup" '#{window_id}' 2>/dev/null || true)"
+      legacy_name=SETUP-OLD
+      legacy_n=1
+      if [[ "$setup_editing" == "1" ]]; then
+        legacy_name=SETUP-EDIT
+        existing_edit="$(tmux list-windows -t "$session" -F '#{window_id} #{window_name}' 2>/dev/null |
+          awk -v old="$old_window" '$1 != old && $2 == "SETUP-EDIT" { print $1; exit }')"
+        if [[ -n "$existing_edit" ]]; then
+          while tmux list-windows -t "$session" -F '#{window_name}' 2>/dev/null |
+            grep -Fxq "$legacy_name"; do
+            legacy_n=$((legacy_n + 1))
+            legacy_name="SETUP-OLD-$legacy_n"
+          done
+          tmux rename-window -t "$existing_edit" "$legacy_name" 2>/dev/null || true
+        fi
+      else
+        while tmux list-windows -t "$session" -F '#{window_name}' 2>/dev/null |
+          grep -Fxq "$legacy_name"; do
+          legacy_n=$((legacy_n + 1))
+          legacy_name="SETUP-OLD-$legacy_n"
+        done
+      fi
+      tmux set-option -p -t "$setup" @cockpit_role setup-legacy 2>/dev/null || true
+      tmux rename-window -t "$old_window" "$legacy_name" 2>/dev/null || true
+      # Keep the legacy buffer recoverable without consuming a mobile tab slot.
+      tmux set-option -w -t "$old_window" window-status-format '' 2>/dev/null || true
+      tmux set-option -w -t "$old_window" window-status-current-format '' 2>/dev/null || true
+      setup=""
+    fi
+  fi
+  if [[ -n "$setup" ]]; then
+    tmux select-pane -t "$setup" -T SETUP 2>/dev/null || true
+    tmux set-option -p -t "$setup" @cockpit_role setup 2>/dev/null || true
+    tmux set-option -p -t "$setup" @cockpit_setup_version 5 2>/dev/null || true
+    tmux set-option -w -t "$setup" automatic-rename off 2>/dev/null || true
+    tmux set-option -w -t "$setup" allow-rename off 2>/dev/null || true
+    return 0
+  fi
+
+  root="$(tmux display-message -p -t "$runtime" '#{pane_current_path}' 2>/dev/null || true)"
+  [[ -n "$root" && -d "$root" ]] || return 0
+  command="cd -- $(shell_quote "$root") && exec cockpit-setup"
+  tmux new-window -d -t "$session:" -n SETUP -c "$root" "$command" 2>/dev/null || return 0
+  setup="$(tmux display-message -p -t "$session:SETUP" '#{pane_id}' 2>/dev/null || true)"
+  [[ -n "$setup" ]] || return 0
+  tmux select-pane -t "$setup" -T SETUP 2>/dev/null || true
+  tmux set-option -p -t "$setup" @cockpit_role setup 2>/dev/null || true
+  tmux set-option -p -t "$setup" @cockpit_setup_version 5 2>/dev/null || true
+  tmux set-option -w -t "$setup" automatic-rename off 2>/dev/null || true
+  tmux set-option -w -t "$setup" allow-rename off 2>/dev/null || true
+}
+
+reload_view() {
+  local role=$1 pane root command start_command window title
+  pane="$(pane_for "$role")"
+  if [[ -n "$pane" ]]; then
+    root="$(tmux display-message -p -t "$pane" '#{pane_current_path}' 2>/dev/null || true)"
+  else
+    root="$(tmux display-message -p -t "$runtime" '#{pane_current_path}' 2>/dev/null || true)"
+  fi
+  [[ -n "$root" && -d "$root" ]] || return 0
+
+  window=$([[ "$role" == diff ]] && printf 'DIFF' || printf 'MAP')
+  title=$window
+  if [[ "$role" == diff ]]; then
+    command="cd -- $(shell_quote "$root") && exec cockpit-diff $(shell_quote "$root")"
+  else
+    # Preserve a custom Mermaid path when the live pane exposes its original
+    # command; otherwise use the project's canonical architecture map.
+    start_command=''
+    if [[ -n "$pane" ]]; then
+      start_command="$(tmux display-message -p -t "$pane" '#{pane_start_command}' 2>/dev/null || true)"
+    fi
+    if [[ "$start_command" == *cockpit-mermaid-watch* ]]; then
+      command="$start_command"
+    else
+      command="cd -- $(shell_quote "$root") && exec cockpit-mermaid-watch $(shell_quote "$root")"
+    fi
+  fi
+
+  if [[ -n "$pane" ]]; then
+    tmux respawn-pane -k -t "$pane" -c "$root" "$command" 2>/dev/null || true
+    tmux select-pane -t "$pane" -T "$title" 2>/dev/null || true
+    tmux set-option -p -t "$pane" @cockpit_role "$role" 2>/dev/null || true
+    return 0
+  fi
+
+  # Older sessions can lose derived windows during a layout migration. Create
+  # them again without recreating the live agent or Neovim FILES pane.
+  tmux new-window -d -t "$session:" -n "$window" -c "$root" "$command" 2>/dev/null || return 0
+  pane="$(tmux display-message -p -t "$session:$window" '#{pane_id}' 2>/dev/null || true)"
+  [[ -n "$pane" ]] || return 0
+  tmux select-pane -t "$pane" -T "$title" 2>/dev/null || true
+  tmux set-option -p -t "$pane" @cockpit_role "$role" 2>/dev/null || true
+}
+
+runtime="$(pane_for runtime)"
+[[ -n "$runtime" ]] || exit 0
+ensure_setup
+reload_view diff
+reload_view map
+if command -v cockpit-adapt >/dev/null 2>&1; then
+  client="$(tmux list-clients -t "$session" -F '#{client_width} #{client_height} #{client_pid}' 2>/dev/null | head -1 || true)"
+  read -r width height client_pid <<<"$client"
+  cockpit-adapt attached "$session" "${width:-0}" "${height:-0}" "${client_pid:-}" >/dev/null 2>&1 || true
+fi
+reload_bar
+printf 'Cockpit reloaded: Agent controls, SETUP flow, DIFF, MAP (Agent and FILES untouched).\n'

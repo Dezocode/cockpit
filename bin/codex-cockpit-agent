@@ -1,48 +1,12 @@
 #!/usr/bin/env bash
+# Legacy compatibility entrypoint; canonical implementation is under the cockpit namespace.
 set -euo pipefail
-
-session="${1:-}"
-window="${2:-}"
-pane="${3:-}"
-
-if [[ -z "$session" || -z "$pane" ]]; then
-  exit 0
-fi
-
-role="$(tmux display-message -p -t "$pane" '#{@cockpit_role}' 2>/dev/null || true)"
-command="$(tmux display-message -p -t "$pane" '#{pane_current_command}' 2>/dev/null || true)"
-zoomed="$(tmux display-message -p -t "$pane" '#{window_zoomed_flag}' 2>/dev/null || true)"
-panes="$(tmux display-message -p -t "$pane" '#{window_panes}' 2>/dev/null || true)"
-
-# Bar and nested flow windows are not AGENT zoom targets.
-if [[ "$role" == "bar" || "$role" == "popup" ]]; then
-  exit 0
-fi
-
-is_runtime=0
-case "$role" in runtime|parallel) is_runtime=1 ;; esac
-case "$command" in
-  codex|grok|claude|cursor-agent|agent) is_runtime=1 ;;
+legacy_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+legacy_name="${BASH_SOURCE[0]##*/}"
+case "$legacy_name" in
+  codex-cockpit) canonical_name=cockpit-main ;;
+  codex-mermaid-watch) canonical_name=cockpit-mermaid-watch ;;
+  codex-cockpit-*) canonical_name="cockpit-${legacy_name#codex-cockpit-}" ;;
+  *) printf "unknown legacy entrypoint: %s\n" "$legacy_name" >&2; exit 2 ;;
 esac
-
-# Double-tap / double-click on the runtime: stay on the same Codex PTY and
-# toggle the AGENT fullscreen tab. Double-tap anywhere else zooms that view
-# so a phone can use one pane at a time without prefix keys.
-if (( is_runtime == 1 )); then
-  tmux switch-client -t "$session" 2>/dev/null || true
-  tmux select-window -t "$pane" 2>/dev/null || tmux select-window -t "${session}:${window}" 2>/dev/null || true
-  tmux select-pane -t "$pane"
-  if [[ "${panes:-1}" -gt 1 ]]; then
-    tmux resize-pane -Z -t "$pane"
-  elif [[ "$zoomed" == "1" ]]; then
-    tmux resize-pane -Z -t "$pane"
-  fi
-  exit 0
-fi
-
-tmux switch-client -t "$session" 2>/dev/null || true
-tmux select-window -t "$pane" 2>/dev/null || true
-tmux select-pane -t "$pane"
-if [[ "${panes:-1}" -gt 1 ]]; then
-  tmux resize-pane -Z -t "$pane"
-fi
+exec "$legacy_root/$canonical_name" "$@"

@@ -4,13 +4,20 @@ flowchart LR
     ios[Termius iOS SSH]
   end
   subgraph views [same session]
-    runtime[CODEX runtime]
+    runtime[AGENT runtime]
     files[FILES nvim]
     diff[DIFF events]
     map[MAP mermaid]
+    setup[SETUP auth/provider/Git/Cockpit-profile/Codex-plugin/audit flow]
+    cpr[Cockpit-native cockpit.cpr live updater]
+    validator[provider-target .codex/.agent validator + hook]
     prs[PRS github]
   end
   foot -->|2x2 pad| views
   ios -->|fullscreen tabs| views
   runtime -->|writes| files
   runtime -->|writes| diff
+  cpr -->|idempotent session/hooks/bar refresh| views
+  cpr -->|preserves pane processes| runtime
+  setup -->|confirm managed profile block| validator
+  validator -->|records active provider target| runtime

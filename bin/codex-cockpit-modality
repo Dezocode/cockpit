@@ -1,22 +1,12 @@
 #!/usr/bin/env bash
-# Remember keyboard vs touch from the last idle input. Same modality is a
-# no-op so the first keystroke after idle still reaches the live agent.
+# Legacy compatibility entrypoint; canonical implementation is under the cockpit namespace.
 set -euo pipefail
-
-modality="${1:-}"
-session="${2:-}"
-width="${3:-0}"
-height="${4:-0}"
-
-[[ "$modality" == "keyboard" || "$modality" == "touch" ]] || exit 0
-[[ -n "$session" && "$session" == codex-cockpit* ]] || exit 0
-tmux has-session -t "$session" 2>/dev/null || exit 0
-
-export PATH="$HOME/.local/bin:$PATH"
-cur="$(tmux show-options -v -t "$session" @cockpit_modality 2>/dev/null || true)"
-tmux switch-client -T root 2>/dev/null || true
-if [[ "$cur" == "$modality" ]]; then
-  exit 0
-fi
-tmux set-option -t "$session" @cockpit_modality "$modality"
-codex-cockpit-adapt modality "$session" "$width" "$height" || true
+legacy_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+legacy_name="${BASH_SOURCE[0]##*/}"
+case "$legacy_name" in
+  codex-cockpit) canonical_name=cockpit-main ;;
+  codex-mermaid-watch) canonical_name=cockpit-mermaid-watch ;;
+  codex-cockpit-*) canonical_name="cockpit-${legacy_name#codex-cockpit-}" ;;
+  *) printf "unknown legacy entrypoint: %s\n" "$legacy_name" >&2; exit 2 ;;
+esac
+exec "$legacy_root/$canonical_name" "$@"

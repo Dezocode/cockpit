@@ -1,0 +1,108 @@
+#!/usr/bin/env bash
+# Push/pull cockpit *profile* (providers.conf + chrome state) with the caller's
+# GitHub CLI login. Never uploads CLI tokens, auth.json, or keyring secrets.
+set -euo pipefail
+
+script_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=cockpit-lib
+source "$script_root/cockpit-lib"
+
+home="$(cockpit_config_home)"
+gist_id_file="$home/gist.id"
+desc="cockpit-profile (commands + chrome only; no tokens)"
+
+need_gh() {
+  if ! command -v gh >/dev/null 2>&1; then
+    printf 'gh CLI is required. Install GitHub CLI and run: gh auth login\n' >&2
+    exit 1
+  fi
+  if ! gh auth status -h github.com >/dev/null 2>&1; then
+    printf 'Not signed in to GitHub CLI. Run: gh auth login -h github.com -p https -w\n' >&2
+    exit 1
+  fi
+}
+
+safe_copy() {
+  local src=$1 dest=$2
+  [[ -f "$src" ]] || return 1
+  if grep -Eiq 'gho_|ghp_|ghu_|sk-|xox|BEGIN (RSA |OPENSSH )?PRIVATE|api[_-]?key[[:space:]]*=' "$src"; then
+    printf 'Refusing to upload %s: looks like a secret.\n' "$src" >&2
+    return 1
+  fi
+  cp "$src" "$dest"
+}
+
+cmd="${1:-status}"
+
+case "$cmd" in
+  push)
+    need_gh
+    mkdir -p "$home"
+    tmp=$(mktemp -d)
+    trap 'rm -rf "$tmp"' EXIT
+    uploaded=0
+    if safe_copy "$home/providers.conf" "$tmp/providers.conf"; then
+      uploaded=1
+    fi
+    if [[ -f "$home/state" ]]; then
+      # state is modality/runtime names only
+      safe_copy "$home/state" "$tmp/state" && uploaded=1
+    fi
+    if ((uploaded == 0)); then
+      printf 'Nothing safe to upload under %s\n' "$home" >&2
+      exit 1
+    fi
+    if [[ -f "$gist_id_file" ]]; then
+      gid=$(tr -d '[:space:]' <"$gist_id_file")
+      if [[ -n "$gid" ]] && gh gist view "$gid" >/dev/null 2>&1; then
+        gh gist edit "$gid" --desc "$desc" "$tmp"/* >/dev/null
+        printf 'Updated secret gist %s (your GitHub account, not the public repo)\n' "$gid"
+        exit 0
+      fi
+    fi
+    # Secret gist: not listed publicly; owned by the gh user who created it.
+    url=$(gh gist create --secret --desc "$desc" "$tmp"/*)
+    gid=${url##*/}
+    printf '%s\n' "$gid" >"$gist_id_file"
+    printf 'Saved profile to secret gist %s\n' "$gid"
+    printf '%s\n' "$url"
+    ;;
+  pull)
+    need_gh
+    mkdir -p "$home/providers.d"
+    gid=""
+    [[ -f "$gist_id_file" ]] && gid=$(tr -d '[:space:]' <"$gist_id_file")
+    if [[ -z "$gid" ]]; then
+      gid=$(gh gist list --limit 50 | awk -F '\t' -v d="$desc" '$2 ~ /cockpit-profile/ { print $1; exit }')
+    fi
+    if [[ -z "$gid" ]]; then
+      printf 'No cockpit profile gist on this GitHub account. Run: cockpit config push\n' >&2
+      exit 1
+    fi
+    tmp=$(mktemp -d)
+    trap 'rm -rf "$tmp"' EXIT
+    gh gist clone "$gid" "$tmp/gist" >/dev/null
+    [[ -f "$tmp/gist/providers.conf" ]] && cp "$tmp/gist/providers.conf" "$home/providers.conf"
+    [[ -f "$tmp/gist/state" ]] && cp "$tmp/gist/state" "$home/state"
+    printf '%s\n' "$gid" >"$gist_id_file"
+    printf 'Loaded profile from gist %s into %s\n' "$gid" "$home"
+    ;;
+  status)
+    printf 'local config: %s\n' "$home"
+    if command -v gh >/dev/null 2>&1 && gh auth status -h github.com >/dev/null 2>&1; then
+      printf 'gh CLI: signed in as %s\n' "$(gh api user --jq .login)"
+    else
+      printf 'gh CLI: not signed in\n'
+    fi
+    if [[ -f "$gist_id_file" ]]; then
+      printf 'profile gist: %s\n' "$(cat "$gist_id_file")"
+    else
+      printf 'profile gist: (none yet; cockpit config push)\n'
+    fi
+    printf 'tokens/auth.json: never uploaded\n'
+    ;;
+  *)
+    printf 'usage: cockpit config {push|pull|status}\n' >&2
+    exit 2
+    ;;
+esac

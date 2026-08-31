@@ -1,0 +1,911 @@
+#!/usr/bin/env bash
+# Persistent in-pane setup flow for OAuth, Agent provider/model switching,
+# and selecting a project target for an explicit Git initialization.
+# It blocks on input while idle: no polling loop and no background watcher.
+set -euo pipefail
+
+export PATH="$HOME/.local/bin:$PATH"
+
+script_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+authlib="$script_root/cockpit-auth-lib"
+theme_lib="$script_root/cockpit-lib"
+# shellcheck source=cockpit-auth-lib
+source "$authlib"
+# shellcheck source=cockpit-agent-lib
+source "$script_root/cockpit-agent-lib"
+# shellcheck source=cockpit-lib
+source "$theme_lib"
+
+if [[ -n "${TMUX:-}" ]]; then
+  session="$(tmux display-message -p '#{session_name}' 2>/dev/null || true)"
+else
+  session="$(cockpit_session_name)"
+fi
+session="${session:-$(cockpit_session_name)}"
+
+# Mark the pane so cpr can migrate old SETUP implementations without
+# touching any user buffer that may still contain unsaved edits.
+if [[ -n "${TMUX_PANE:-}" ]]; then
+  tmux set-option -p -t "$TMUX_PANE" @cockpit_setup_version 5 2>/dev/null || true
+fi
+
+blue="$(cockpit_theme_style accent '' 0)"
+muted="$(cockpit_theme_muted)"
+bright="$(cockpit_theme_style foreground '' 1)"
+green="$(cockpit_theme_style green '' 0)"
+reset="$(cockpit_theme_reset)"
+
+focus="${1:-}"
+selected_id=""
+message=""
+declare -A status_cache=()
+provider_status_value=""
+
+refresh_agent_state() {
+  local root=$1 provider=$2
+  cockpit_agent_inspect "$root" "$provider" || true
+}
+
+shell_quote() {
+  local value=$1
+  value=${value//\\/\\\\}
+  value=${value//\'/\'\\\'\'}
+  printf "'%s'" "$value"
+}
+
+agent_pane() {
+  tmux list-panes -s -t "$session" -F '#{pane_id} #{@cockpit_role}' 2>/dev/null |
+    awk '$2 == "runtime" { print $1; exit }' || true
+}
+
+project_root() {
+  local pane
+  pane="$(agent_pane)"
+  if [[ -n "$pane" ]]; then
+    tmux display-message -p -t "$pane" '#{pane_current_path}' 2>/dev/null || pwd
+  else
+    pwd
+  fi
+}
+
+active_provider() {
+  tmux show-options -v -t "$session" @cockpit_runtime 2>/dev/null ||
+    tmux display-message -p -t "$(agent_pane)" '#{@cockpit_runtime_id}' 2>/dev/null ||
+    printf 'codex\n'
+}
+
+provider_cli_ready() {
+  cockpit_auth_check "$1"
+}
+
+provider_auth_command() {
+  cockpit_auth_field "$1" auth_check 2>/dev/null || true
+}
+
+provider_auth_configured() {
+  cockpit_auth_probe_configured "$1"
+}
+
+provider_oauth_ready() {
+  cockpit_auth_signed_in "$1"
+}
+
+provider_status() {
+  local id=$1 status
+  if [[ ${status_cache[$id]+present} ]]; then
+    provider_status_value="${status_cache[$id]}"
+    return 0
+  fi
+  if ! provider_cli_ready "$id"; then
+    status="${muted}CLI missing${reset}"
+  elif ! provider_auth_configured "$id"; then
+    status="${muted}No OAuth check${reset}"
+  elif provider_oauth_ready "$id"; then
+    status="${green}OAuth ready${reset}"
+  else
+    status="${blue}OAuth needed${reset}"
+  fi
+  status_cache[$id]="$status"
+  provider_status_value="$status"
+}
+
+invalidate_status_cache() {
+  status_cache=()
+}
+
+provider_label() {
+  cockpit_auth_label "$1" 2>/dev/null || printf '%s\n' "$1"
+}
+
+plugin_json() {
+  local codex_bin
+  codex_bin="$(command -v codex 2>/dev/null || true)"
+  [[ -n "$codex_bin" ]] || return 1
+  if command -v timeout >/dev/null 2>&1; then
+    timeout 1.5s codex plugin list --available --json 2>/dev/null
+  else
+    codex plugin list --available --json 2>/dev/null
+  fi
+}
+
+plugin_summary() {
+  local json installed available
+  json="$(plugin_json || true)"
+  if [[ -z "$json" ]] || ! command -v jq >/dev/null 2>&1 ||
+    ! jq -e '(.installed? // []) and (.available? // [])' >/dev/null 2>&1 <<<"$json"; then
+    printf '%s' 'unavailable'
+    return 0
+  fi
+  installed="$(jq -r '
+    [((.installed // [])[]?), ((.available // [])[]? | select(.installed == true))]
+    | map(select(.pluginId? != null)) | unique_by(.pluginId) | length
+  ' <<<"$json" 2>/dev/null || printf '0')"
+  available="$(jq -r '[((.available // [])[]? | select(.installed != true))] | length' \
+    <<<"$json" 2>/dev/null || printf '0')"
+  printf '%s installed · %s available' "$installed" "$available"
+}
+
+declare -a plugin_catalog_ids=()
+declare -a plugin_catalog_versions=()
+
+build_plugin_catalog() {
+  local json row id version
+  local -a rows=()
+  plugin_catalog_ids=()
+  plugin_catalog_versions=()
+  json="$(plugin_json || true)"
+  [[ -n "$json" ]] || return 1
+  command -v jq >/dev/null 2>&1 || return 1
+  mapfile -t rows < <(
+    jq -r '
+      (.available // [])[]? |
+      select(.pluginId? != null and .installed != true) |
+      [.pluginId, (.version // "")] | @tsv
+    ' <<<"$json" 2>/dev/null |
+      awk -F '\t' '!seen[$1]++' | sort -t $'\t' -k1,1
+  )
+  for row in "${rows[@]}"; do
+    IFS=$'\t' read -r id version <<<"$row"
+    [[ -n "$id" ]] || continue
+    plugin_catalog_ids+=("$id")
+    plugin_catalog_versions+=("${version:--}")
+  done
+  return 0
+}
+
+current_target() {
+  local saved root
+  saved="$(tmux show-options -v -t "$session" @cockpit_git_target 2>/dev/null || true)"
+  root="$(project_root)"
+  if [[ -n "$saved" && -d "$saved" ]]; then
+    printf '%s\n' "$saved"
+  else
+    printf '%s\n' "$root"
+  fi
+}
+
+git_summary() {
+  local root git_root branch status
+  root=$1
+  git_root="$(git -C "$root" rev-parse --show-toplevel 2>/dev/null || true)"
+  if [[ -z "$git_root" ]]; then
+    printf '%snot initialized%s' "$muted" "$reset"
+    return 0
+  fi
+  branch="$(git -C "$git_root" symbolic-ref --short -q HEAD 2>/dev/null ||
+    git -C "$git_root" rev-parse --short HEAD 2>/dev/null || printf 'unborn')"
+  status="$(git -C "$git_root" status --porcelain --untracked-files=normal 2>/dev/null || true)"
+  if [[ -n "$status" ]]; then
+    printf '%s%s · dirty%s' "$blue" "$branch" "$reset"
+  else
+    printf '%s%s · clean%s' "$green" "$branch" "$reset"
+  fi
+}
+
+draw() {
+  local root target active ids id n=0 marker agent
+  root="$(project_root)"
+  target="$(current_target)"
+  active="$(active_provider)"
+  agent="$(agent_pane)"
+  cockpit_auth_ensure_config
+  refresh_agent_state "$root" "$active"
+  mapfile -t ids < <(cockpit_auth_ids)
+
+  printf '\033[2J\033[H'
+  printf '%s╭──────────────────────────────────────────────────────────────╮%s\n' "$blue" "$reset"
+  printf '%s│%s  %sAGENT SETUP%s  ·  OAuth / provider / model / Git target     %s│%s\n' \
+    "$blue" "$reset" "$bright" "$reset" "$blue" "$reset"
+  printf '%s╰──────────────────────────────────────────────────────────────╯%s\n\n' "$blue" "$reset"
+
+  printf '%sAGENT%s  %s%s%s' "$bright" "$reset" "$blue" "$(provider_label "$active")" "$reset"
+  if [[ -n "$agent" ]]; then
+    printf '  %s%s%s' "$muted" "$agent" "$reset"
+  fi
+  printf '\n%sPROJECT%s %s\n' "$bright" "$reset" "$root"
+  printf '%sGIT%s     %s\n' "$bright" "$reset" "$(git_summary "$root")"
+  printf '%sTARGET%s   %s  %s\n\n' "$bright" "$reset" "$target" "$(git_summary "$target")"
+
+  printf '%sAGENT CFG%s %s → %s  %s\n' "$bright" "$reset" \
+    "$(provider_label "$active")" "${COCKPIT_AGENT_TARGET_REL:-missing}" \
+    "$(cockpit_agent_target_state_label)"
+  printf '%sPROFILE%s  %s · %s skill(s)' "$bright" "$reset" \
+    "$([[ "${COCKPIT_AGENT_PROFILE_ENABLED:-0}" == 1 ]] && printf enabled || printf disabled)" \
+    "${COCKPIT_AGENT_SKILL_COUNT:-0}"
+  if [[ -n "${COCKPIT_AGENT_MISSING_SKILLS:-}" ]]; then
+    printf ' · missing: %s' "$COCKPIT_AGENT_MISSING_SKILLS"
+  fi
+  printf '\n\n'
+
+  printf '%sCOCKPIT HEALTH%s  %s\n' "$bright" "$reset" "$(plugin_summary)"
+  if command -v cockpit-plugin >/dev/null 2>&1; then
+    printf '  %sCockpit plugin:%s %s\n' "$muted" "$reset" \
+      "$(cockpit-plugin status 2>/dev/null | sed -n '2p' || printf 'unavailable')"
+  fi
+  printf '  %su%s audit cockpit  ·  %sl%s browse/install Codex plugins\n\n' \
+    "$blue" "$reset" "$blue" "$reset"
+
+  printf '%sPROVIDERS / OAUTH%s\n' "$bright" "$reset"
+  if ((${#ids[@]} == 0)); then
+    printf '  %sNo providers configured.%s\n' "$muted" "$reset"
+  else
+    for id in "${ids[@]}"; do
+      n=$((n + 1))
+      marker=' '
+      if [[ "$id" == "$active" ]]; then
+        marker='*'
+      fi
+      provider_status "$id"
+      printf '  %s%s)%s %s%-12s%s  %s\n' \
+        "$blue" "$n" "$reset" "$marker" "$(provider_label "$id")" "$reset" "$provider_status_value"
+    done
+  fi
+
+  printf '\n%sFLOW KEYS%s\n' "$bright" "$reset"
+  printf '  %sa%s auth/OAuth flow in this pane   %sp%s change live Agent provider CLI\n' "$blue" "$reset" "$blue" "$reset"
+  printf '  %sm%s model flow in AGENT             %sl%s browse/install Codex plugins\n' "$blue" "$reset" "$blue" "$reset"
+  printf '  %sg%s choose Git init target          %si%s initialize target Git metadata\n' "$blue" "$reset" "$blue" "$reset"
+  printf '  %su%s audit cockpit                   %se%s edit providers.conf in Vim\n' "$blue" "$reset" "$blue" "$reset"
+  printf '  %sv%s validate .codex/.agent target   %sk%s confirm profile skill sync\n' "$blue" "$reset" "$blue" "$reset"
+  printf '  %sc%s edit CPR/profile config          %sr%s refresh indicators\n' "$blue" "$reset" "$blue" "$reset"
+  printf '  %sq%s close setup page\n' "$blue" "$reset"
+  if [[ -n "$message" ]]; then
+    printf '\n%s%s%s\n' "$bright" "$message" "$reset"
+  fi
+  printf '\n%ssetup ›%s ' "$muted" "$reset"
+}
+
+pause_flow() {
+  printf '\n%sPress any key to return to SETUP.%s' "$muted" "$reset"
+  IFS= read -rsn1 _ || true
+}
+
+choose_provider() {
+  local kind=${1:-} ids=() id n=0 sel
+  if [[ -n "$kind" ]]; then
+    mapfile -t ids < <(cockpit_auth_ids "$kind")
+  else
+    mapfile -t ids < <(cockpit_auth_ids)
+  fi
+  if ((${#ids[@]} == 0)); then
+    message="No matching providers are configured."
+    return 1
+  fi
+  printf '\033[2J\033[H'
+  printf '%s%s%s\n\n' "$blue" "${kind:-ALL} PROVIDERS" "$reset"
+  for id in "${ids[@]}"; do
+    n=$((n + 1))
+    provider_status "$id"
+    printf '  %s) %s  %s\n' "$n" "$(provider_label "$id")" "$provider_status_value"
+  done
+  printf '\n%sNumber, or q to cancel:%s ' "$muted" "$reset"
+  IFS= read -r sel || true
+  [[ "$sel" == q || "$sel" == Q || "$sel" == $'\033' ]] && return 1
+  if [[ "$sel" =~ ^[0-9]+$ ]] && ((sel >= 1 && sel <= ${#ids[@]})); then
+    selected_id="${ids[sel-1]}"
+    return 0
+  fi
+  message="Invalid provider selection."
+  return 1
+}
+
+native_login_command() {
+  local id=$1 command
+  command="$(cockpit_auth_login_cmd "$id" 2>/dev/null || true)"
+  if [[ -n "$command" ]]; then
+    printf '%s\n' "$command"
+  elif [[ "$id" == codex ]]; then
+    printf 'codex login\n'
+  fi
+  return 0
+}
+
+auth_flow() {
+  local id login st=0
+  if ! choose_provider; then
+    pause_flow
+    return 0
+  fi
+  id="$selected_id"
+  printf '\033[2J\033[H'
+  printf '%sAUTH FLOW · %s%s\n\n' "$blue" "$(provider_label "$id")" "$reset"
+  if ! provider_cli_ready "$id"; then
+    message="$(provider_label "$id") CLI is not installed or not available on PATH."
+    pause_flow
+    return 0
+  fi
+  if ! provider_auth_configured "$id"; then
+    printf '%sNo OAuth check is configured for this provider.%s\n' "$muted" "$reset"
+    printf 'Edit providers.conf with %s[e]%s to add probe=... and login=....\n' "$blue" "$reset"
+    pause_flow
+    return 0
+  fi
+  if provider_oauth_ready "$id"; then
+    printf '%sOAuth is already ready on this machine.%s\n' "$green" "$reset"
+    pause_flow
+    return 0
+  fi
+  login="$(native_login_command "$id")"
+  if [[ -z "$login" ]]; then
+    printf '%sNo login command is configured for this provider.%s\n' "$muted" "$reset"
+    printf 'Edit providers.conf with %s[e]%s and add %slogin=...%s.\n' "$blue" "$reset" "$blue" "$reset"
+    pause_flow
+    return 0
+  fi
+  printf '%sStarting the native CLI OAuth flow in this SETUP pane:%s\n\n  %s\n\n' "$bright" "$reset" "$login"
+  printf '%sComplete it, or press Ctrl-C if the CLI offers cancellation.%s\n\n' "$muted" "$reset"
+  set +e
+  bash -lc "$login"
+  st=$?
+  set -e
+  if provider_oauth_ready "$id"; then
+    message="OAuth ready for $(provider_label "$id")."
+  else
+    message="OAuth is still not ready (flow exit $st)."
+  fi
+  invalidate_status_cache
+  pause_flow
+}
+
+provider_flow() {
+  local key
+  printf '\033[2J\033[H'
+  printf '%sPROVIDER FLOW%s\n\n' "$blue" "$reset"
+  printf 'The native Agent provider picker will run in this SETUP terminal.\n'
+  printf 'Choosing %ss%s switches the live AGENT slot; %sp%s keeps a parallel tab.\n\n' "$blue" "$reset" "$blue" "$reset"
+  printf '%sPress any key to start, or q to cancel.%s' "$muted" "$reset"
+  IFS= read -rsn1 key || true
+  [[ "$key" == q || "$key" == Q || "$key" == $'\033' ]] && return 0
+  # Without TMUX, runtime's picker uses its direct terminal prompt instead of
+  # opening another popup/window. Its explicit session argument still lets it
+  # update the real Agent pane.
+  env -u TMUX cockpit-runtime pick "$session" || true
+  invalidate_status_cache
+  message="Provider flow finished; the live Agent slot was preserved."
+}
+
+trim_value() {
+  local value=${1:-}
+  value="${value#"${value%%[![:space:]]*}"}"
+  value="${value%"${value##*[![:space:]]}"}"
+  printf '%s' "$value"
+}
+
+provider_models() {
+  local id=$1 raw command
+  raw="$(cockpit_auth_field "$id" models 2>/dev/null || true)"
+  if [[ -z "$raw" ]]; then
+    command="$(cockpit_auth_field "$id" models_command 2>/dev/null || true)"
+    if [[ -n "$command" ]]; then
+      # Discovery is opt-in and happens only when MODEL is opened. Keep a
+      # misbehaving provider command from blocking the SETUP terminal.
+      if command -v timeout >/dev/null 2>&1; then
+        raw="$(timeout 1s bash -lc "$command" 2>/dev/null || true)"
+      else
+        raw="$(bash -lc "$command" 2>/dev/null || true)"
+      fi
+    fi
+  fi
+  # `models=` accepts comma- or pipe-separated values; discovery commands may
+  # return one model per line. The picker stores each value as one entry.
+  raw="${raw//$'\r'/,}"
+  raw="${raw//$'\n'/,}"
+  raw="${raw//|/,}"
+  printf '%s' "$raw"
+}
+
+declare -a model_provider_ids=()
+declare -a model_provider_names=()
+declare -a model_values=()
+declare -a model_modes=()
+
+build_model_catalog() {
+  local id raw model before
+  local -a ids=() values=()
+  model_provider_ids=()
+  model_provider_names=()
+  model_values=()
+  model_modes=()
+  mapfile -t ids < <(cockpit_auth_ids runtime)
+  for id in "${ids[@]}"; do
+    before=${#model_values[@]}
+    raw="$(provider_models "$id")"
+    if [[ -n "$raw" ]]; then
+      IFS=',' read -r -a values <<<"$raw"
+      for model in "${values[@]}"; do
+        model="$(trim_value "$model")"
+        [[ -n "$model" ]] || continue
+        model_provider_ids+=("$id")
+        model_provider_names+=("$(provider_label "$id")")
+        model_values+=("$model")
+        model_modes+=(catalog)
+      done
+    fi
+    if ((${#model_values[@]} == before)); then
+      model_provider_ids+=("$id")
+      model_provider_names+=("$(provider_label "$id")")
+      model_values+=('native provider picker')
+      model_modes+=(native)
+    fi
+  done
+}
+
+open_native_model_picker() {
+  local id=$1 pane keys
+  pane="$(agent_pane)"
+  if [[ -z "$pane" ]]; then
+    message="No live Agent pane is available."
+    return 0
+  fi
+  keys="$(cockpit_auth_field "$id" model_keys 2>/dev/null || true)"
+  [[ -n "$keys" ]] || keys=/model
+  tmux send-keys -t "$pane" "$keys"
+  tmux select-window -t "$pane" 2>/dev/null || true
+  tmux select-pane -t "$pane" 2>/dev/null || true
+  message="Native model picker opened for $(provider_label "$id") in AGENT."
+}
+
+switch_model_provider() {
+  local id=$1 active
+  active="$(active_provider)"
+  [[ "$active" == "$id" ]] && return 0
+  printf '%sSwitching live AGENT to %s...%s\n\n' "$muted" "$(provider_label "$id")" "$reset"
+  if ! env -u TMUX cockpit-runtime switch "$session" "$id"; then
+    message="Could not switch the live Agent to $(provider_label "$id")."
+    return 1
+  fi
+  invalidate_status_cache
+  return 0
+}
+
+select_catalog_model() {
+  local index=$1 id model apply
+  id="${model_provider_ids[index]}"
+  model="${model_values[index]}"
+  if ! switch_model_provider "$id"; then
+    pause_flow
+    return 0
+  fi
+  tmux set-option -t "$session" @cockpit_model "${id}:${model}" 2>/dev/null || true
+  apply="$(cockpit_auth_field "$id" model_apply 2>/dev/null || true)"
+  if [[ -n "$apply" ]]; then
+    printf '%sApplying %s · %s...%s\n\n' "$muted" "$(provider_label "$id")" "$model" "$reset"
+    if COCKPIT_PROVIDER="$id" COCKPIT_MODEL="$model" bash -lc "$apply"; then
+      message="Selected $(provider_label "$id") · $model."
+    else
+      message="The model_apply hook failed for $(provider_label "$id") · $model."
+    fi
+  else
+    open_native_model_picker "$id"
+    message="Selected $(provider_label "$id") · $model; native picker opened for confirmation."
+  fi
+  pause_flow
+}
+
+model_flow() {
+  local active sel index
+  build_model_catalog
+  active="$(active_provider)"
+  printf '\033[2J\033[H'
+  printf '%sMODEL PICKER · ALL PROVIDERS%s\n\n' "$blue" "$reset"
+  printf 'Choose a configured model, or open a provider native picker.\n'
+  printf '%sCatalog entries use models= or models_command= in providers.conf.%s\n\n' "$muted" "$reset"
+  if ((${#model_values[@]} == 0)); then
+    printf '%sNo runtime providers are configured.%s\n' "$muted" "$reset"
+    pause_flow
+    return 0
+  fi
+  for index in "${!model_values[@]}"; do
+    if [[ "${model_provider_ids[index]}" == "$active" ]]; then
+      printf '  %s%2d)%s * %-18s  %s\n' "$blue" "$((index + 1))" "$reset" \
+        "${model_provider_names[index]}" "${model_values[index]}"
+    else
+      printf '  %s%2d)%s   %-18s  %s\n' "$blue" "$((index + 1))" "$reset" \
+        "${model_provider_names[index]}" "${model_values[index]}"
+    fi
+  done
+  printf '\n%sNumber to select, or q to cancel:%s ' "$muted" "$reset"
+  IFS= read -r sel || true
+  [[ "$sel" == q || "$sel" == Q || "$sel" == $'\033' ]] && return 0
+  if [[ "$sel" =~ ^[0-9]+$ ]] && ((sel >= 1 && sel <= ${#model_values[@]})); then
+    select_catalog_model "$((sel - 1))"
+  else
+    message="Invalid model selection."
+  fi
+}
+
+plugin_flow() {
+  local index sel selected answer status
+  if ! build_plugin_catalog; then
+    printf '\033[2J\033[H'
+    printf '%sCODEX PLUGINS%s\n\n' "$blue" "$reset"
+    printf '%sThe native Codex plugin catalog is unavailable on this host.%s\n' "$muted" "$reset"
+    printf 'Check that %scodex plugin list --available --json%s works, then retry.\n' \
+      "$blue" "$reset"
+    pause_flow
+    return 0
+  fi
+
+  printf '\033[2J\033[H'
+  printf '%sCODEX PLUGINS · AVAILABLE%s\n\n' "$blue" "$reset"
+  printf 'Select a marketplace entry to install with the native Codex plugin CLI.\n'
+  printf '%sInstalled plugins are omitted; no credentials or plugin permissions are shown here.%s\n\n' \
+    "$muted" "$reset"
+  if ((${#plugin_catalog_ids[@]} == 0)); then
+    printf '%sNo uninstalled plugins are available in the configured marketplace.%s\n' "$muted" "$reset"
+    pause_flow
+    return 0
+  fi
+  for index in "${!plugin_catalog_ids[@]}"; do
+    printf '  %s%2d)%s %-42s %s\n' "$blue" "$((index + 1))" "$reset" \
+      "${plugin_catalog_ids[index]}" "${plugin_catalog_versions[index]}"
+  done
+  printf '\n%sNumber or exact plugin id, or q to cancel:%s ' "$muted" "$reset"
+  IFS= read -r sel || true
+  [[ "$sel" == q || "$sel" == Q || "$sel" == $'\033' ]] && return 0
+  selected=""
+  if [[ "$sel" =~ ^[0-9]+$ ]] && ((sel >= 1 && sel <= ${#plugin_catalog_ids[@]})); then
+    selected="${plugin_catalog_ids[sel-1]}"
+  else
+    for index in "${!plugin_catalog_ids[@]}"; do
+      if [[ "$sel" == "${plugin_catalog_ids[index]}" ||
+        "$sel" == "${plugin_catalog_ids[index]%%@*}" ]]; then
+        selected="${plugin_catalog_ids[index]}"
+        break
+      fi
+    done
+  fi
+  if [[ -z "$selected" ]]; then
+    message="Plugin selection is not in the configured marketplace."
+    return 0
+  fi
+  printf '\nInstall %s? [y/N] ' "$selected"
+  IFS= read -r answer || true
+  if [[ "$answer" != y && "$answer" != Y ]]; then
+    message="Plugin installation cancelled."
+    return 0
+  fi
+  printf '\n%sInstalling %s with Codex...%s\n\n' "$muted" "$selected" "$reset"
+  set +e
+  codex plugin add "$selected"
+  status=$?
+  set -e
+  if ((status == 0)); then
+    message="Installed Codex plugin $selected. Restart the Agent to load new skills/tools."
+  else
+    message="Codex plugin installation failed for $selected (exit $status)."
+  fi
+  pause_flow
+}
+
+audit_flow() {
+  local status
+  printf '\033[2J\033[H'
+  printf '%sCOCKPIT AUDIT%s\n\n' "$blue" "$reset"
+  set +e
+  "$script_root/cockpit-audit" "$session"
+  status=$?
+  set -e
+  if ((status == 0)); then
+    message="Cockpit audit passed."
+  else
+    message="Cockpit audit found issues (exit $status)."
+  fi
+  pause_flow
+}
+
+agent_target_flow() {
+  local root provider status
+  root="$(project_root)"
+  provider="$(active_provider)"
+  printf '\033[2J\033[H'
+  printf '%sAGENT TARGET VALIDATION%s\n\n' "$blue" "$reset"
+  refresh_agent_state "$root" "$provider"
+  printf 'Provider: %s (%s)\n' "$(provider_label "$provider")" "$provider"
+  printf 'Project:  %s\n' "${COCKPIT_AGENT_PROJECT:-$root}"
+  printf 'Markers:  %s\n' "${COCKPIT_AGENT_MARKERS:-none}"
+  printf 'Target:   %s\n' "${COCKPIT_AGENT_TARGET_REL:-missing}"
+  printf 'State:    %s\n' "$(cockpit_agent_target_state_label)"
+  printf 'Profile:  %s enabled, %s skill(s)\n' \
+    "$([[ "${COCKPIT_AGENT_PROFILE_ENABLED:-0}" == 1 ]] && printf yes || printf no)" \
+    "${COCKPIT_AGENT_SKILL_COUNT:-0}"
+  if [[ -n "${COCKPIT_AGENT_MISSING_SKILLS:-}" ]]; then
+    printf 'Missing:  %s\n' "$COCKPIT_AGENT_MISSING_SKILLS"
+  fi
+  if [[ "${COCKPIT_AGENT_TARGET_STATE:-}" == valid &&
+    -z "${COCKPIT_AGENT_MISSING_SKILLS:-}" ]]; then
+    message="Agent target validation passed for $(provider_label "$provider")."
+  else
+    printf '\n%s%s%s\n' "$muted" "${COCKPIT_AGENT_ERROR:-The provider target needs attention.}" "$reset"
+    message="Agent target validation found an issue for $(provider_label "$provider")."
+  fi
+  pause_flow
+}
+
+profile_skill_flow() {
+  local root provider answer allow_create=0 status
+  root="$(project_root)"
+  provider="$(active_provider)"
+  refresh_agent_state "$root" "$provider"
+  printf '\033[2J\033[H'
+  printf '%sCOCKPIT PROFILE · %s%s\n\n' "$blue" "$(provider_label "$provider")" "$reset"
+  printf 'Project: %s\n' "${COCKPIT_AGENT_PROJECT:-$root}"
+  printf 'Target:  %s (%s)\n' "${COCKPIT_AGENT_TARGET_REL:-missing}" \
+    "$(cockpit_agent_target_state_label)"
+  printf 'Skills:  %s enabled from %s\n' "${COCKPIT_AGENT_SKILL_COUNT:-0}" \
+    "$(cockpit_agent_profile_skills_dir)"
+  if [[ "${COCKPIT_AGENT_PROFILE_ENABLED:-0}" != 1 ]]; then
+    message="Cockpit profile is disabled in ${cockpit_agent_profile_file}."
+    pause_flow
+    return 0
+  fi
+  if [[ "${COCKPIT_AGENT_SKILL_COUNT:-0}" == 0 ]]; then
+    printf '\n%sNo enabled .md/.mdc skills were found in the configured profile.%s\n' "$muted" "$reset"
+    printf 'Add one to %s, then press k again.%s\n' "$(cockpit_agent_profile_skills_dir)" "$reset"
+    message="No profile skills are configured."
+    pause_flow
+    return 0
+  fi
+  if [[ -n "${COCKPIT_AGENT_MISSING_SKILLS:-}" ]]; then
+    printf 'Missing:  %s\n' "$COCKPIT_AGENT_MISSING_SKILLS"
+  else
+    printf 'Status:   all configured skills are present\n'
+  fi
+  if [[ "${COCKPIT_AGENT_TARGET_STATE:-}" != valid &&
+    "${COCKPIT_AGENT_TARGET_STATE:-}" != missing ]]; then
+    printf '\n%sProfile sync is refused: %s%s\n' "$muted" \
+      "${COCKPIT_AGENT_ERROR:-target is not editable}" "$reset"
+    message="Profile sync refused for ${COCKPIT_AGENT_TARGET_REL:-target}."
+    pause_flow
+    return 0
+  fi
+  printf '\n%sCockpit will add/update only its managed profile block.%s\n' "$muted" "$reset"
+  printf 'Hand-written content is preserved and an atomic backup is made.\n'
+  if [[ "${COCKPIT_AGENT_TARGET_EXISTING:-0}" != 1 ]]; then
+    printf 'Create missing target %s and add the profile? [y/N] ' \
+      "${COCKPIT_AGENT_TARGET_REL:-target}"
+    IFS= read -r answer || true
+    [[ "$answer" == y || "$answer" == Y ]] || {
+      message="Profile target creation cancelled."
+      pause_flow
+      return 0
+    }
+    allow_create=1
+  else
+    printf 'Add/update profile skills in %s? [y/N] ' "${COCKPIT_AGENT_TARGET_REL}"
+    IFS= read -r answer || true
+    [[ "$answer" == y || "$answer" == Y ]] || {
+      message="Profile skill sync cancelled."
+      pause_flow
+      return 0
+    }
+  fi
+  if cockpit_agent_apply_profile "$root" "$provider" "$allow_create" 0 1; then
+    if [[ -n "${COCKPIT_AGENT_BACKUP_PATH:-}" ]]; then
+      message="Profile skills synced; backup saved at ${COCKPIT_AGENT_BACKUP_PATH}."
+    else
+      message="Profile skills synced to ${COCKPIT_AGENT_TARGET_REL}."
+    fi
+    command -v cockpit-agent-hook >/dev/null 2>&1 &&
+      cockpit-agent-hook "$session" >/dev/null 2>&1 || true
+  else
+    message="Profile skill sync refused: ${COCKPIT_AGENT_APPLY_MESSAGE:-unknown error}"
+  fi
+  pause_flow
+}
+
+choose_target() {
+  local root candidates chosen
+  root="$(project_root)"
+  if command -v fzf >/dev/null 2>&1; then
+    candidates="$root"
+    if [[ -d "$HOME/Work" ]]; then
+      candidates+=$'\n'
+      candidates+="$(find "$HOME/Work" -mindepth 1 -maxdepth 2 -type d \
+        \( -name .git -o -name node_modules -o -name .cache \) -prune -o \
+        -type d -print 2>/dev/null | sort -u || true)"
+    fi
+    chosen="$(printf '%s\n' "$candidates" | awk 'NF && !seen[$0]++' |
+      fzf --height=55% --layout=reverse --border=rounded \
+        --prompt='git target › ' --header='Choose target  ·  Enter select  ·  Esc cancel' || true)"
+  else
+    printf '\033[2J\033[H'
+    printf '%sGIT TARGET%s\n\nCurrent: %s\n\n' "$blue" "$reset" "$root"
+    printf 'Enter a project directory, or q to cancel: '
+    IFS= read -r chosen || true
+    [[ "$chosen" == q || "$chosen" == Q ]] && return 0
+  fi
+  [[ -n "${chosen:-}" && -d "$chosen" ]] || { message="Target selection cancelled or is not a directory."; return 0; }
+  chosen="$(cd -- "$chosen" && pwd -P)"
+  tmux set-option -t "$session" @cockpit_git_target "$chosen"
+  message="Git target set to $chosen. Press i to initialize it."
+}
+
+init_target() {
+  local target answer
+  target="$(current_target)"
+  if [[ "$target" == "$HOME" ]]; then
+    message="Refusing to initialize HOME. Choose a project target with g."
+    return 0
+  fi
+  if [[ -e "$target/.git" ]]; then
+    message="Git is already initialized at $target."
+    return 0
+  fi
+  printf '\033[2J\033[H'
+  printf '%sINITIALIZE GIT%s\n\nTarget: %s\n\n' "$blue" "$reset" "$target"
+  printf 'Create local .git metadata here? [y/N] '
+  IFS= read -r answer || true
+  if [[ "$answer" == y || "$answer" == Y ]]; then
+    if git -C "$target" init -q; then
+      message="Initialized Git target: $target"
+    else
+      message="Git initialization failed at $target."
+    fi
+  else
+    message="Git initialization cancelled."
+  fi
+}
+
+edit_config() {
+  local editor_pane root editor_command
+  cockpit_auth_ensure_config
+  root="$(project_root)"
+  editor_pane="$(
+    tmux list-panes -s -t "$session" -F '#{pane_id} #{@cockpit_role} #{window_name}' 2>/dev/null |
+      awk '$2 == "setup-legacy" && $3 == "SETUP-EDIT" { print $1; exit }'
+  )"
+  if [[ -z "$editor_pane" ]]; then
+    if command -v nvim >/dev/null 2>&1; then
+      editor_command="exec nvim -n $(shell_quote "$cockpit_auth_file") -c 'setlocal filetype=dosini number norelativenumber signcolumn=yes:1' -c 'set errorbells visualbell belloff=all'"
+    else
+      editor_command="exec $(shell_quote "${VISUAL:-${EDITOR:-vi}}") $(shell_quote "$cockpit_auth_file")"
+    fi
+    tmux new-window -d -t "$session:" -n SETUP-EDIT -c "$root" "$editor_command" 2>/dev/null || true
+    editor_pane="$(
+      tmux list-panes -s -t "$session" -F '#{pane_id} #{@cockpit_role} #{window_name}' 2>/dev/null |
+        awk '$3 == "SETUP-EDIT" { print $1; exit }'
+    )"
+    if [[ -n "$editor_pane" ]]; then
+      tmux select-pane -t "$editor_pane" -T SETUP-EDIT 2>/dev/null || true
+      tmux set-option -p -t "$editor_pane" @cockpit_role setup-legacy 2>/dev/null || true
+      tmux set-option -w -t "$editor_pane" automatic-rename off 2>/dev/null || true
+      tmux set-option -w -t "$editor_pane" allow-rename off 2>/dev/null || true
+    fi
+  fi
+  if [[ -n "$editor_pane" ]]; then
+    tmux select-window -t "$editor_pane" 2>/dev/null || true
+    tmux select-pane -t "$editor_pane" 2>/dev/null || true
+  fi
+  invalidate_status_cache
+  message="Provider editor opened in SETUP-EDIT; the live SETUP terminal remains running."
+}
+
+edit_cockpit_config() {
+  local choice target root editor_command title config_home
+  config_home="$(cockpit_config_home)"
+  printf '\033[2J\033[H'
+  printf '%sCOCKPIT CONFIGURATION%s\n\n' "$blue" "$reset"
+  printf '  %s1)%s cpr live updater  %s(%s)%s\n' "$blue" "$reset" "$muted" "$config_home/cockpit.conf" "$reset"
+  printf '  %s2)%s user profile     %s(%s)%s\n' "$blue" "$reset" "$muted" "$cockpit_agent_profile_file" "$reset"
+  printf '  %s3)%s provider registry %s(%s)%s\n' "$blue" "$reset" "$muted" "$cockpit_auth_file" "$reset"
+  printf '\n%sNumber, or q to cancel:%s ' "$muted" "$reset"
+  IFS= read -r choice || true
+  case "$choice" in
+    1) target="${COCKPIT_CPR_CONFIG:-$config_home/cockpit.conf}"; title=COCKPIT-CONFIG ;;
+    2) target="$cockpit_agent_profile_file"; title=COCKPIT-PROFILE ;;
+    3) target="$cockpit_auth_file"; title=SETUP-EDIT ;;
+    *) message="Cockpit config editing cancelled."; return 0 ;;
+  esac
+  mkdir -p -- "$(dirname -- "$target")"
+  if [[ ! -f "$target" ]]; then
+    case "$choice" in
+      1)
+        printf '%s\n' '[cpr]' 'overlay=1' 'hooks=1' 'agent_validation=1' \
+          'refresh_bar=signal' 'adapt_layout=0' 'refresh_derived=0' \
+          'ensure_bar=0' 'require_agent_validation=0' >"$target"
+        ;;
+      2)
+        printf '%s\n' '[profile]' 'name=default' 'enabled=1' \
+          'skills_dir=~/.config/cockpit/skills.d' >"$target"
+        ;;
+      3) cockpit_auth_ensure_config ;;
+    esac
+  fi
+  root="$(project_root)"
+  if command -v nvim >/dev/null 2>&1; then
+    editor_command="exec nvim -n $(shell_quote "$target") -c 'setlocal number norelativenumber signcolumn=yes:1' -c 'set errorbells visualbell belloff=all'"
+  else
+    editor_command="exec $(shell_quote "${VISUAL:-${EDITOR:-vi}}") $(shell_quote "$target")"
+  fi
+  if [[ -n "${TMUX:-}" ]]; then
+    tmux new-window -d -t "$session:" -n "$title" -c "$root" "$editor_command" 2>/dev/null || true
+    message="Opened $target in $title; SETUP and the live Agent remain running."
+  else
+    message="Config file ready at $target. Open it with your editor from the project shell."
+  fi
+}
+
+shell_command() {
+  local command=$1 status
+  [[ -n "$command" ]] || return 0
+  printf '\n%sRUN%s  %s\n\n' "$blue" "$reset" "$command"
+  set +e
+  bash -lc "$command"
+  status=$?
+  set -e
+  message="Command exited with status $status."
+  pause_flow
+}
+
+run_action() {
+  case "$1" in
+    a) auth_flow ;;
+    p) provider_flow ;;
+    m) model_flow ;;
+    l) plugin_flow ;;
+    u) audit_flow ;;
+    v) agent_target_flow ;;
+    k) profile_skill_flow ;;
+    c) edit_cockpit_config ;;
+    g) choose_target ;;
+    i) init_target ;;
+    e) edit_config ;;
+    r) message="Indicators refreshed." ;;
+  esac
+}
+
+case "$focus" in
+  auth) run_action a ;;
+  provider) run_action p ;;
+  model) run_action m ;;
+  plugins|plugin) run_action l ;;
+  audit) run_action u ;;
+  agent|agent-config|validate) run_action v ;;
+  profile|skills) run_action k ;;
+  config|cockpit-config) run_action c ;;
+esac
+
+while true; do
+  draw
+  key=""
+  # Keep the prompt terminal-like: typed input is visible and Enter submits
+  # it. Toolbar shortcuts send the same letter followed by Enter.
+  IFS= read -r key || exit 0
+  case "$key" in
+    a|A) run_action a ;;
+    p|P) run_action p ;;
+    m|M) run_action m ;;
+    l|L) run_action l ;;
+    u|U) run_action u ;;
+    v|V) run_action v ;;
+    k|K) run_action k ;;
+    c|C) run_action c ;;
+    g|G) run_action g ;;
+    i|I) run_action i ;;
+    e|E) run_action e ;;
+    r|R) invalidate_status_cache; run_action r ;;
+    q|Q|$'\033') exit 0 ;;
+    *) shell_command "$key" ;;
+  esac
+done

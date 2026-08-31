@@ -14,7 +14,8 @@ cd cockpit
 ./install.sh
 gh auth login -h github.com -p https -w   # HER GitHub account
 cockpit config pull                        # optional: HER gist only
-cockpit                                    # or: tmux attach -t codex-cockpit
+cockpit                                    # filtered interactive attach
+cockpit agent                               # reattach safely from Termius
 ```
 
 Needs: `tmux`, and whichever agent CLIs she wants (`codex`, `grok`, `claude`,
@@ -23,9 +24,10 @@ tree has templates only — no API keys, no `auth.json`, no gists from other
 people. `cockpit config push` writes a **secret gist on the signed-in `gh`
 user**, never into this git repo.
 
-One tmux session named `codex-cockpit`. A second launch attaches that
-runtime; leftover `codex-cockpit-*` sessions with no clients are reaped so
-ghost Codex processes do not accumulate.
+One tmux session named `cockpit`. A second launch attaches that runtime;
+leftover `cockpit-*` sessions with no clients are reaped so ghost Codex
+processes do not accumulate. Existing `codex-cockpit` sessions are accepted
+and upgraded in place.
 
 One tmux workspace, two equal profiles, switched live:
 
@@ -49,7 +51,7 @@ Views (same in both profiles):
 - **FILES** — Neovim, following files Codex just wrote
 - **DIFF** — scoped, event-driven patch; optional Vim diff view
 - **MAP** — browserless Mermaid with a local Show Me graph adapter
-- **SETUP** — persistent terminal flow for OAuth, Agent switching, and Git targets
+- **SETUP** — persistent terminal flow for auth, Agent switching, Git targets, plugins, and audit
 - **PRS** — GitHub PRs
 
 The AGENT pane launches the native Codex CLI with inherited no-color/CI
@@ -68,7 +70,7 @@ FILES, DIFF, MAP, and the runtime chrome read the active Omarchy
 `colors.toml`, so Git additions/removals and Neovim diff bands follow the
 current Foot palette. A project-shaped directory without a Git root is
 initialized automatically for those tabs; set `COCKPIT_GIT_INIT=0` to opt out.
-MAP uses the local `codex-cockpit-showmegraphs` adapter by default. It prefers
+MAP uses the local `cockpit-showmegraphs` adapter by default. It prefers
 the existing `mermaid-ascii` or `merman-cli` renderer and falls back to the
 Mermaid source without starting a background process. Set
 `COCKPIT_MAP_RENDERER=raw` to force source view.
@@ -77,26 +79,75 @@ Mermaid source without starting a background process. Set
 cockpit
 ```
 
-After installation, `cpr` reloads the Cockpit tmux overlay, the Agent button
-bar, and the DIFF/MAP views, creating SETUP if needed. Existing Agent, FILES,
-and SETUP flow processes stay running:
+After installation, `cpr` runs the Cockpit-native `cockpit.cpr` plugin. It
+validates the overlay, applies only idempotent session options/hooks, and
+refreshes the Agent toolbar with a signal. The live Agent, FILES, SETUP, DIFF,
+and MAP pane processes are preserved:
 
 ```bash
 cpr
+cpr --check                 # plan only; no live tmux changes
+cockpit plugin list         # Cockpit-native plugins, not Codex plugins
+```
+
+`cpr` does not create a tmux server or session when one is absent. That is the
+main reason a transient “server exited” message can appear: tmux has no
+session to keep alive, or an older reload path is respawning the last useful
+pane during an attach race. Run `cockpit /path/to/project` to create the
+canonical session, then use `cpr --check` to inspect it. The optional
+`--refresh-derived` flag is the only CPR mode that permits DIFF/MAP respawns;
+it is disabled by default. Configure the behavior in
+`~/.config/cockpit/cockpit.conf`:
+
+```ini
+[cpr]
+overlay=1
+hooks=1
+agent_validation=1
+refresh_bar=signal
+adapt_layout=0
+refresh_derived=0
+ensure_bar=0
 ```
 
 `cockpit` attaches the tmux workspace. `cockpit agent` jumps to the live
 Agent pane when tabs or chips stop responding. `codex` is the Codex CLI.
-The workspace is displayed as **COCKPIT**; its stable internal tmux session
-remains `codex-cockpit`. On the **AGENT** page, fat **PRS / provider /
+The workspace is displayed as **COCKPIT**; its canonical tmux session is
+`cockpit` (legacy `codex-cockpit` sessions are upgraded automatically). On the **AGENT** page, fat **PRS / provider /
 MODEL / RESTART** buttons sit above the live Agent. **PRS** opens the PR page,
 the provider button opens the persistent **SETUP** flow, and **MODEL** opens
 the shared provider/model picker in **SETUP**. Its OAuth indicators are local
 CLI checks. In SETUP, `a` starts configured OAuth in-pane, `p` changes the
 live Agent CLI, `m` opens the model catalog, `g` selects a target project,
-`i` initializes that target after confirmation, and `e` opens
-`~/.config/codex-cockpit/providers.conf` in Vim. The top chips use these same
+`i` initializes that target after confirmation, `l` browses/installs a selected
+Codex marketplace plugin, `u` runs a read-only Cockpit audit, `v` validates the
+active provider's `.codex`/`.agent` project target, `k` previews and confirms
+user-profile skill additions, and `e` opens
+`~/.config/cockpit/providers.conf` in Vim. The top chips use these same
 in-pane flows; they do not open a second desktop popup.
+
+Cockpit also has its own provider-aware profile layer. It detects project-local
+`.codex`, `.agent`, `.agents`, `AGENTS.md`, and provider convention files, then records the
+currently stationed provider's selected target in tmux metadata. Add optional
+user skills as Markdown files under
+`~/.config/cockpit/skills.d/`; SETUP `v` validates the target and `k`
+previews and asks before adding a managed `cockpit-profile` block. Existing
+instructions are kept, updates are atomic, and a timestamped backup is made.
+The standalone validator is safe by default:
+
+```bash
+cockpit profile detect --session cockpit
+cockpit profile validate --session cockpit
+cockpit profile apply /path/to/project codex       # dry run
+cockpit profile apply --yes /path/to/project codex # confirmed write
+```
+
+Provider files may override detection with `agent_file=`, `agent_files=`, or
+`agent_paths=`. The hook is read-only and runs on Cockpit attach/window/provider
+events, so validation follows the provider currently occupying AGENT. The
+Cockpit profile plugin is not a Codex marketplace plugin; `l` remains the
+separate native Codex plugin flow.
+
 `prefix + R` (or
 long-press → Restart runtime) relaunches the
 active provider in the same pane with the current color environment. `prefix + e`
@@ -124,21 +175,30 @@ closes it and returns to the agent. Tokens never go in git. The public tree is
 does not wait for you to reopen the page; search `cockpit`, not only
 `codex-cockpit`).
 
+For Termius, enable **Send mouse events** and enter through `cockpit` (or
+`cockpit agent`). Those attach commands use the bundled PTY bridge to
+repair Termius' negative-row SGR packets before tmux sees them; the toolbar is
+then four full-width touch zones above AGENT, and the bottom tabs remain the
+canonical page navigation.
+
 From Omarchy/Foot:
 
 ```bash
-omarchy launch tui codex-cockpit
+omarchy launch tui cockpit
 ```
 
 `Super+Alt+C` launches the cockpit in Foot. `Super+Alt+K` is Omarchy's tmux key list. `codex-cli` is the raw CLI.
 
 `prefix + k` forces desktop/keyboard. `prefix + t` forces touch/mobile.
-`prefix + A` opens a nested auth box from `~/.config/codex-cockpit/providers.conf`
+`prefix + A` opens a nested auth box from `~/.config/cockpit/providers.conf`
 (GitHub is `gh auth login` web OAuth). Click outside the box to cancel; it
-closes after success. Add more `[provider]` blocks for other sources — Codex
-CLI and Grok logins stay with those tools and are not listed by default.
+closes after success. SETUP uses `gh auth status -h github.com`, `codex login
+status`, and a structured Grok OIDC cache check, so a stale auth file is not
+reported as ready. SETUP `l` lists available Codex marketplace plugins and
+installs only the entry you select and confirm. `cockpit audit` checks
+the same provider states plus the live tmux topology without printing secrets.
 
-Watchers stay blocked on inotify while idle. Hidden or zoomed-away views only set a dirty bit; the visible pad (Foot) or the open tab (Termius) refreshes after a coalesced burst of file events. Detached idle only keeps profile state on disk (`~/.config/codex-cockpit/state`).
+Watchers stay blocked on inotify while idle. Hidden or zoomed-away views only set a dirty bit; the visible pad (Foot) or the open tab (Termius) refreshes after a coalesced burst of file events. Detached idle only keeps profile state on disk (`~/.config/cockpit/state`).
 
 ## Install
 
@@ -146,8 +206,10 @@ Watchers stay blocked on inotify while idle. Hidden or zoomed-away views only se
 ./install.sh
 ```
 
-Requires tmux, a Codex CLI on `PATH`, and (for PRs) GitHub CLI. Local CLI auth is used as-is (`gh`, `~/.codex/auth.json`, `~/.grok/auth.json`,
-`claude auth status`, `cursor-agent status`). Already signed in → no prompt.
+Requires tmux, a Codex CLI on `PATH`, and (for PRs) GitHub CLI. Local CLI auth
+is used as-is (`gh auth status`, `codex login status`, Grok's local OIDC
+cache, `claude auth status`, `cursor-agent status`). Already signed in → no
+prompt.
 Unsigned providers get one nested box (click out to skip). Background panes
 do not ring the terminal (Termius haptics stay off).
 
