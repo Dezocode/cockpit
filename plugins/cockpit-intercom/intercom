@@ -1,0 +1,253 @@
+#!/usr/bin/env bash
+# Cockpit-native Intercom peer bus. GitHub-authenticated clone/fetch/publish.
+set -euo pipefail
+
+export PATH="$HOME/.local/bin:$PATH"
+
+script_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+for lib_candidate in \
+  "$script_root/../../bin/cockpit-lib" \
+  "$HOME/.local/bin/cockpit-lib"; do
+  if [[ -f "$lib_candidate" ]]; then
+    # shellcheck source=/dev/null
+    source "$lib_candidate"
+    break
+  fi
+done
+for auth_candidate in \
+  "$script_root/../../bin/cockpit-auth-lib" \
+  "$HOME/.local/bin/cockpit-auth-lib"; do
+  if [[ -f "$auth_candidate" ]]; then
+    # shellcheck source=/dev/null
+    source "$auth_candidate"
+    break
+  fi
+done
+
+INTERCOM_REPO="${COCKPIT_INTERCOM_REPO:-Dezocode/intercom}"
+INTERCOM_URL="${COCKPIT_INTERCOM_URL:-https://github.com/${INTERCOM_REPO}.git}"
+INTERCOM_HOME="${COCKPIT_INTERCOM_HOME:-$HOME/intercom}"
+INTERCOM_BRANCH="${COCKPIT_INTERCOM_BRANCH:-main}"
+GH_LOGIN_HINT='gh auth login -h github.com -p https -w'
+
+usage() {
+  cat <<'EOF'
+Usage: intercom COMMAND [OPTIONS]
+
+GitHub-authenticated Intercom peer bus for Dezocode/intercom.
+
+Commands:
+  auth-check            exit 0 when gh is signed in with repo access
+  status                show auth, repo access, and clone state
+  sync                  clone or fast-forward fetch the intercom repo
+  write                 write peers/<id>.md, commit, and push main
+
+Write options:
+  --id ID               peer id (or set COCKPIT_INTERCOM_PEER_ID)
+  --message SUBJECT     commit subject / progress marker (required)
+  --file PATH           source file (default: stdin)
+  --check               validate without writing, committing, or pushing
+
+Environment:
+  COCKPIT_INTERCOM_HOME clone path (default: ~/intercom)
+  COCKPIT_INTERCOM_PEER_ID default peer id for write
+EOF
+}
+
+die() {
+  printf '%s\n' "$*" >&2
+  exit 1
+}
+
+require_gh_cli() {
+  command -v gh >/dev/null 2>&1 ||
+    die 'gh CLI is required. Install GitHub CLI and run:' "$GH_LOGIN_HINT"
+}
+
+gh_signed_in() {
+  require_gh_cli
+  gh auth status -h github.com >/dev/null 2>&1
+}
+
+gh_repo_access() {
+  require_gh_cli
+  gh repo view "$INTERCOM_REPO" >/dev/null 2>&1
+}
+
+github_provider_ready() {
+  if declare -F cockpit_auth_signed_in >/dev/null 2>&1; then
+    cockpit_auth_signed_in github
+    return $?
+  fi
+  gh_signed_in
+}
+
+auth_gate() {
+  require_gh_cli
+  if ! gh_signed_in; then
+    die 'Not signed in to GitHub CLI. Run:' "$GH_LOGIN_HINT"
+  fi
+  if ! gh_repo_access; then
+    die "GitHub CLI cannot access ${INTERCOM_REPO}. Sign in with repo scope:" "$GH_LOGIN_HINT"
+  fi
+}
+
+valid_peer_id() {
+  local id=$1
+  [[ "$id" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]
+}
+
+peer_relpath() {
+  local id=$1
+  valid_peer_id "$id" || die "Invalid peer id: $id"
+  printf 'peers/%s.md\n' "$id"
+}
+
+repo_git() {
+  git -C "$INTERCOM_HOME" "$@"
+}
+
+sync_repo() {
+  auth_gate
+  if [[ ! -d "$INTERCOM_HOME/.git" ]]; then
+    mkdir -p "$(dirname -- "$INTERCOM_HOME")"
+  fi
+  if [[ -d "$INTERCOM_HOME/.git" ]]; then
+    repo_git fetch origin
+    repo_git checkout "$INTERCOM_BRANCH" 2>/dev/null || repo_git checkout -B "$INTERCOM_BRANCH"
+    repo_git pull --ff-only origin "$INTERCOM_BRANCH"
+    return 0
+  fi
+  gh repo clone "$INTERCOM_REPO" "$INTERCOM_HOME" -- --branch "$INTERCOM_BRANCH"
+}
+
+write_peer() {
+  local id=${COCKPIT_INTERCOM_PEER_ID:-}
+  local message=''
+  local source=''
+  local mode=write
+  while (($#)); do
+    case "$1" in
+      --id) id="${2:-}"; shift 2 ;;
+      --message) message="${2:-}"; shift 2 ;;
+      --file) source="${2:-}"; shift 2 ;;
+      --check) mode=check; shift ;;
+      -h|--help) usage; exit 0 ;;
+      *) die "Unknown write option: $1" ;;
+    esac
+  done
+  [[ -n "$id" ]] || die 'Peer id is required (--id or COCKPIT_INTERCOM_PEER_ID).'
+  [[ -n "$message" ]] || die 'Commit subject is required (--message).'
+  local relpath
+  relpath="$(peer_relpath "$id")"
+  local dest="$INTERCOM_HOME/$relpath"
+  case "$dest" in
+    */auth.json|*/.git/*|*/../*|*//*) die "Refusing unsafe peer path: $relpath" ;;
+  esac
+  if [[ "$mode" == check ]]; then
+    auth_gate
+    printf 'peer=%s\n' "$relpath"
+    printf 'repo=%s\n' "$INTERCOM_REPO"
+    printf 'home=%s\n' "$INTERCOM_HOME"
+    printf 'mode=check\n'
+    return 0
+  fi
+  sync_repo
+  mkdir -p "$(dirname -- "$dest")"
+  if [[ -n "$source" ]]; then
+    [[ -f "$source" ]] || die "Source file not found: $source"
+    cp "$source" "$dest"
+  else
+    cat >"$dest"
+  fi
+  if grep -Eiq 'gho_|ghp_|ghu_|ghs_|github_pat_|BEGIN (RSA |OPENSSH )?PRIVATE' "$dest"; then
+    rm -f "$dest"
+    die "Refusing to publish $relpath: content looks like a secret."
+  fi
+  repo_git add -- "$relpath"
+  if repo_git diff --cached --quiet -- "$relpath"; then
+    printf 'peer=%s\n' "$relpath"
+    printf 'commit=unchanged\n'
+    printf 'push=skipped\n'
+    return 0
+  fi
+  repo_git commit -m "$message" --only -- "$relpath"
+  repo_git push origin "$INTERCOM_BRANCH"
+  printf 'peer=%s\n' "$relpath"
+  printf 'commit=pushed\n'
+  printf 'branch=%s\n' "$INTERCOM_BRANCH"
+}
+
+cmd_auth_check() {
+  if ! command -v gh >/dev/null 2>&1; then
+    printf 'gh_cli=missing\n'
+    return 1
+  fi
+  if ! gh_signed_in; then
+    printf 'gh_auth=needed\n'
+    printf 'login=%s\n' "$GH_LOGIN_HINT"
+    return 1
+  fi
+  if ! gh_repo_access; then
+    printf 'gh_auth=signed-in\n'
+    printf 'repo_access=denied\n'
+    printf 'repo=%s\n' "$INTERCOM_REPO"
+    printf 'login=%s\n' "$GH_LOGIN_HINT"
+    return 1
+  fi
+  printf 'gh_auth=ready\n'
+  printf 'repo_access=ok\n'
+  printf 'repo=%s\n' "$INTERCOM_REPO"
+  return 0
+}
+
+cmd_status() {
+  printf 'COCKPIT INTERCOM\n'
+  printf 'repo=%s\n' "$INTERCOM_REPO"
+  printf 'home=%s\n' "$INTERCOM_HOME"
+  printf 'branch=%s\n' "$INTERCOM_BRANCH"
+  if ! command -v gh >/dev/null 2>&1; then
+    printf 'gh_cli=missing\n'
+    printf 'github_provider=cli-missing\n'
+    return 1
+  fi
+  if github_provider_ready; then
+    printf 'github_provider=ready\n'
+  else
+    printf 'github_provider=auth-needed\n'
+  fi
+  if gh_signed_in; then
+    printf 'gh_auth=signed-in\n'
+    login="$(gh api user --jq .login 2>/dev/null || true)"
+    [[ -n "$login" ]] && printf 'gh_user=%s\n' "$login"
+  else
+    printf 'gh_auth=needed\n'
+    printf 'login=%s\n' "$GH_LOGIN_HINT"
+    return 1
+  fi
+  if gh_repo_access; then
+    printf 'repo_access=ok\n'
+  else
+    printf 'repo_access=denied\n'
+    printf 'login=%s\n' "$GH_LOGIN_HINT"
+    return 1
+  fi
+  if [[ -d "$INTERCOM_HOME/.git" ]]; then
+    printf 'clone=present\n'
+    printf 'clone_path=%s\n' "$INTERCOM_HOME"
+  else
+    printf 'clone=absent\n'
+  fi
+  return 0
+}
+
+command=${1:-status}
+shift || true
+case "$command" in
+  auth-check|check-auth) cmd_auth_check ;;
+  status) cmd_status ;;
+  sync|fetch|clone) sync_repo; printf 'sync=ok\n' ;;
+  write|publish) write_peer "$@" ;;
+  -h|--help|help) usage ;;
+  *) die "Unknown intercom command: $command" ;;
+esac

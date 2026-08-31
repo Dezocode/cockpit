@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# Standalone equivalent of the interactive `intercom` shell function.
+set -euo pipefail
+exec cockpit-plugin run intercom "$@"

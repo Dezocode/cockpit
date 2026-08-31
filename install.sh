@@ -10,9 +10,12 @@ tmuxdir="$confdir/tmux"
 
 mkdir -p "$bindir" "$tmuxdir" \
   "$config_home/providers.d" "$config_home/nvim" \
-  "$config_home/plugins/cockpit-cpr" "$config_home/skills.d" \
+  "$config_home/plugins/cockpit-cpr" "$config_home/plugins/cockpit-intercom" \
+  "$config_home/skills.d" \
   "$legacy_config_home/providers.d" "$legacy_config_home/nvim" \
-  "$legacy_config_home/plugins/cockpit-cpr" "$legacy_config_home/skills.d"
+  "$legacy_config_home/plugins/cockpit-cpr" \
+  "$legacy_config_home/plugins/cockpit-intercom" \
+  "$legacy_config_home/skills.d"
 
 # The public command and every helper use the cockpit namespace. The old
 # codex-cockpit-* files are installed alongside them as compatibility shims.
@@ -23,6 +26,7 @@ install -m 0644 "$root/bin/cockpit-lib" "$root/bin/cockpit-auth-lib" \
   "$root/bin/codex-cockpit-auth-lib" "$root/bin/codex-cockpit-agent-lib" \
   "$bindir/"
 install -m 0755 "$root/bin/cpr" "$bindir/cpr"
+install -m 0755 "$root/bin/intercom" "$bindir/intercom"
 
 seed_legacy_file() {
   local relative=$1 mode=$2
@@ -92,6 +96,20 @@ if [[ ! -f "$legacy_config_home/plugins/cockpit-cpr/README.md" ]]; then
 fi
 if [[ ! -f "$legacy_config_home/plugins/cockpit-cpr/cpr" ]]; then
   install -m 0755 "$root/plugins/cockpit-cpr/cpr" "$legacy_config_home/plugins/cockpit-cpr/cpr"
+fi
+
+install -m 0644 "$root/plugins/cockpit-intercom/plugin.conf" "$root/plugins/cockpit-intercom/README.md" \
+  "$config_home/plugins/cockpit-intercom/"
+install -m 0755 "$root/plugins/cockpit-intercom/intercom" \
+  "$config_home/plugins/cockpit-intercom/intercom"
+if [[ ! -f "$legacy_config_home/plugins/cockpit-intercom/plugin.conf" ]]; then
+  install -m 0644 "$root/plugins/cockpit-intercom/plugin.conf" "$legacy_config_home/plugins/cockpit-intercom/plugin.conf"
+fi
+if [[ ! -f "$legacy_config_home/plugins/cockpit-intercom/README.md" ]]; then
+  install -m 0644 "$root/plugins/cockpit-intercom/README.md" "$legacy_config_home/plugins/cockpit-intercom/README.md"
+fi
+if [[ ! -f "$legacy_config_home/plugins/cockpit-intercom/intercom" ]]; then
+  install -m 0755 "$root/plugins/cockpit-intercom/intercom" "$legacy_config_home/plugins/cockpit-intercom/intercom"
 fi
 
 if [[ ! -f "$config_home/cockpit.bashrc" ]]; then

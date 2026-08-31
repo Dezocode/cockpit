@@ -94,6 +94,11 @@ cockpit_plugin_health() {
   else
     fail_check 'Cockpit CPR native plugin is missing or invalid'
   fi
+  if grep -Eq '^cockpit\.intercom[[:space:]]+type=cockpit[[:space:]]+version=' <<<"$rows"; then
+    pass_check 'Cockpit Intercom native plugin is available'
+  else
+    fail_check 'Cockpit Intercom native plugin is missing or invalid'
+  fi
 }
 
 agent_target_health() {
