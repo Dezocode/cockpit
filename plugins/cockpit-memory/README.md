@@ -29,3 +29,10 @@ memory show                 # filtered diagram on stdout
 cockpit plugin list
 cockpit plugin run cockpit.memory check
 ```
+
+## Page (deferred)
+
+`bin/cockpit-memory-watch` implements the MEMORY TUI watcher. Session launch,
+touch routing, adapt layout, menu, and tmux binds are **not** wired in PREP
+slice B. Goal 1 MEMORY stays unapproved until layout and Agent toolbar /
+Termius button responsiveness match `v0.1` / `cc4f1ee`.
