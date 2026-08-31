@@ -6,6 +6,50 @@ if [[ "${1:-}" == "config" ]]; then
   exec "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/codex-cockpit-config" "$@"
 fi
 
+# Escape hatch when tab/chip navigation is stuck. Does not need a project path.
+if [[ "${1:-}" == "agent" || "${1:-}" == "runtime" ]]; then
+  export PATH="$HOME/.local/bin:$PATH"
+  session="${CODEX_COCKPIT_SESSION:-codex-cockpit}"
+  tmux start-server 2>/dev/null || true
+  if ! tmux has-session -t "$session" 2>/dev/null; then
+    printf 'cockpit agent: no session %s. Run `cockpit` from a project first.\n' "$session" >&2
+    exit 1
+  fi
+  tmux switch-client -t "$session" -T root 2>/dev/null || true
+  pane="$(
+    tmux list-panes -s -t "$session" -F '#{pane_id} #{@cockpit_role} #{pane_current_command}' 2>/dev/null |
+      awk '$2 == "runtime" { print $1; exit }'
+  )"
+  if [[ -z "$pane" ]]; then
+    pane="$(
+      tmux list-panes -s -t "$session" -F '#{pane_id} #{pane_current_command} #{window_name}' 2>/dev/null |
+        awk '$2 == "codex" || $2 == "grok" || $2 == "claude" || $2 == "cursor-agent" || $3 == "AGENT" || $3 == "CODEX" { print $1; exit }'
+    )"
+  fi
+  if [[ -z "$pane" ]]; then
+    tmux select-window -t "$session:AGENT" 2>/dev/null || tmux select-window -t "$session:CODEX" 2>/dev/null || true
+    pane="$(tmux display-message -p -t "$session:" '#{pane_id}' 2>/dev/null || true)"
+  fi
+  if [[ -n "$pane" ]]; then
+    zoomed="$(tmux display-message -p -t "$pane" '#{window_zoomed_flag}' 2>/dev/null || echo 0)"
+    if [[ "$zoomed" == "1" ]]; then
+      tmux resize-pane -Z -t "$pane" 2>/dev/null || true
+    fi
+    tmux select-window -t "$pane" 2>/dev/null || true
+    tmux select-pane -t "$pane" 2>/dev/null || true
+    tmux set-option -t "$session" @cockpit_runtime_pane "$pane" 2>/dev/null || true
+  fi
+  if [[ -n "${TMUX:-}" ]]; then
+    tmux switch-client -t "$session" 2>/dev/null || true
+    exit 0
+  fi
+  if [[ -t 1 ]]; then
+    exec tmux attach-session -t "$session"
+  fi
+  printf 'cockpit agent: selected live Agent pane in %s\n' "$session"
+  exit 0
+fi
+
 root="${1:-$PWD}"
 diagram="${2:-}"
 explicit_root=$(( $# > 0 ? 1 : 0 ))
@@ -16,6 +60,10 @@ if [[ ! -d "$root" ]]; then
 fi
 
 root="$(cd -- "$root" && pwd -P)"
+
+shared_lib="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/codex-cockpit-lib"
+# shellcheck source=codex-cockpit-lib
+source "$shared_lib"
 
 is_project_dir() {
   local dir=$1
@@ -67,6 +115,14 @@ else
   printf 'codex-cockpit: %s is not a project directory\n' "$root" >&2
   printf 'Run `codex` inside a project, or pass its path: codex /path/to/project\n' >&2
   exit 1
+fi
+
+# Keep the FILES and DIFF tabs useful for project directories that have not
+# been initialized yet. This creates only the local .git metadata; set
+# COCKPIT_GIT_INIT=0 to preserve a deliberately non-Git project.
+if [[ "${COCKPIT_GIT_INIT:-1}" != "0" && ! -e "$root/.git" ]] &&
+  command -v git >/dev/null 2>&1; then
+  git -C "$root" init -q 2>/dev/null || true
 fi
 
 # One canonical runtime. Project path is the pane cwd, not extra sessions.
@@ -134,14 +190,9 @@ if [[ "$modality" != "keyboard" && "$modality" != "touch" ]]; then
   fi
 fi
 
-if ! command -v codex >/dev/null 2>&1; then
-  printf 'codex-cockpit: codex is not on PATH\n' >&2
-  exit 1
-fi
-
-codex_bin="${CODEX_CLI_BIN:-$(command -v codex)}"
-if [[ ! -x "$codex_bin" ]]; then
-  printf 'codex-cockpit: Codex CLI is not executable: %s\n' "$codex_bin" >&2
+codex_bin="$(cockpit_resolve_codex_bin || true)"
+if [[ -z "$codex_bin" || ! -x "$codex_bin" ]]; then
+  printf 'codex-cockpit: Codex CLI is not executable or not on PATH\n' >&2
   exit 1
 fi
 
@@ -181,7 +232,12 @@ if [[ -n "${authlib:-}" ]] && ! cockpit_auth_check "$runtime_id" 2>/dev/null; th
   runtime_id=codex
 fi
 runtime_cmd="$(cockpit_auth_field "$runtime_id" start 2>/dev/null || true)"
-[[ -n "$runtime_cmd" ]] || runtime_cmd="$codex_bin"
+if [[ -n "$runtime_cmd" ]]; then
+  runtime_cmd="$(cockpit_codex_runtime_command "$runtime_cmd" "$codex_bin")"
+else
+  runtime_cmd="$(cockpit_shell_quote "$codex_bin")"
+fi
+runtime_env="$(cockpit_runtime_color_setup)"
 
 profile="$(codex-cockpit-profile $$ 2>/dev/null || echo foot)"
 
@@ -192,12 +248,14 @@ tag() {
 }
 
 # One create path: windows, then adapt morphs pad vs tabs from modality + size.
-tmux new-session -d -s "$session" -n CODEX -c "$root" \
-  "cd -- $root_q && exec $runtime_cmd"
-tag "$session:CODEX" "$(cockpit_auth_label "$runtime_id" 2>/dev/null || echo CODEX)" runtime
-tmux set-option -p -t "$session:CODEX" @cockpit_runtime_id "$runtime_id"
-tmux set-option -p -t "$session:CODEX" remain-on-exit on
-tmux set-option -t "$session" @cockpit_runtime_pane "$(tmux display-message -p -t "$session:CODEX" '#{pane_id}')"
+tmux new-session -d -s "$session" -n AGENT -c "$root" \
+  "$runtime_env cd -- $root_q && exec $runtime_cmd"
+tmux set-option -t "$session" @cockpit_worktree "${root##*/}"
+tmux set-option -t "$session" @cockpit_git_label "${root##*/}"
+tag "$session:AGENT" AGENT runtime
+tmux set-option -p -t "$session:AGENT" @cockpit_runtime_id "$runtime_id"
+tmux set-option -p -t "$session:AGENT" remain-on-exit on
+tmux set-option -t "$session" @cockpit_runtime_pane "$(tmux display-message -p -t "$session:AGENT" '#{pane_id}')"
 
 tmux new-window -d -t "$session:" -n FILES -c "$root" \
   "cd -- $root_q && exec codex-cockpit-files $root_q"
@@ -207,12 +265,16 @@ tmux new-window -d -t "$session:" -n DIFF -c "$root" \
   "cd -- $root_q && exec codex-cockpit-diff $root_q"
 tag "$session:DIFF" DIFF diff
 
+tmux new-window -d -t "$session:" -n SETUP -c "$root" \
+  "cd -- $root_q && exec codex-cockpit-setup"
+tag "$session:SETUP" SETUP setup
+
 tmux new-window -d -t "$session:" -n MAP -c "$root" \
   "cd -- $root_q && exec codex-mermaid-watch $mermaid_args"
 tag "$session:MAP" MAP map
 
-tmux new-window -d -t "$session:" -n prs -c "$root" "exec codex-cockpit-prs"
-tag "$session:prs" PRS prs
+tmux new-window -d -t "$session:" -n PRS -c "$root" "exec codex-cockpit-prs"
+tag "$session:PRS" PRS prs
 
 tmux select-window -t "$session:1"
 tmux select-pane -t "$session:1.1"
