@@ -2,7 +2,7 @@
 # Nested flow UI. Desktop: tmux display-popup (click-out). Termius/touch:
 # a real window, because overlay popups do not paint on Termius iOS.
 # Exit (q / Esc / success / kill / tap a main tab) returns to the previous
-# window — CODEX when the flow started from the agent.
+# window — AGENT when the flow started from the live agent.
 set -euo pipefail
 
 lib="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/codex-cockpit-auth-lib"
@@ -43,15 +43,15 @@ if [[ "$cmd" == "run" ]]; then
   shift 4 || true
   inner=$*
   tmux set-option -p @cockpit_role popup 2>/dev/null || true
-  tmux set-option -w @cockpit_popup 1 2>/dev/null || true
-  tmux set-option -w window-status-format '' 2>/dev/null || true
-  tmux set-option -w window-status-current-format '' 2>/dev/null || true
-  tmux set-option -w monitor-bell off 2>/dev/null || true
-  tmux set-option -w monitor-activity off 2>/dev/null || true
-  tmux set-option -w monitor-silence 0 2>/dev/null || true
+  tmux set-option -w -t "${TMUX_PANE}" @cockpit_popup 1 2>/dev/null || true
+  tmux set-option -w -t "${TMUX_PANE}" window-status-format '' 2>/dev/null || true
+  tmux set-option -w -t "${TMUX_PANE}" window-status-current-format '' 2>/dev/null || true
+  tmux set-option -w -t "${TMUX_PANE}" monitor-bell off 2>/dev/null || true
+  tmux set-option -w -t "${TMUX_PANE}" monitor-activity off 2>/dev/null || true
+  tmux set-option -w -t "${TMUX_PANE}" monitor-silence 0 2>/dev/null || true
   tmux set-option -t "$(tmux display-message -p '#{session_name}')" allow-passthrough off 2>/dev/null || true
-  tmux set-option -w automatic-rename off 2>/dev/null || true
-  tmux set-option -w allow-rename off 2>/dev/null || true
+  tmux set-option -w -t "${TMUX_PANE}" automatic-rename off 2>/dev/null || true
+  tmux set-option -w -t "${TMUX_PANE}" allow-rename off 2>/dev/null || true
   cleanup() {
     if [[ -n "$ret" ]]; then
       tmux select-window -t "$ret" 2>/dev/null || true
