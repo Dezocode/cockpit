@@ -45,26 +45,80 @@ Local Foot wins if both clients are attached, so the Omarchy pad is not crushed 
 
 Views (same in both profiles):
 
-- **CODEX** — live runtime, approvals, applied edits
+- **AGENT** — live runtime, approvals, applied edits
 - **FILES** — Neovim, following files Codex just wrote
-- **DIFF** — scoped, event-driven patch
-- **MAP** — browserless Mermaid
+- **DIFF** — scoped, event-driven patch; optional Vim diff view
+- **MAP** — browserless Mermaid with a local Show Me graph adapter
+- **SETUP** — persistent terminal flow for OAuth, Agent switching, and Git targets
 - **PRS** — GitHub PRs
+
+The AGENT pane launches the native Codex CLI with inherited no-color/CI
+switches cleared and truecolor negotiated through tmux. If `codex` is a
+write-on-start mise shim, Cockpit uses the newest already-installed Codex
+binary instead; set `CODEX_CLI_BIN` to override that choice. DIFF separates
+staged, working-tree, and untracked patches, with readable red/green bands;
+`COCKPIT_DIFF_ADD_BG` and `COCKPIT_DIFF_DELETE_BG` can override those colors.
+Use `prefix + V` or the pane menu's **Vim diff** entry for an on-demand,
+read-only Neovim/Vim two-pane diff. It opens one changed file at a time, so
+the resident DIFF watcher stays event-driven and cheap.
+The tmux status-right label is the Git worktree name, branch, and live state
+(`✓` clean or `!` dirty); the runtime selector still keeps the provider name.
+
+FILES, DIFF, MAP, and the runtime chrome read the active Omarchy
+`colors.toml`, so Git additions/removals and Neovim diff bands follow the
+current Foot palette. A project-shaped directory without a Git root is
+initialized automatically for those tabs; set `COCKPIT_GIT_INIT=0` to opt out.
+MAP uses the local `codex-cockpit-showmegraphs` adapter by default. It prefers
+the existing `mermaid-ascii` or `merman-cli` renderer and falls back to the
+Mermaid source without starting a background process. Set
+`COCKPIT_MAP_RENDERER=raw` to force source view.
 
 ```bash
 cockpit
 ```
 
-`codex` is the Codex CLI again. `cockpit` attaches the single tmux runtime.
-On the agent page, fat **AUTH / runtime / MODEL** buttons sit above the live
-agent. `prefix + e` (or F7, or tap the runtime button) opens a nested list of
+After installation, `cpr` reloads the Cockpit tmux overlay, the Agent button
+bar, and the DIFF/MAP views, creating SETUP if needed. Existing Agent, FILES,
+and SETUP flow processes stay running:
+
+```bash
+cpr
+```
+
+`cockpit` attaches the tmux workspace. `cockpit agent` jumps to the live
+Agent pane when tabs or chips stop responding. `codex` is the Codex CLI.
+The workspace is displayed as **COCKPIT**; its stable internal tmux session
+remains `codex-cockpit`. On the **AGENT** page, fat **PRS / provider /
+MODEL / RESTART** buttons sit above the live Agent. **PRS** opens the PR page,
+the provider button opens the persistent **SETUP** flow, and **MODEL** opens
+the shared provider/model picker in **SETUP**. Its OAuth indicators are local
+CLI checks. In SETUP, `a` starts configured OAuth in-pane, `p` changes the
+live Agent CLI, `m` opens the model catalog, `g` selects a target project,
+`i` initializes that target after confirmation, and `e` opens
+`~/.config/codex-cockpit/providers.conf` in Vim. The top chips use these same
+in-pane flows; they do not open a second desktop popup.
+`prefix + R` (or
+long-press → Restart runtime) relaunches the
+active provider in the same pane with the current color environment. `prefix + e`
+(or F7, or tap the provider button) opens a tmux Agent picker with a list of
 runtimes (Codex, Grok, Anthropic/claude, Cursor). After you pick one it asks
 **switch active** (pause the other, save compute) or **parallel tab** (both
-keep running). `m` / MODEL sends `/model` into the live agent. OAuth stays with
-each CLI.
+keep running). `o` opens Omarchy's native default-Agent switcher. OAuth stays
+with each CLI.
+
+The SETUP MODEL picker reads optional `models=` values or a bounded,
+on-demand `models_command=` from each runtime provider. A provider without
+either entry is shown with a native-picker option, so Cockpit never guesses
+or silently probes a provider. An optional `model_apply=` command receives
+`COCKPIT_PROVIDER` and `COCKPIT_MODEL` when a provider needs a custom apply
+step.
+
+The runtime picker also includes **Open Source (gpt-oss)**. It launches the
+native Codex TUI with `codex --oss`; Codex uses a configured LM Studio or
+Ollama provider for the local model.
 
 Desktop Foot uses a click-out overlay box. Termius iOS cannot paint that overlay,
-so the same command opens as a full tab; **q / Esc / success / tap CODEX**
+so the same command opens as a full tab; **q / Esc / success / tap AGENT**
 closes it and returns to the agent. Tokens never go in git. The public tree is
 **https://github.com/Dezocode/cockpit** (live as soon as it is pushed — GitHub
 does not wait for you to reopen the page; search `cockpit`, not only

@@ -1,10 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-blue=$'\033[38;5;4m'
-muted=$'\033[38;5;8m'
-bright=$'\033[1;37m'
-reset=$'\033[0m'
+theme_lib="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/codex-cockpit-lib"
+# shellcheck source=codex-cockpit-lib
+source "$theme_lib"
+blue="$(cockpit_theme_style accent '' 0)"
+muted="$(cockpit_theme_muted)"
+bright="$(cockpit_theme_style foreground '' 1)"
+reset="$(cockpit_theme_reset)"
 
 profile=foot
 if [[ -n "${TMUX:-}" ]]; then
@@ -16,18 +19,21 @@ if [[ "$profile" == "termius-ios" ]]; then
   map_title="Termius iOS  ·  touch"
   map_body=$(cat <<EOF
 ${bright}TOUCH${reset}  (this client: iPhone SSH / Tailscale)
-  ${blue}Tap a tab${reset}                     CODEX  FILES  DIFF  MAP  PRS
-  ${blue}Tap AUTH / runtime / MODEL${reset}    fat buttons above the agent
+  ${blue}Tap a tab${reset}                     AGENT  FILES  DIFF  SETUP
+  ${blue}Tap COCKPIT${reset}                   provider/OAuth/Git setup flow
+  ${blue}Tap PRS / provider / MODEL${reset}        PRS or SETUP flow; RESTART immediate
   ${blue}Long-press${reset}                    Cockpit menu
   ${blue}Double-tap runtime${reset}            AGENT fullscreen (same PTY)
-  ${blue}F1${reset} Runtime   ${blue}F2${reset} Files   ${blue}F3${reset} Diff   ${blue}F4${reset} Map   ${blue}F5${reset} PRs   ${blue}F6${reset} Help
+  ${blue}F1${reset} Runtime   ${blue}F2${reset} Files   ${blue}F3${reset} Diff   ${blue}F4${reset} Map   ${blue}F5${reset} PRs   ${blue}F8${reset} Setup   ${blue}F9${reset} legacy setup editor
   Nested flows (auth, runtime pick) open as a tab — Termius cannot
-  show overlay popups. ${blue}q / Esc / tap CODEX${reset} closes and returns.
+  show overlay popups. ${blue}q / Esc / tap AGENT${reset} closes and returns.
   Enable Termius ${blue}Send mouse events${reset}.
 
 ${bright}KEYS${reset}  prefix = ${blue}CTRL + B${reset}  (CTRL + A also)
   ${blue}prefix + H${reset}                   This help
-  ${blue}prefix + a / z${reset}               Runtime / zoom
+  ${blue}prefix + a / z${reset}               Agent / zoom
+  ${blue}prefix + R${reset}                   Restart the live Agent
+  ${blue}prefix + V${reset}                   Open read-only Vim diffs
   ${blue}ALT + 1..5${reset}                  Jump to a tab
 EOF
 )
@@ -42,8 +48,10 @@ ${bright}FOOT / OMARCHY${reset}
 
 ${bright}KEYS${reset}  prefix = ${blue}CTRL + SPACE${reset}  (CTRL + B also)
   ${blue}prefix + H${reset}                   This help
-  ${blue}prefix + a${reset}                   Focus runtime (AGENT zoom)
-  ${blue}prefix + f / D / d / g${reset}       Files / Diff / Map / PRs
+  ${blue}prefix + a${reset}                   Focus Agent (AGENT zoom)
+  ${blue}prefix + s${reset}                   Provider/OAuth/Git setup flow
+  ${blue}prefix + R${reset}                   Restart the live Agent
+  ${blue}prefix + f / D / d / g / V${reset}   Files / Diff / Map / PRs / Vim diff
   ${blue}prefix + z${reset}                   Zoom / unzoom
   ${blue}CTRL + ALT + ARROWS${reset}         Move between panes
   ${blue}ALT + ENTER${reset}                 Split (Omarchy Foot CSI-u)
@@ -54,25 +62,27 @@ fi
 
 cat <<EOF | less -R
 ${blue}╭──────────────────────────────────────────────────────────────╮${reset}
-${blue}│${reset} ${bright}CODEX COCKPIT${reset}  ·  ${map_title}${blue}│${reset}
+${blue}│${reset} ${bright}COCKPIT${reset}  ·  ${map_title}${blue}│${reset}
 ${blue}╰──────────────────────────────────────────────────────────────╯${reset}
 
 ${bright}START${reset}
-  ${blue}codex${reset}                         Open this project's cockpit
-  ${blue}codex-cli${reset}                     Underlying Codex CLI without tmux
+  ${blue}cockpit${reset}                       Open this project's cockpit
+  ${blue}cockpit agent${reset}                 Jump to the live Agent pane
+  ${blue}codex${reset}                         Codex CLI without tmux
   ${blue}omarchy launch tui codex-cockpit${reset}
                                 Foot, Omarchy-styled
 
 Launch shows a keyboard-only desktop | touch screen. After it idles, the
 next key is desktop and the next tap is touch. While attached, idle again
-and the same switch runs without stealing keys from Codex until then.
+and the same switch runs without stealing keys from the Agent until then.
 
 ${blue}prefix + k${reset} desktop/keyboard    ${blue}prefix + t${reset} touch/mobile
 ${blue}prefix + A${reset} auth popup (providers.conf)    ${blue}prefix + G${reset} GitHub OAuth box
-${blue}prefix + e${reset} / ${blue}F7${reset} / tap CODEX button  provider list, then nested:
+${blue}prefix + e${reset} / ${blue}F7${reset} / tap provider button  Agent provider list:
      ${blue}s${reset} switch active (pause the other)  ·  ${blue}p${reset} parallel tab
+     ${blue}o${reset} open the native Omarchy default-Agent switcher  ·  ${blue}m${reset} model picker
      Desktop: click outside the box to cancel.
-     Termius: q / Esc / tap CODEX returns to the agent. OAuth stays with each CLI.
+     Termius: q / Esc / tap AGENT returns to the Agent. OAuth stays with each CLI.
 
 PRs open a nested login box only when GitHub is unsigned. Click outside
 that box to skip. It closes itself after a successful gh CLI OAuth.
@@ -84,10 +94,11 @@ client uses the 2x2 pad for keyboard and tabs for touch.
 ${map_body}
 
 ${bright}PANES${reset}
-  ${blue}CODEX${reset}   Live runtime, approvals, applied edits
-  ${blue}FILES${reset}   Neovim; follows Codex writes when this view is on screen
-  ${blue}DIFF${reset}    Project patch; idle until edits
-  ${blue}MAP${reset}     Mermaid; redraws when the diagram changes
+  ${blue}AGENT${reset}   Live runtime, approvals, applied edits
+  ${blue}FILES${reset}   Neovim; follows Agent writes when this view is on screen
+  ${blue}DIFF${reset}    Project patch; prefix + V opens read-only Vim diffs
+  ${blue}MAP${reset}     Show Me graphs / Mermaid; redraws on diagram changes
+  ${blue}SETUP${reset}   OAuth indicators and in-pane provider/Git flow
   ${blue}PRS${reset}     GitHub PRs
 
 ${muted}Press q to close.${reset}

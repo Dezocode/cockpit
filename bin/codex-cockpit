@@ -113,7 +113,7 @@ elif (( explicit_root == 0 )) && [[ -t 0 && -t 1 ]] && command -v fzf >/dev/null
   fi
 else
   printf 'codex-cockpit: %s is not a project directory\n' "$root" >&2
-  printf 'Run `codex` inside a project, or pass its path: codex /path/to/project\n' >&2
+  printf 'Run `cockpit` inside a project, or pass its path: cockpit /path/to/project\n' >&2
   exit 1
 fi
 

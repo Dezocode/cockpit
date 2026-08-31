@@ -1,5 +1,6 @@
-# Workspace Cockpit: `cockpit` is the tmux workspace; Agent is the live CLI.
+# Workspace Cockpit: `cockpit` is the tmux workspace.
 # `cockpit agent` jumps to the live Agent pane when tabs/chips are stuck.
+# `codex` stays the Codex CLI — never alias it to cockpit.
 alias cockpit='codex-cockpit'
 # Cockpit reload: refresh Agent controls and derived views; keep live Vim pages.
 unalias cpr 2>/dev/null || true
