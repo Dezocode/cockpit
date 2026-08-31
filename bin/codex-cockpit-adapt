@@ -162,11 +162,13 @@ apply_hush() {
   tmux set-option -t "$session" activity-action none
   tmux set-option -t "$session" silence-action none
   tmux set-option -t "$session" allow-passthrough off
+  tmux set-option -t "$session" monitor-bell off
   while IFS= read -r w; do
     [[ -n "$w" ]] || continue
     tmux set-option -w -t "$w" monitor-bell off
     tmux set-option -w -t "$w" monitor-activity off
     tmux set-option -w -t "$w" monitor-silence 0
+    tmux set-option -w -t "$w" allow-passthrough off 2>/dev/null || true
   done < <(tmux list-windows -t "$session" -F '#{window_id}' 2>/dev/null || true)
 }
 
@@ -195,7 +197,9 @@ apply_touch_chrome() {
   tmux set-option -t "$session" mouse on
   tmux set-option -t "$session" prefix C-Space
   tmux set-option -t "$session" prefix2 C-b
-  tmux set-option -t "$session" escape-time 10
+  # Tailscale/Termius splits SGR mouse if this is ~10ms. 120ms still feels
+  # instant on a tap and lets the chip bind see a complete CSI sequence.
+  tmux set-option -t "$session" escape-time 120
   # One fat tab row (not two copies). Extra rows steal the Agent composer
   # when Termius shrinks the PTY for the keyboard.
   tmux set-option -t "$session" status on
