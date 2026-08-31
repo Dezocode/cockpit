@@ -13,7 +13,7 @@ This RFC is intentionally broader than a theme change. It defines the architectu
 ## Non-negotiable requirements
 
 1. **Canonical source rebrand: `codex-cockpit` -> `cockpit`.** The repository, runtime, executable names, canonical tmux session, config paths, helper names, environment variables, source identifiers, command strings, generated files, installer output, tests, and user-facing product language must use `cockpit` as the authoritative name. Legacy naming must not remain an authoritative implementation path or compatibility namespace. Historical references may exist only where necessary in migration notes/changelog/test fixtures; new runtime behavior must not depend on the old name.
-2. **Zero regression of current Cockpit features.** The current AGENT, FILES, DIFF, MAP, MEMORY, SETUP, and PRS pages; provider/model switching; OAuth/setup flows; Git targets; CPR behavior; profile validation; native Codex plugin browsing; GitHub flows; event-driven refresh; mouse/keyboard behavior; and current launch/reattach behavior remain functional.
+2. **Zero regression of current Cockpit features.** The current AGENT, FILES, DIFF, MAP, SETUP, and PRS pages; **layout and button responsiveness** (desktop pad, Termius tab row, Agent toolbar touch zones — cc4f1ee adapters); provider/model switching; OAuth/setup flows; Git targets; CPR behavior; profile validation; native Codex plugin browsing; GitHub flows; event-driven refresh; mouse/keyboard behavior; and current launch/reattach behavior remain functional. Do not reflow the bar/toolbar or deaden buttons when adding pages.
 3. **Termius touch is a first-class supported interaction mode.** Preserve the current full-screen mobile tab flow, bottom navigation, large Agent toolbar touch zones, PTY bridge behavior for Termius mouse packets, tap-vs-key profile behavior, no-BEL/no-haptic behavior, and safe `cockpit` / `cockpit agent` reattach path.
 4. **Omarchy/Foot remains the native reference environment.** Cockpit should feel native on Omarchy with Foot and integrate with Omarchy's current plugin standard rather than relying only on ad-hoc launch bindings.
 5. **Cockpit must also run on Ubuntu and macOS.** Omarchy-specific integrations must be adapters, not hard dependencies of core runtime behavior.
@@ -195,9 +195,11 @@ Agent/device relationships are many-to-many through sessions. Intercom messages 
 
 This allows workflows such as researcher -> architect -> implementer -> reviewer -> GitHub -> human approval to span different providers and machines without making the terminal session itself the identity boundary.
 
-## MEMORY page (goal 1 prep)
+## MEMORY page (goal 1 prep — plugin only; session wiring deferred)
 
-MEMORY is a first-class Cockpit page alongside AGENT, FILES, DIFF, MAP, SETUP, and PRS. It uses the same TUI contract as MAP (Show Me / Mermaid rendering, event-driven refresh, idle when off-screen). There is no stripped fallback that substitutes project-local diagrams or scraped workspace aspects.
+MEMORY is planned as a first-class Cockpit page alongside AGENT, FILES, DIFF, MAP, SETUP, and PRS. It will use the same TUI contract as MAP (Show Me / Mermaid rendering, event-driven refresh, idle when off-screen). There is no stripped fallback that substitutes project-local diagrams or scraped workspace aspects.
+
+**Status:** `cockpit.memory` plugin prep is landed; **session chrome wiring is not approved** until layout and button responsiveness match the cc4f1ee TUI baseline (no bar/toolbar reflow, no deadened touch zones). Do not bootstrap a MEMORY window, adapt-layout hooks, or audit topology checks until that gate passes.
 
 ### Source contract
 
@@ -216,11 +218,11 @@ type=cockpit
 entrypoint=memory
 ```
 
-The plugin resolves the Intercom memory path, validates presence, filters the diagram to the three allowed subgraphs, and exposes `check` / `show` commands for tests and the MEMORY watcher. Fetch/sync of the Intercom clone remains the pane Agent's job via `cockpit.intercom`; MEMORY only reads the on-disk clone.
+The plugin resolves the Intercom memory path, validates presence, filters the diagram to the three allowed subgraphs, and exposes `check` / `show` commands for tests and the future MEMORY watcher. Fetch/sync of the Intercom clone remains the pane Agent's job via `cockpit.intercom`; MEMORY only reads the on-disk clone.
 
-### Session wiring
+### Session wiring (deferred)
 
-New sessions create a `MEMORY` tmux window tagged `@cockpit_role memory`, launched by `cockpit-memory-watch`. Touch navigation, wake/reload, audit topology checks, and CPR preservation treat MEMORY like MAP: a derived view that may be explicitly refreshed with `--refresh-derived` but is not respawned during ordinary CPR apply.
+When approved, new sessions will create a `MEMORY` tmux window tagged `@cockpit_role memory`, launched by `cockpit-memory-watch`. Touch navigation, wake/reload, audit topology checks, and CPR preservation will treat MEMORY like MAP: a derived view that may be explicitly refreshed with `--refresh-derived` but is not respawned during ordinary CPR apply. Until layout+button regression is cleared, none of that chrome ships.
 
 ## Cockpit plugin model
 
@@ -336,7 +338,6 @@ Every implementation slice under this RFC must prove that it does not regress:
 - FILES page
 - DIFF page and scoped/event-driven behavior
 - MAP page
-- MEMORY page
 - SETUP page
 - PRS page
 - keyboard navigation

@@ -296,7 +296,7 @@ hide_auxiliary_tabs() {
   while read -r pane role window; do
     [[ -n "$pane" && -n "$window" ]] || continue
     case "$role" in
-      map|memory|prs|setup-legacy|popup|bar)
+      map|prs|setup-legacy|popup|bar)
         [[ "$window" != "$runtime_win" ]] || continue
         tmux set-option -w -t "$window" window-status-format '' 2>/dev/null || true
         tmux set-option -w -t "$window" window-status-current-format '' 2>/dev/null || true
@@ -317,7 +317,7 @@ hide_auxiliary_tabs() {
   while read -r window name; do
     [[ -n "$window" ]] || continue
     case "$name" in
-      prs|PRS|MAP|MEMORY|MERMAID|SETUP-OLD*|SETUP-EDIT|.bar)
+      prs|PRS|MAP|MERMAID|SETUP-OLD*|SETUP-EDIT|.bar)
         tmux set-option -w -t "$window" window-status-format '' 2>/dev/null || true
         tmux set-option -w -t "$window" window-status-current-format '' 2>/dev/null || true
         ;;
@@ -326,7 +326,7 @@ hide_auxiliary_tabs() {
 }
 
 # Keep the mobile tab row reserved for the four primary Cockpit pages. PRs,
-# MAP, MEMORY, and preserved setup-edit buffers remain addressable by keybind without
+# MAP, and preserved setup-edit buffers remain addressable by keybind without
 # pushing FILES, DIFF, or SETUP to a different visible number.
 normalize_primary_tabs() {
   local runtime_win pane role window current target spec

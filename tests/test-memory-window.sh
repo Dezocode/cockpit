@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Session bootstrap must create a tagged MEMORY window without respawning AGENT.
+# PREP-only: MEMORY watcher in an isolated pane. Session chrome routing is deferred.
 set -euo pipefail
 
 repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -29,20 +29,12 @@ memory_pane="$(tmux display-message -p -t "$session:MEMORY" '#{pane_id}')"
 memory_role="$(tmux display-message -p -t "$memory_pane" '#{@cockpit_role}')"
 [[ "$memory_role" == "memory" ]]
 
-windows="$(tmux list-windows -t "$session" -F '#{window_name}' | tr '\n' ' ')"
-grep -q MEMORY <<<"$windows"
-
-# Wake path should not crash when MEMORY watcher is present.
-cockpit-wake "$session" MEMORY
-
 agent_pid="$(tmux display-message -p -t "$session:AGENT" '#{pane_pid}')"
 sleep 1
 agent_pid_after="$(tmux display-message -p -t "$session:AGENT" '#{pane_pid}')"
 [[ "$agent_pid" == "$agent_pid_after" ]]
 
-touch_output="$(COCKPIT_INTERCOM_HOME="$intercom_home" cockpit-touch "$session" memory)"
-[[ -z "$touch_output" || "$touch_output" == "0" ]]
-active_window="$(tmux display-message -p -t "$session:" '#{window_name}')"
-[[ "$active_window" == "MEMORY" ]]
+check_output="$(COCKPIT_INTERCOM_HOME="$intercom_home" memory check)"
+grep -q '^status=ok$' <<<"$check_output"
 
-printf '%s\n' 'Memory window regression: PASS'
+printf '%s\n' 'Memory window prep regression: PASS'

@@ -39,7 +39,6 @@ pane_for() {
   case "$role" in
     diff) window=DIFF ;;
     map) window=MAP ;;
-    memory) window=MEMORY ;;
     *) window="${role^^}" ;;
   esac
   tmux list-panes -s -t "$session" -F '#{pane_id} #{@cockpit_role} #{window_name}' 2>/dev/null |
@@ -172,18 +171,10 @@ reload_view() {
   fi
   [[ -n "$root" && -d "$root" ]] || return 0
 
-  if [[ "$role" == diff ]]; then
-    window=DIFF
-  elif [[ "$role" == memory ]]; then
-    window=MEMORY
-  else
-    window=MAP
-  fi
+  window=$([[ "$role" == diff ]] && printf 'DIFF' || printf 'MAP')
   title=$window
   if [[ "$role" == diff ]]; then
     command="cd -- $(shell_quote "$root") && exec cockpit-diff $(shell_quote "$root")"
-  elif [[ "$role" == memory ]]; then
-    command="cd -- $(shell_quote "$root") && exec cockpit-memory-watch $(shell_quote "$root")"
   else
     # Preserve a custom Mermaid path when the live pane exposes its original
     # command; otherwise use the project's canonical architecture map.
@@ -219,11 +210,10 @@ runtime="$(pane_for runtime)"
 ensure_setup
 reload_view diff
 reload_view map
-reload_view memory
 if command -v cockpit-adapt >/dev/null 2>&1; then
   client="$(tmux list-clients -t "$session" -F '#{client_width} #{client_height} #{client_pid}' 2>/dev/null | head -1 || true)"
   read -r width height client_pid <<<"$client"
   cockpit-adapt attached "$session" "${width:-0}" "${height:-0}" "${client_pid:-}" >/dev/null 2>&1 || true
 fi
 reload_bar
-printf 'Cockpit reloaded: Agent controls, SETUP flow, DIFF, MAP, MEMORY (Agent and FILES untouched).\n'
+printf 'Cockpit reloaded: Agent controls, SETUP flow, DIFF, MAP (Agent and FILES untouched).\n'

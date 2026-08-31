@@ -104,7 +104,6 @@ ${bright}PANES${reset}
   ${blue}FILES${reset}   Neovim; follows Agent writes when this view is on screen
   ${blue}DIFF${reset}    Project patch; prefix + V opens read-only Vim diffs
   ${blue}MAP${reset}     Show Me graphs / Mermaid; redraws on diagram changes
-  ${blue}MEMORY${reset}  Intercom memory/cockpit.mmd; index, intercom, hooks only
   ${blue}SETUP${reset}   Auth/provider/Git flow, agent target/profile validation, plugins, audit
   ${blue}PRS${reset}     GitHub PRs
 

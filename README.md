@@ -51,7 +51,6 @@ Views (same in both profiles):
 - **FILES** — Neovim, following files Codex just wrote
 - **DIFF** — scoped, event-driven patch; optional Vim diff view
 - **MAP** — browserless Mermaid with a local Show Me graph adapter
-- **MEMORY** — Intercom `memory/cockpit.mmd` (`index`, `intercom`, `hooks` only)
 - **SETUP** — persistent terminal flow for auth, Agent switching, Git targets, plugins, and audit
 - **PRS** — GitHub PRs
 
@@ -67,7 +66,7 @@ the resident DIFF watcher stays event-driven and cheap.
 The tmux status-right label is the Git worktree name, branch, and live state
 (`✓` clean or `!` dirty); the runtime selector still keeps the provider name.
 
-FILES, DIFF, MAP, MEMORY, and the runtime chrome read the active Omarchy
+FILES, DIFF, MAP, and the runtime chrome read the active Omarchy
 `colors.toml`, so Git additions/removals and Neovim diff bands follow the
 current Foot palette. A project-shaped directory without a Git root is
 initialized automatically for those tabs; set `COCKPIT_GIT_INIT=0` to opt out.
@@ -83,7 +82,7 @@ cockpit
 After installation, `cpr` runs the Cockpit-native `cockpit.cpr` plugin. It
 validates the overlay, applies only idempotent session options/hooks, and
 refreshes the Agent toolbar with a signal. The live Agent, FILES, SETUP, DIFF,
-MAP, and MEMORY pane processes are preserved:
+and MAP pane processes are preserved:
 
 ```bash
 cpr
@@ -96,7 +95,7 @@ main reason a transient “server exited” message can appear: tmux has no
 session to keep alive, or an older reload path is respawning the last useful
 pane during an attach race. Run `cockpit /path/to/project` to create the
 canonical session, then use `cpr --check` to inspect it. The optional
-`--refresh-derived` flag is the only CPR mode that permits DIFF/MAP/MEMORY respawns;
+`--refresh-derived` flag is the only CPR mode that permits DIFF/MAP respawns;
 it is disabled by default. Configure the behavior in
 `~/.config/cockpit/cockpit.conf`:
 
