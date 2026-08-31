@@ -1,0 +1,15 @@
+flowchart TB
+  subgraph index ["index"]
+    docs[docs]
+    skills[skills]
+  end
+  subgraph intercom ["intercom"]
+    peers[peers]
+    channels[channels]
+  end
+  subgraph hooks ["hooks"]
+    events[events]
+    wake[wake]
+  end
+  docs --> peers
+  peers --> events

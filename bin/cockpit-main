@@ -313,6 +313,9 @@ tmux new-window -d -t "$session:" -n MAP -c "$root" \
   "cd -- $root_q && exec cockpit-mermaid-watch $mermaid_args"
 tag "$session:MAP" MAP map
 
+tmux new-window -d -t "$session:" -n MEMORY -c "$root" "exec cockpit-memory"
+tag "$session:MEMORY" MEMORY memory
+
 tmux new-window -d -t "$session:" -n PRS -c "$root" "exec cockpit-prs"
 tag "$session:PRS" PRS prs
 

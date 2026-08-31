@@ -18,6 +18,7 @@ Usage:
   cockpit plugin run PLUGIN [ARGS...]
   cockpit cpr [ARGS...]
   cockpit intercom [ARGS...]
+  cockpit memory [ARGS...]
 
 This registry contains Cockpit-native plugins only. Codex marketplace plugins
 are managed separately by SETUP's `l` flow and the native Codex CLI.
@@ -48,6 +49,7 @@ plugin_dir() {
   case "$id" in
     cpr|cockpit.cpr) id=cockpit-cpr ;;
     intercom|cockpit.intercom) id=cockpit-intercom ;;
+    memory|cockpit.memory) id=cockpit-memory ;;
   esac
   for root in "$installed_root" "$bundled_root"; do
     candidate="$root/$id"
@@ -113,6 +115,7 @@ case "$command" in
     ;;
   cpr) run_plugin cockpit-cpr "$@" ;;
   intercom) run_plugin cockpit-intercom "$@" ;;
+  memory) run_plugin cockpit-memory "$@" ;;
   run|exec)
     [[ $# -gt 0 ]] || { usage >&2; exit 2; }
     id=$1

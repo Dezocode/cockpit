@@ -1,0 +1,127 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+lib="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/cockpit-lib"
+# shellcheck source=cockpit-lib
+source "$lib"
+script_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+
+INTERCOM_HOME="${COCKPIT_INTERCOM_HOME:-$HOME/intercom}"
+MEMORY_FILE="${COCKPIT_MEMORY_FILE:-$INTERCOM_HOME/memory/cockpit.mmd}"
+COCKPIT_DEBOUNCE=0.25
+last_fp=""
+dirty=1
+session="$(tmux display-message -p '#{session_name}' 2>/dev/null || echo unknown)"
+
+memory_plugin() {
+  local plugin="$script_root/../plugins/cockpit-memory/memory"
+  [[ -x "$plugin" ]] || plugin="$HOME/.config/cockpit/plugins/cockpit-memory/memory"
+  [[ -x "$plugin" ]] || plugin="$script_root/cockpit-plugin"
+  if [[ -x "$plugin" && "$(basename -- "$plugin")" == memory ]]; then
+    "$plugin" "$@"
+    return $?
+  fi
+  cockpit-plugin run memory "$@"
+}
+
+clear_screen() {
+  printf '\033[2J\033[H'
+}
+
+header() {
+  printf '%sMEMORY%s  %s%s%s\n\n' \
+    "$(cockpit_theme_heading)" "$(cockpit_theme_reset)" \
+    "$(cockpit_theme_muted)" "$MEMORY_FILE" "$(cockpit_theme_reset)"
+}
+
+file_fp() {
+  local path=$1
+  [[ -f "$path" ]] || { printf 'missing\n'; return 0; }
+  stat -c '%Y %s' "$path" 2>/dev/null
+}
+
+render_error() {
+  local reason=$1
+  clear_screen
+  header
+  printf '%s\n' "$reason"
+  printf '\n%sMemory map is unavailable until %s exists and validates.%s\n' \
+    "$(cockpit_theme_muted)" "$MEMORY_FILE" "$(cockpit_theme_reset)"
+}
+
+render() {
+  local fp status_output
+  fp="$(file_fp "$MEMORY_FILE")"
+  if [[ "$fp" == "$last_fp" && -n "$last_fp" ]]; then
+    dirty=0
+    return 0
+  fi
+  last_fp=$fp
+  dirty=0
+
+  if [[ ! -f "$MEMORY_FILE" ]]; then
+    render_error "memory file missing (fail closed)"
+    return 0
+  fi
+
+  if ! status_output="$(memory_plugin validate 2>&1)"; then
+    render_error "$status_output"
+    return 0
+  fi
+
+  clear_screen
+  header
+  memory_plugin render
+}
+
+maybe_render() {
+  if cockpit_view_visible; then
+    render
+  else
+    dirty=1
+  fi
+}
+
+watch_dir="$(dirname -- "$MEMORY_FILE")"
+mkdir -p "$watch_dir" 2>/dev/null || true
+
+cockpit_event_open "$session" MEMORY
+trap 'cockpit_event_close; rm -f "$(cockpit_wake_dir "$session")/MEMORY.pid"' EXIT
+
+if cockpit_view_visible; then
+  render
+else
+  dirty=1
+  printf '\033[2J\033[H'
+  printf '%sMEMORY%s  idle\n\n' "$(cockpit_theme_heading)" "$(cockpit_theme_reset)"
+  printf 'Memory map renders when you open this tab.\n'
+fi
+
+if [[ -d "$watch_dir" ]]; then
+  cockpit_event_watch "$watch_dir" \
+    -e close_write,moved_to,create,delete \
+    --exclude "$cockpit_noise_exclude"
+fi
+
+while cockpit_event_read; do
+  if [[ "$COCKPIT_EVENT" == "WAKE" ]]; then
+    last_fp=""
+    maybe_render
+    continue
+  fi
+  sleep "$COCKPIT_DEBOUNCE"
+  cockpit_event_drain >/dev/null
+  base="${COCKPIT_EVENT##*/}"
+  case "$base" in
+    cockpit.mmd|WAKE)
+      last_fp=""
+      maybe_render
+      ;;
+    *)
+      if [[ "$COCKPIT_EVENT" == "$MEMORY_FILE" || "$base" == cockpit.mmd ]]; then
+        last_fp=""
+        maybe_render
+      fi
+      ;;
+  esac
+done

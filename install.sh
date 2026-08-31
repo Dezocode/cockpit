@@ -11,10 +11,12 @@ tmuxdir="$confdir/tmux"
 mkdir -p "$bindir" "$tmuxdir" \
   "$config_home/providers.d" "$config_home/nvim" \
   "$config_home/plugins/cockpit-cpr" "$config_home/plugins/cockpit-intercom" \
+  "$config_home/plugins/cockpit-memory" \
   "$config_home/skills.d" \
   "$legacy_config_home/providers.d" "$legacy_config_home/nvim" \
   "$legacy_config_home/plugins/cockpit-cpr" \
   "$legacy_config_home/plugins/cockpit-intercom" \
+  "$legacy_config_home/plugins/cockpit-memory" \
   "$legacy_config_home/skills.d"
 
 # The public command and every helper use the cockpit namespace. The old
@@ -27,6 +29,7 @@ install -m 0644 "$root/bin/cockpit-lib" "$root/bin/cockpit-auth-lib" \
   "$bindir/"
 install -m 0755 "$root/bin/cpr" "$bindir/cpr"
 install -m 0755 "$root/bin/intercom" "$bindir/intercom"
+install -m 0755 "$root/bin/memory" "$bindir/memory"
 
 seed_legacy_file() {
   local relative=$1 mode=$2
@@ -110,6 +113,20 @@ if [[ ! -f "$legacy_config_home/plugins/cockpit-intercom/README.md" ]]; then
 fi
 if [[ ! -f "$legacy_config_home/plugins/cockpit-intercom/intercom" ]]; then
   install -m 0755 "$root/plugins/cockpit-intercom/intercom" "$legacy_config_home/plugins/cockpit-intercom/intercom"
+fi
+
+install -m 0644 "$root/plugins/cockpit-memory/plugin.conf" "$root/plugins/cockpit-memory/README.md" \
+  "$config_home/plugins/cockpit-memory/"
+install -m 0755 "$root/plugins/cockpit-memory/memory" \
+  "$config_home/plugins/cockpit-memory/memory"
+if [[ ! -f "$legacy_config_home/plugins/cockpit-memory/plugin.conf" ]]; then
+  install -m 0644 "$root/plugins/cockpit-memory/plugin.conf" "$legacy_config_home/plugins/cockpit-memory/plugin.conf"
+fi
+if [[ ! -f "$legacy_config_home/plugins/cockpit-memory/README.md" ]]; then
+  install -m 0644 "$root/plugins/cockpit-memory/README.md" "$legacy_config_home/plugins/cockpit-memory/README.md"
+fi
+if [[ ! -f "$legacy_config_home/plugins/cockpit-memory/memory" ]]; then
+  install -m 0755 "$root/plugins/cockpit-memory/memory" "$legacy_config_home/plugins/cockpit-memory/memory"
 fi
 
 if [[ ! -f "$config_home/cockpit.bashrc" ]]; then
