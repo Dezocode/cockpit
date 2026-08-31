@@ -1,0 +1,160 @@
+#!/usr/bin/env bash
+# Cockpit-native Intercom memory diagram reader. Fail closed; no aspects scrape.
+set -euo pipefail
+
+export PATH="$HOME/.local/bin:$PATH"
+
+INTERCOM_HOME="${COCKPIT_INTERCOM_HOME:-$HOME/intercom}"
+MEMORY_REL="memory/cockpit.mmd"
+MEMORY_PATH="$INTERCOM_HOME/$MEMORY_REL"
+ALLOWED_SUBGRAPHS=(index intercom hooks)
+FORBIDDEN_SUBGRAPHS=(Foundry PiSai MBA foundry pisai mba)
+
+usage() {
+  cat <<'EOF'
+Usage: memory COMMAND
+
+Intercom memory diagram for the Cockpit MEMORY tab.
+
+Commands:
+  path                  print resolved memory/cockpit.mmd path
+  check                 exit 0 when the diagram exists and passes filters
+  show                  print the filtered diagram on stdout
+
+Environment:
+  COCKPIT_INTERCOM_HOME clone path (default: ~/intercom)
+EOF
+}
+
+die() {
+  printf '%s\n' "$*" >&2
+  exit 1
+}
+
+memory_path() {
+  printf '%s\n' "$MEMORY_PATH"
+}
+
+memory_exists() {
+  [[ -f "$MEMORY_PATH" && -r "$MEMORY_PATH" ]]
+}
+
+forbidden_present() {
+  local line name
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    case "$line" in
+      *subgraph*)
+        for name in "${FORBIDDEN_SUBGRAPHS[@]}"; do
+          if grep -Eiq "(^|[[:space:]])subgraph[[:space:]]+${name}([[:space:]]|\[|$)" <<<"$line"; then
+            return 0
+          fi
+        done
+        ;;
+    esac
+  done <"$MEMORY_PATH"
+  return 1
+}
+
+subgraph_id() {
+  local line=$1
+  if [[ "$line" =~ subgraph[[:space:]]+([A-Za-z0-9_.-]+) ]]; then
+    printf '%s\n' "${BASH_REMATCH[1]}"
+    return 0
+  fi
+  if [[ "$line" =~ subgraph[[:space:]]+\"([^\"]+)\" ]]; then
+    printf '%s\n' "${BASH_REMATCH[1]}"
+    return 0
+  fi
+  if [[ "$line" =~ subgraph[[:space:]]+\[\"([^\"]+)\"\] ]]; then
+    printf '%s\n' "${BASH_REMATCH[1]}"
+    return 0
+  fi
+  return 1
+}
+
+allowed_subgraph() {
+  local id=$1 candidate
+  for candidate in "${ALLOWED_SUBGRAPHS[@]}"; do
+    [[ "$id" == "$candidate" ]] && return 0
+  done
+  return 1
+}
+
+filter_diagram() {
+  local line id in_block=0 current_id="" keep=0
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    case "$line" in
+      *subgraph*)
+        if id="$(subgraph_id "$line")"; then
+          in_block=1
+          current_id=$id
+          if allowed_subgraph "$current_id"; then
+            keep=1
+            printf '%s\n' "$line"
+          else
+            keep=0
+          fi
+          continue
+        fi
+        ;;
+      end)
+        if ((in_block)); then
+          ((keep)) && printf '%s\n' "$line"
+          in_block=0
+          current_id=""
+          keep=0
+          continue
+        fi
+        ;;
+    esac
+    if ((in_block)); then
+      ((keep)) && printf '%s\n' "$line"
+    else
+      printf '%s\n' "$line"
+    fi
+  done <"$MEMORY_PATH"
+  return 0
+}
+
+validate_diagram() {
+  local id found=0 candidate missing=""
+  memory_exists || die "memory diagram missing: $MEMORY_PATH"
+  for candidate in "${ALLOWED_SUBGRAPHS[@]}"; do
+    found=0
+    while IFS= read -r line || [[ -n "$line" ]]; do
+      case "$line" in
+        *subgraph*)
+          id="$(subgraph_id "$line" || true)"
+          [[ "$id" == "$candidate" ]] && found=1 && break
+          ;;
+      esac
+    done <"$MEMORY_PATH"
+    if ((found == 0)); then
+      missing+="${missing:+, }$candidate"
+    fi
+  done
+  [[ -z "$missing" ]] || die "memory diagram missing required subgraphs: $missing"
+}
+
+cmd_check() {
+  validate_diagram
+  printf 'memory=%s\n' "$MEMORY_PATH"
+  printf 'subgraphs=index,intercom,hooks\n'
+  printf 'status=ok\n'
+}
+
+cmd_show() {
+  validate_diagram
+  filter_diagram
+}
+
+command=${1:-}
+shift || true
+case "$command" in
+  path) memory_path ;;
+  check) cmd_check ;;
+  show) cmd_show ;;
+  -h|--help|help) usage ;;
+  '') usage >&2; exit 2 ;;
+  *) die "Unknown memory command: $command" ;;
+esac

@@ -99,6 +99,11 @@ cockpit_plugin_health() {
   else
     fail_check 'Cockpit Intercom native plugin is missing or invalid'
   fi
+  if grep -Eq '^cockpit\.memory[[:space:]]+type=cockpit[[:space:]]+version=' <<<"$rows"; then
+    pass_check 'Cockpit Memory native plugin is available'
+  else
+    fail_check 'Cockpit Memory native plugin is missing or invalid'
+  fi
 }
 
 agent_target_health() {
@@ -160,7 +165,7 @@ if ! has_command tmux || ! tmux has-session -t "$session" 2>/dev/null; then
   fail_check "tmux session is not running: $session"
 else
   pass_check "tmux session is running: $session"
-  for window in AGENT FILES DIFF SETUP; do
+  for window in AGENT FILES DIFF SETUP MEMORY; do
     if tmux list-windows -t "$session" -F '#W' 2>/dev/null | grep -Fxq "$window"; then
       pass_check "window $window exists"
     else
