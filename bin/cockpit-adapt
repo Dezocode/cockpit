@@ -34,13 +34,13 @@ height=${height:-0}
 workspace_label='COCKPIT'
 agent_label='AGENT'
 
-endpoint=foot
+endpoint=generic-desktop
 if [[ -n "$client_pid" ]]; then
-  endpoint="$(cockpit-profile "$client_pid" 2>/dev/null || echo foot)"
+  endpoint="$(cockpit-profile "$client_pid" 2>/dev/null || echo generic-desktop)"
 else
-  endpoint="$(cockpit-profile --session "$session" 2>/dev/null || echo foot)"
+  endpoint="$(cockpit-profile --session "$session" 2>/dev/null || echo generic-desktop)"
 fi
-[[ -n "$endpoint" ]] || endpoint=foot
+[[ -n "$endpoint" ]] || endpoint=generic-desktop
 
 modality="$(tmux show-options -v -t "$session" @cockpit_modality 2>/dev/null || true)"
 if [[ -z "$modality" ]]; then
@@ -66,8 +66,12 @@ while read -r cw ch cpid; do
   else
     has_phone=1
   fi
-  if [[ "$(cockpit-profile "$cpid" 2>/dev/null || true)" == "foot" ]]; then
+  profile="$(cockpit-profile "$cpid" 2>/dev/null || true)"
+  if [[ "$profile" == "foot" ]]; then
     has_foot=1
+  fi
+  if cockpit_platform_is_desktop "$profile"; then
+    has_desktop=1
   fi
 done < <(tmux list-clients -t "$session" -F '#{client_width} #{client_height} #{client_pid}' 2>/dev/null || true)
 
@@ -179,6 +183,7 @@ apply_hush() {
 }
 
 apply_keyboard_chrome() {
+  local profile=${1:-foot}
   apply_hush
   tmux set-option -t "$session" mouse on
   tmux set-option -t "$session" prefix C-Space
@@ -195,7 +200,8 @@ apply_keyboard_chrome() {
   tmux set-option -t "$session" window-status-format '#[fg=brightblack] #I:#W '
   tmux set-option -t "$session" window-status-current-format '#[fg=blue,bold] #I:#W '
   tmux set-option -t "$session" window-status-separator ''
-  tmux set-option -t "$session" @cockpit_profile foot
+  cockpit_platform_is_desktop "$profile" || profile=generic-desktop
+  tmux set-option -t "$session" @cockpit_profile "$profile"
 }
 
 apply_touch_chrome() {
@@ -363,8 +369,8 @@ if [[ "$have_mod" == "$modality" && "$have_tabs" == "$want_tabs" ]]; then
   have_profile="$(tmux show-options -v -t "$session" @cockpit_profile 2>/dev/null || true)"
   if [[ "$modality" == "touch" && "$have_profile" != "termius-ios" ]]; then
     apply_touch_chrome
-  elif [[ "$modality" == "keyboard" && "$have_profile" != "foot" ]]; then
-    apply_keyboard_chrome
+  elif [[ "$modality" == "keyboard" ]] && ! cockpit_platform_is_desktop "$have_profile"; then
+    apply_keyboard_chrome "$endpoint"
   fi
   normalize_primary_tabs
   refresh_display_labels
@@ -408,7 +414,7 @@ mv "$config_home/state.tmp" "$config_home/state"
 if [[ "$modality" == "touch" ]]; then
   apply_touch_chrome
 else
-  apply_keyboard_chrome
+  apply_keyboard_chrome "$endpoint"
 fi
 
 if ((want_tabs == 1)); then
