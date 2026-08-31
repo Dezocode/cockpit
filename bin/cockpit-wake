@@ -16,7 +16,6 @@ case "$which" in
   DIFF|diff) name=DIFF ;;
   FILES|files) name=FILES ;;
   MAP|map|MERMAID|mermaid) name=MAP ;;
-  MEMORY|memory) name=MEMORY ;;
   *) exit 0 ;;
 esac
 

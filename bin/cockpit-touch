@@ -19,7 +19,6 @@ case "$view" in
   files|FILES|nvim) role=files; window=FILES ;;
   diff|DIFF) role=diff; window=DIFF ;;
   map|mermaid|MAP|MERMAID) role=map; window=MAP ;;
-  memory|MEMORY) role=memory; window=MEMORY ;;
   setup|SETUP|config|vim) role=setup; window=SETUP ;;
   setup-edit|SETUP-EDIT|setup_legacy|SETUP_LEGACY) role=setup-legacy; window=SETUP-EDIT ;;
   prs|PRS|github) role=prs; window=PRS ;;
@@ -68,7 +67,7 @@ fi
 # Derived panes can disappear when their watcher exits or while a layout
 # migration is in progress. A page button should repair that state and then
 # select the requested page, rather than silently leaving the user elsewhere.
-if [[ -z "$pane" && ( "$role" == "diff" || "$role" == "map" || "$role" == "memory" ) ]] &&
+if [[ -z "$pane" && ( "$role" == "diff" || "$role" == "map" ) ]] &&
   command -v cockpit-reload-views >/dev/null 2>&1; then
   cockpit-reload-views "$session" >/dev/null 2>&1 || true
   pane="$(

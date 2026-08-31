@@ -26,8 +26,10 @@ memory handshake
 
 `handshake` prints a one-shot readiness marker for launch coordination.
 
-## Page
+## Page (deferred)
 
-The MEMORY tmux window runs `cockpit-memory`, which watches the same file and
-redraws when it changes. Open it from the Cockpit menu or `cockpit-touch
-<session> memory`.
+`bin/cockpit-memory` implements the MEMORY TUI watcher, but session launch,
+menu, touch routing, and tmux keybinds are intentionally **not** wired in this
+PREP slice. Goal 1 MEMORY stays unapproved until layout and Agent toolbar /
+Termius button responsiveness match `v0.1` / `cc4f1ee`. Wiring the MEMORY window
+into the live session topology is a separate step after that regression gate.

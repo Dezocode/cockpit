@@ -12,7 +12,6 @@ tmux display-menu -T "Cockpit" -x M -y M \
   "Diff" d "run-shell 'cockpit-touch \"$session\" diff'" \
   "Vim diff" V "run-shell 'cockpit-popup VIMDIFF cockpit-vimdiff \"$session\"'" \
   "Map" m "run-shell 'cockpit-touch \"$session\" map'" \
-  "Memory" y "run-shell 'cockpit-touch \"$session\" memory'" \
   "Setup (OAuth / providers / Git)" s "run-shell 'cockpit-touch \"$session\" setup'" \
   "PRs" p "run-shell 'cockpit-touch \"$session\" prs'" \
   "" \
