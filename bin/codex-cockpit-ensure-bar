@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Put AUTH / runtime / MODEL above the live agent pane. Never respawns Codex.
-# hide: park the bar so the Codex composer stays on screen above the keyboard.
+# Put PRS / provider / MODEL / RESTART above the live Agent pane. Never
+# respawns the Agent. hide: park the bar so the composer stays on screen above
+# the keyboard.
 set -euo pipefail
 
 session="${1:-codex-cockpit}"
@@ -8,8 +9,11 @@ action="${2:-show}"
 tmux has-session -t "$session" 2>/dev/null || exit 0
 export PATH="$HOME/.local/bin:$PATH"
 
-# Match the single fat tab row.
+# Two rows on touch so Termius fat-finger taps actually hit the chips.
 BAR_H=1
+if [[ "$(tmux show-options -v -t "$session" @cockpit_profile 2>/dev/null || true)" == "termius-ios" ]]; then
+  BAR_H=2
+fi
 
 runtime="$(
   tmux list-panes -s -t "$session" -F '#{pane_id} #{@cockpit_role}' 2>/dev/null |

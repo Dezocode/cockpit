@@ -4,7 +4,7 @@
 # never waits on a shell. Phone clients stay on the root table.
 set -euo pipefail
 
-ver=6
+ver=9
 if [[ "$(tmux show-options -gv @cockpit_probe_installed 2>/dev/null || true)" == "$ver" ]]; then
   exit 0
 fi
@@ -33,10 +33,13 @@ tmp="${XDG_RUNTIME_DIR:-/tmp}/cockpit-probe-$$.conf"
   for c in {a..z}; do
     emit "C-$c" "C-$c"
   done
-  printf 'bind-key -T cockpit-probe MouseDown1Pane switch-client -T root \\; select-pane -t = \\; send-keys -M \\; run-shell -b '\''codex-cockpit-modality touch "#{client_session}" #{client_width} #{client_height}'\''\n'
-  printf 'bind-key -T cockpit-probe MouseDown1Status switch-client -T root \\; run-shell -b "codex-cockpit-popup status-tap #{mouse_session} #{mouse_window}" \\; run-shell -b '\''codex-cockpit-modality touch "#{client_session}" #{client_width} #{client_height}'\''\n'
-  printf 'bind-key -T cockpit-probe MouseDown1StatusLeft switch-client -T root \\; run-shell -b '\''codex-cockpit-modality touch "#{client_session}" #{client_width} #{client_height}'\''\n'
-  printf 'bind-key -T cockpit-probe MouseDown1Border switch-client -T root \\; select-pane -t = \\; run-shell -b '\''codex-cockpit-modality touch "#{client_session}" #{client_width} #{client_height}'\''\n'
+  # The canonical probe preserves normal pane clicks, but sends toolbar taps
+  # through the same bounded bar dispatcher used by the root table.
+  printf 'bind-key -T cockpit-probe MouseDown1Pane switch-client -T root \\; run-shell -b '\''PATH="$HOME/.local/bin:$PATH" codex-cockpit-pointer pane #{mouse_x} #{mouse_y} #{mouse_pane} #{session_name}'\''\n'
+  printf 'bind-key -T cockpit-probe MouseUp1Pane switch-client -T root \\; run-shell -b '\''PATH="$HOME/.local/bin:$PATH" codex-cockpit-pointer pane #{mouse_x} #{mouse_y} #{mouse_pane} #{session_name}'\''\n'
+  printf 'bind-key -T cockpit-probe MouseDown1Status switch-client -T root \\; run-shell -b '\''PATH="$HOME/.local/bin:$PATH" codex-cockpit-pointer status #{session_name} #{mouse_status_range} #{mouse_window}'\''\n'
+  printf 'bind-key -T cockpit-probe MouseDown1StatusLeft switch-client -T root \\; run-shell -b '\''PATH="$HOME/.local/bin:$PATH" codex-cockpit-pointer status-left #{session_name}'\''\n'
+  printf 'bind-key -T cockpit-probe MouseDown1Border switch-client -T root \\; run-shell -b '\''PATH="$HOME/.local/bin:$PATH" codex-cockpit-pointer pane #{mouse_x} 0 #{@cockpit_bar_pane} #{session_name}'\''\n'
   printf 'bind-key -T cockpit-probe DoubleClick1Pane switch-client -T root \\; run-shell -b "codex-cockpit-agent '\''#{mouse_session}'\'' '\''#{mouse_window}'\'' '\''#{mouse_pane}'\''" \\; run-shell -b '\''codex-cockpit-modality touch "#{client_session}" #{client_width} #{client_height}'\''\n'
   printf 'bind-key -T cockpit-probe MouseDown3Pane switch-client -T root \\; run-shell -b "codex-cockpit-menu '\''#{mouse_session}'\''" \\; run-shell -b '\''codex-cockpit-modality touch "#{client_session}" #{client_width} #{client_height}'\''\n'
   printf 'set-option -g @cockpit_probe_installed %s\n' "$ver"

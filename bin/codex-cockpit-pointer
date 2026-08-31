@@ -1,0 +1,111 @@
+#!/usr/bin/env bash
+# Termius-safe tap dispatcher. run-shell PATH is often empty on iOS SSH, and
+# #{mouse_pane} / #{mouse_session} are unreliable — never require them.
+set -euo pipefail
+export PATH="${HOME}/.local/bin:/usr/local/bin:/usr/bin:/bin:${PATH}"
+
+kind="${1:-}"
+shift || true
+
+debounce() {
+  local key=$1 dir now last
+  dir="${XDG_RUNTIME_DIR:-/tmp}/codex-cockpit"
+  mkdir -p "$dir"
+  now="$(date +%s)"
+  last="$(cat "$dir/pointer.stamp" 2>/dev/null || echo 0)"
+  if [[ "$last" == "$key $now" ]]; then
+    return 1
+  fi
+  # Same second + same key = duplicate Down/Up.
+  if [[ "${last% *}" == "$key" && "${last##* }" == "$now" ]]; then
+    return 1
+  fi
+  printf '%s %s\n' "$key" "$now" >"$dir/pointer.stamp"
+  return 0
+}
+
+session_of() {
+  local s=${1:-}
+  if [[ -n "$s" && "$s" == codex-cockpit* ]]; then
+    printf '%s\n' "$s"
+    return 0
+  fi
+  tmux display-message -p '#{client_session}' 2>/dev/null || tmux display-message -p '#{session_name}' 2>/dev/null || printf 'codex-cockpit\n'
+}
+
+role_of() {
+  local pane=$1
+  [[ -n "$pane" ]] || { printf '\n'; return 0; }
+  tmux display-message -p -t "$pane" '#{@cockpit_role}' 2>/dev/null || true
+}
+
+case "$kind" in
+  pane)
+    x=${1:-0}
+    y=${2:-0}
+    pane=${3:-}
+    session="$(session_of "${4:-}")"
+    [[ "$x" =~ ^[0-9]+$ ]] || x=0
+    [[ "$y" =~ ^[0-9]+$ ]] || y=0
+    debounce "pane $session $x $pane" || exit 0
+    role="$(role_of "$pane")"
+    bar="$(tmux show-options -v -t "$session" @cockpit_bar_pane 2>/dev/null || true)"
+    if [[ "$role" == "bar" || ( -n "$bar" && "$pane" == "$bar" ) ]]; then
+      exec codex-cockpit-bar click "$x" "$pane" "$session"
+    fi
+    # Fat-finger: a tap on the top row of the Agent pane is the toolbar.
+    if [[ "$role" == "runtime" && -n "$bar" ]]; then
+      bar_win="$(tmux display-message -p -t "$bar" '#{window_id}' 2>/dev/null || true)"
+      pane_win="$(tmux display-message -p -t "$pane" '#{window_id}' 2>/dev/null || true)"
+      bar_h="$(tmux display-message -p -t "$bar" '#{pane_height}' 2>/dev/null || echo 1)"
+      if [[ -n "$bar_win" && "$bar_win" == "$pane_win" ]] && ((y <= 0)); then
+        exec codex-cockpit-bar click "$x" "$bar" "$session"
+      fi
+    fi
+    if [[ "$role" == "runtime" || "$role" == "parallel" ]]; then
+      tmux select-pane -t "$pane" 2>/dev/null || true
+      tmux send-keys -M 2>/dev/null || true
+      exit 0
+    fi
+    if [[ -n "$pane" ]]; then
+      tmux select-pane -t "$pane" 2>/dev/null || true
+    else
+      tmux select-pane -t = 2>/dev/null || true
+    fi
+    ;;
+  status)
+    session="$(session_of "${1:-}")"
+    range=${2:-}
+    win=${3:-}
+    debounce "status $session $range $win" || exit 0
+    case "$range" in
+      user\|prs|prs) exec codex-cockpit-touch "$session" prs ;;
+      user\|runtime|runtime|user\|agent|agent) exec codex-cockpit-touch "$session" agent ;;
+      user\|model|model) exec codex-cockpit-touch "$session" setup model ;;
+      user\|restart|restart) exec codex-cockpit-restart "$session" ;;
+      user\|setup|setup|left) exec codex-cockpit-touch "$session" setup ;;
+    esac
+    export PATH="${HOME}/.local/bin:$PATH"
+    if [[ -f "${HOME}/.local/bin/codex-cockpit-auth-lib" ]]; then
+      # shellcheck source=/dev/null
+      source "${HOME}/.local/bin/codex-cockpit-auth-lib" 2>/dev/null || true
+      if command -v cockpit_popup_any >/dev/null 2>&1 && cockpit_popup_any; then
+        cockpit_popup_dismiss "$session" || true
+        exit 0
+      fi
+    fi
+    if [[ -n "$win" ]]; then
+      tmux select-window -t "$win" 2>/dev/null || tmux select-window -t = 2>/dev/null || true
+    else
+      tmux select-window -t = 2>/dev/null || true
+    fi
+    ;;
+  status-left)
+    session="$(session_of "${1:-}")"
+    debounce "left $session" || exit 0
+    exec codex-cockpit-touch "$session" setup
+    ;;
+  *)
+    exit 0
+    ;;
+esac
