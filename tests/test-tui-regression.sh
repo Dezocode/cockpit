@@ -51,18 +51,18 @@ chmod +x "$paste_stub"
 assert_source_contract() {
   local main="$repo_root/bin/cockpit-main"
   grep -q 'new-session.*-n AGENT' "$main" || fail 'cockpit-main missing AGENT window bootstrap'
-  for name in FILES DIFF MAP SETUP PRS; do
+  for name in FILES DIFF MAP MEMORY SETUP PRS; do
     grep -q "new-window.*-n ${name}" "$main" || fail "cockpit-main missing ${name} window bootstrap"
   done
-  if grep -Eq 'new-window.*-n[[:space:]]+MEMORY' "$main"; then
-    fail 'MEMORY session chrome is landed in cockpit-main (must stay additive/deferred)'
-  fi
-  for path in cockpit-adapt cockpit-touch cockpit-reload-views cockpit-menu; do
-    if grep -qi 'memory' "$repo_root/bin/$path" 2>/dev/null; then
-      fail "MEMORY session routing landed in bin/$path (deferred until TUI gate)"
-    fi
-  done
-  pass 'source contract: six-window bootstrap, no MEMORY session chrome'
+  grep -q 'cockpit-memory-watch' "$main" || fail 'cockpit-main missing MEMORY watcher bootstrap'
+  grep -q 'tag "$session:MEMORY" MEMORY memory' "$main" || fail 'cockpit-main missing MEMORY role tag'
+  grep -q 'memory|MEMORY' "$repo_root/bin/cockpit-touch" ||
+    fail 'cockpit-touch missing MEMORY routing'
+  grep -q 'MEMORY|memory' "$repo_root/bin/cockpit-wake" ||
+    fail 'cockpit-wake missing MEMORY wake routing'
+  grep -q 'reload_view memory' "$repo_root/bin/cockpit-reload-views" ||
+    fail 'cockpit-reload-views missing MEMORY derived view'
+  pass 'source contract: seven-window bootstrap with MEMORY named page'
 }
 
 assert_memory_bind_contract() {
@@ -90,7 +90,7 @@ exec bash --norc $(printf '%q' "$paste_stub")"
   tmux_test set-option -t "$session" @cockpit_runtime test
   tmux_test set-option -t "$session" @cockpit 1
 
-  for spec in "FILES:files" "DIFF:diff" "MAP:map" "SETUP:setup" "PRS:prs"; do
+  for spec in "FILES:files" "DIFF:diff" "MAP:map" "MEMORY:memory" "SETUP:setup" "PRS:prs"; do
     local name=${spec%%:*} role=${spec##*:}
     tmux_test new-window -d -t "$session:" -n "$name" -c "$root" 'exec sleep 600'
     local pane
@@ -102,14 +102,14 @@ exec bash --norc $(printf '%q' "$paste_stub")"
 assert_window_topology() {
   local -a names=()
   local count name agent_win map_win pane role window nested=0 agent_panes memory_in_map=0
-  local expect_count=${1:-6}
+  local expect_count=${1:-7}
 
   mapfile -t names < <(tmux_test list-windows -t "$session" -F '#{window_name}' | sort)
   count="${#names[@]}"
   [[ "$count" -eq "$expect_count" ]] ||
     fail "expected ${expect_count} windows, got ${count}: ${names[*]}"
 
-  for expected in AGENT DIFF FILES MAP PRS SETUP; do
+  for expected in AGENT DIFF FILES MAP MEMORY PRS SETUP; do
     printf '%s\n' "${names[@]}" | grep -Fxq "$expected" || fail "missing window ${expected}"
   done
 
@@ -134,13 +134,11 @@ assert_window_topology() {
   agent_panes="$(tmux_test list-panes -t "$session:AGENT" | wc -l | tr -d ' ')"
   [[ "$agent_panes" -le 2 ]] || fail "AGENT window has ${agent_panes} panes (not 5-up stack)"
 
-  if ((expect_count == 6)); then
-    printf '%s\n' "${names[@]}" | grep -Fxq MEMORY &&
-      fail 'baseline session must stay windows==6 without MEMORY chrome'
+  if ((expect_count == 7)); then
+    printf '%s\n' "${names[@]}" | grep -Fxq MEMORY ||
+      fail 'canonical session must include MEMORY named window'
   elif printf '%s\n' "${names[@]}" | grep -Fxq MEMORY; then
-    :
-  else
-    fail 'additive MEMORY must be a named window when present'
+    fail 'baseline session must stay windows==6 without MEMORY chrome'
   fi
 
   pass "topology: windows==${expect_count}, pages not nested, AGENT not 5-up, MEMORY not in MAP"
@@ -241,25 +239,23 @@ exec bash --norc $(printf '%q' "$paste_stub")"
   bar_cap="$(tmux_test capture-pane -t "$bar" -p -S -50)"
   grep -q SUBMITTED <<<"$bar_cap" && fail 'submit output appeared in BAR pane'
 
-  assert_window_topology 6
-  pass 'inject+submit: paste-buffer %0, wait chip, Enter; BAR untouched; windows stay 6'
+  assert_window_topology 7
+  pass 'inject+submit: paste-buffer %0, wait chip, Enter; BAR untouched; windows stay 7'
 }
 
-assert_memory_additive_simulation() {
-  local project=$1 map_win memory_pane memory_win
+assert_memory_not_nested() {
+  local map_win memory_pane memory_win
   map_win="$(tmux_test display-message -p -t "$session:MAP" '#{window_id}')"
-  tmux_test new-window -d -t "$session:" -n MEMORY -c "$project" 'exec sleep 600'
   memory_pane="$(tmux_test display-message -p -t "$session:MEMORY" '#{pane_id}')"
   tmux_test set-option -p -t "$memory_pane" @cockpit_role memory
   memory_win="$(tmux_test display-message -p -t "$memory_pane" '#{window_id}')"
   [[ "$memory_win" != "$map_win" ]] ||
-    fail 'additive MEMORY must not be a second pane inside MAP'
+    fail 'MEMORY must not be a second pane inside MAP'
   while read -r role window; do
     [[ "$window" == "$map_win" && "$role" == memory ]] &&
       fail 'memory role appeared inside MAP window'
   done < <(tmux_test list-panes -s -t "$session" -F '#{@cockpit_role} #{window_id}')
-  assert_window_topology 7
-  pass 'MEMORY additive simulation: named page, not nested in MAP or AGENT'
+  pass 'MEMORY topology: named page, not nested in MAP or AGENT'
 }
 
 assert_platform_layout_classes() {
@@ -286,7 +282,7 @@ main() {
   assert_memory_bind_contract
   assert_socket_path_documented
   bootstrap_canonical_session "$project"
-  assert_window_topology 6
+  assert_window_topology 7
   assert_no_extra_client
 
   tmux_test set-option -t "$session" @cockpit_profile termius-ios
@@ -295,7 +291,7 @@ main() {
   sleep 0.5
   assert_no_extra_client
   assert_inject_submit "$project"
-  assert_memory_additive_simulation "$project"
+  assert_memory_not_nested
   assert_platform_layout_classes
   assert_termius_toolbar_touch
 

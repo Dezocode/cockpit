@@ -165,13 +165,26 @@ if ! has_command tmux || ! tmux has-session -t "$session" 2>/dev/null; then
   fail_check "tmux session is not running: $session"
 else
   pass_check "tmux session is running: $session"
-  for window in AGENT FILES DIFF SETUP; do
+  for window in AGENT FILES DIFF SETUP MEMORY; do
     if tmux list-windows -t "$session" -F '#W' 2>/dev/null | grep -Fxq "$window"; then
       pass_check "window $window exists"
     else
       fail_check "window $window is missing"
     fi
   done
+
+  map_win="$(tmux display-message -p -t "$session:MAP" '#{window_id}' 2>/dev/null || true)"
+  memory_in_map=0
+  if [[ -n "$map_win" ]]; then
+    while read -r role window; do
+      [[ "$role" == memory && "$window" == "$map_win" ]] && memory_in_map=1
+    done < <(tmux list-panes -s -t "$session" -F '#{@cockpit_role} #{window_id}' 2>/dev/null || true)
+  fi
+  if ((memory_in_map == 0)); then
+    pass_check 'MEMORY is not nested inside MAP'
+  else
+    fail_check 'MEMORY is nested inside MAP (must be a named page)'
+  fi
 
   runtime_pane="$(tmux list-panes -s -t "$session" -F '#{pane_id} #{@cockpit_role}' 2>/dev/null |
     awk '$2 == "runtime" { print $1; exit }')"

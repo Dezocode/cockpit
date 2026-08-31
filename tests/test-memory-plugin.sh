@@ -81,6 +81,18 @@ grep -qv 'subgraph Foundry' <<<"$show_output"
 grep -qv 'subgraph PiSai' <<<"$show_output"
 grep -qv 'Must not render' <<<"$show_output"
 
+# cwd-relative fallback when Intercom clone is absent
+rm -f "$intercom_home/memory/cockpit.mmd"
+project="$test_root/project"
+mkdir -p "$project/memory"
+install -m 0644 "$fixture" "$project/memory/cockpit.mmd"
+cwd_path="$(COCKPIT_PROJECT="$project" "$memory" path)"
+grep -Fxq "$project/memory/cockpit.mmd" <<<"$cwd_path"
+cwd_check="$(COCKPIT_PROJECT="$project" "$memory" check)"
+grep -q '^status=ok$' <<<"$cwd_check"
+
+install -m 0644 "$fixture" "$intercom_home/memory/cockpit.mmd"
+
 list_output="$(cockpit-plugin list)"
 grep -q '^cockpit\.memory[[:space:]]' <<<"$list_output"
 

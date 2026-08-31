@@ -3,7 +3,8 @@
 `cockpit.memory` is a Cockpit-native plugin. It is separate from the Codex
 marketplace plugin registry.
 
-The MEMORY tab reads `memory/cockpit.mmd` from the Intercom clone. Clone
+The MEMORY tab reads `memory/cockpit.mmd` from the Intercom clone first, then
+from the project cwd when the clone file is absent. Clone
 location defaults to `~/intercom` and can be overridden with
 `COCKPIT_INTERCOM_HOME`.
 

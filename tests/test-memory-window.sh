@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# PREP-only: MEMORY watcher in an isolated pane. Session chrome routing is deferred.
+# MEMORY watcher in an isolated named window; Agent pane must not respawn.
 set -euo pipefail
 
 repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"

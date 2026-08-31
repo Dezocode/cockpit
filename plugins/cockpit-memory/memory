@@ -6,7 +6,7 @@ export PATH="$HOME/.local/bin:$PATH"
 
 INTERCOM_HOME="${COCKPIT_INTERCOM_HOME:-$HOME/intercom}"
 MEMORY_REL="memory/cockpit.mmd"
-MEMORY_PATH="$INTERCOM_HOME/$MEMORY_REL"
+PROJECT_ROOT="${COCKPIT_PROJECT:-${PWD:-}}"
 ALLOWED_SUBGRAPHS=(index intercom hooks)
 FORBIDDEN_SUBGRAPHS=(Foundry PiSai MBA foundry pisai mba)
 
@@ -23,6 +23,7 @@ Commands:
 
 Environment:
   COCKPIT_INTERCOM_HOME clone path (default: ~/intercom)
+  COCKPIT_PROJECT       project cwd for cwd-relative memory/cockpit.mmd fallback
 EOF
 }
 
@@ -31,16 +32,40 @@ die() {
   exit 1
 }
 
+resolve_memory_path() {
+  local candidate
+  candidate="$INTERCOM_HOME/$MEMORY_REL"
+  if [[ -f "$candidate" && -r "$candidate" ]]; then
+    printf '%s\n' "$candidate"
+    return 0
+  fi
+  if [[ -n "$PROJECT_ROOT" && -d "$PROJECT_ROOT" ]]; then
+    candidate="$(cd -- "$PROJECT_ROOT" && pwd -P)/$MEMORY_REL"
+    if [[ -f "$candidate" && -r "$candidate" ]]; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+  fi
+  printf '%s\n' "$INTERCOM_HOME/$MEMORY_REL"
+}
+
 memory_path() {
-  printf '%s\n' "$MEMORY_PATH"
+  resolve_memory_path
 }
 
 memory_exists() {
-  [[ -f "$MEMORY_PATH" && -r "$MEMORY_PATH" ]]
+  local path
+  path="$(resolve_memory_path)"
+  [[ -f "$path" && -r "$path" ]]
+}
+
+diagram_file() {
+  resolve_memory_path
 }
 
 forbidden_present() {
-  local line name
+  local line name path
+  path="$(diagram_file)"
   while IFS= read -r line || [[ -n "$line" ]]; do
     case "$line" in
       *subgraph*)
@@ -51,7 +76,7 @@ forbidden_present() {
         done
         ;;
     esac
-  done <"$MEMORY_PATH"
+  done <"$path"
   return 1
 }
 
@@ -81,7 +106,8 @@ allowed_subgraph() {
 }
 
 filter_diagram() {
-  local line id in_block=0 current_id="" keep=0
+  local line id in_block=0 current_id="" keep=0 path
+  path="$(diagram_file)"
   while IFS= read -r line || [[ -n "$line" ]]; do
     case "$line" in
       *subgraph*)
@@ -112,13 +138,14 @@ filter_diagram() {
     else
       printf '%s\n' "$line"
     fi
-  done <"$MEMORY_PATH"
+  done <"$path"
   return 0
 }
 
 validate_diagram() {
-  local id found=0 candidate missing=""
-  memory_exists || die "memory diagram missing: $MEMORY_PATH"
+  local id found=0 candidate missing="" path
+  path="$(diagram_file)"
+  memory_exists || die "memory diagram missing: $path"
   for candidate in "${ALLOWED_SUBGRAPHS[@]}"; do
     found=0
     while IFS= read -r line || [[ -n "$line" ]]; do
@@ -128,7 +155,7 @@ validate_diagram() {
           [[ "$id" == "$candidate" ]] && found=1 && break
           ;;
       esac
-    done <"$MEMORY_PATH"
+    done <"$path"
     if ((found == 0)); then
       missing+="${missing:+, }$candidate"
     fi
@@ -138,7 +165,7 @@ validate_diagram() {
 
 cmd_check() {
   validate_diagram
-  printf 'memory=%s\n' "$MEMORY_PATH"
+  printf 'memory=%s\n' "$(diagram_file)"
   printf 'subgraphs=index,intercom,hooks\n'
   printf 'status=ok\n'
 }

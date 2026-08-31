@@ -195,17 +195,16 @@ Agent/device relationships are many-to-many through sessions. Intercom messages 
 
 This allows workflows such as researcher -> architect -> implementer -> reviewer -> GitHub -> human approval to span different providers and machines without making the terminal session itself the identity boundary.
 
-## MEMORY page (goal 1 prep — plugin only; session wiring deferred)
+## MEMORY page (goal 1 — named page landed)
 
-MEMORY is planned as a first-class Cockpit page alongside AGENT, FILES, DIFF, MAP, SETUP, and PRS. It will use the same TUI contract as MAP (Show Me / Mermaid rendering, event-driven refresh, idle when off-screen). There is no stripped fallback that substitutes project-local diagrams or scraped workspace aspects.
+MEMORY is a first-class Cockpit page alongside AGENT, FILES, DIFF, MAP, SETUP, and PRS. It uses the same TUI contract as MAP (Show Me / Mermaid rendering, event-driven refresh, idle when off-screen). There is no stripped fallback that substitutes project-local diagrams or scraped workspace aspects.
 
-**Status:** `cockpit.memory` plugin prep is landed; **session chrome wiring is not approved** until layout and button responsiveness match the cc4f1ee TUI baseline (no bar/toolbar reflow, no deadened touch zones). Do not bootstrap a MEMORY window, adapt-layout hooks, or audit topology checks until that gate passes.
+**Status:** `cockpit.memory` plugin and session chrome wiring are landed on the profile-platform RFC branch. MEMORY is a named tmux window (not nested inside MAP, not an F10/prefix popup). CPR preserves MEMORY during ordinary apply; `--refresh-derived` may respawn it explicitly.
 
 ### Source contract
 
-- Diagram source: `memory/cockpit.mmd` inside the Intercom clone.
-- Default clone path: `~/intercom` (`COCKPIT_INTERCOM_HOME` override).
-- Fail closed when the file is missing or unreadable. The MEMORY pane shows an explicit error and does not fall back to `/workspace/aspects` or any project-local `*.mmd` search.
+- Diagram source order: `~/intercom/memory/cockpit.mmd` (`COCKPIT_INTERCOM_HOME`), then cwd-relative `memory/cockpit.mmd` (`COCKPIT_PROJECT`).
+- Fail closed when neither path exists or is unreadable. The MEMORY pane shows an explicit error and does not fall back to `/workspace/aspects` or any project-local `*.mmd` search.
 - Allowed subgraphs only: `index`, `intercom`, `hooks`. Subgraphs named `Foundry`, `PiSai`, or `MBA` must never appear in rendered output.
 
 ### Plugin contract
@@ -218,11 +217,11 @@ type=cockpit
 entrypoint=memory
 ```
 
-The plugin resolves the Intercom memory path, validates presence, filters the diagram to the three allowed subgraphs, and exposes `check` / `show` commands for tests and the future MEMORY watcher. Fetch/sync of the Intercom clone remains the pane Agent's job via `cockpit.intercom`; MEMORY only reads the on-disk clone.
+The plugin resolves the memory path, validates presence, filters the diagram to the three allowed subgraphs, and exposes `check` / `show` commands for tests and the MEMORY watcher. Fetch/sync of the Intercom clone remains the pane Agent's job via `cockpit.intercom`; MEMORY only reads the on-disk clone or project fallback.
 
-### Session wiring (deferred)
+### Session wiring
 
-When approved, new sessions will create a `MEMORY` tmux window tagged `@cockpit_role memory`, launched by `cockpit-memory-watch`. Touch navigation, wake/reload, audit topology checks, and CPR preservation will treat MEMORY like MAP: a derived view that may be explicitly refreshed with `--refresh-derived` but is not respawned during ordinary CPR apply. Until layout+button regression is cleared, none of that chrome ships.
+New sessions create a `MEMORY` tmux window tagged `@cockpit_role memory`, launched by `cockpit-memory-watch`. Touch navigation, wake/reload, audit topology checks, and CPR preservation treat MEMORY like MAP: a derived view that may be explicitly refreshed with `--refresh-derived` but is not respawned during ordinary CPR apply. The Omarchy pad adapter (`cockpit-adapt`) keeps MEMORY as an auxiliary named window (not joined into the 2×2 pad).
 
 ## Cockpit plugin model
 

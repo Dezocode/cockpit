@@ -8,6 +8,7 @@ script_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 
 root="${1:-$PWD}"
 root="$(cd -- "$root" && pwd -P)"
+export COCKPIT_PROJECT="$root"
 session="$(tmux display-message -p '#{session_name}' 2>/dev/null || echo unknown)"
 last_error=""
 COCKPIT_DEBOUNCE=0.25
