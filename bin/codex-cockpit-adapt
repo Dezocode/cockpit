@@ -154,7 +154,8 @@ update_git_chrome() {
   tmux set-option -t "$session" @cockpit_git_label "$label"
 }
 
-# Termius treats BEL / activity / passthrough as haptics. Hush every window.
+# Termius treats BEL / title OSC / activity as haptics. Keep Codex spinner
+# drawing; do not ring the phone on each frame.
 apply_hush() {
   local w
   tmux set-option -t "$session" bell-action none
@@ -163,11 +164,15 @@ apply_hush() {
   tmux set-option -t "$session" silence-action none
   tmux set-option -t "$session" allow-passthrough off
   tmux set-option -t "$session" monitor-bell off
+  tmux set-option -t "$session" set-titles off
+  tmux set-option -t "$session" allow-rename off
+  tmux set-hook -t "$session" alert-bell '' 2>/dev/null || true
   while IFS= read -r w; do
     [[ -n "$w" ]] || continue
     tmux set-option -w -t "$w" monitor-bell off
     tmux set-option -w -t "$w" monitor-activity off
     tmux set-option -w -t "$w" monitor-silence 0
+    tmux set-option -w -t "$w" allow-rename off
     tmux set-option -w -t "$w" allow-passthrough off 2>/dev/null || true
   done < <(tmux list-windows -t "$session" -F '#{window_id}' 2>/dev/null || true)
 }
