@@ -214,16 +214,52 @@ reload_view() {
   tmux set-option -p -t "$pane" @cockpit_role "$role" 2>/dev/null || true
 }
 
+ensure_memory() {
+  local pane root command parent
+  pane="$(pane_for memory)"
+  if [[ -n "$pane" ]]; then
+    root="$(tmux display-message -p -t "$runtime" '#{pane_current_path}' 2>/dev/null || true)"
+    [[ -n "$root" && -d "$root" ]] || root="$(tmux display-message -p -t "$pane" '#{pane_current_path}' 2>/dev/null || true)"
+    parent="$(tmux display-message -p -t "$pane" '#{window_name}' 2>/dev/null || true)"
+    if [[ "$parent" != MEMORY ]]; then
+      tmux break-pane -d -n MEMORY -s "$pane" 2>/dev/null || true
+    fi
+    if [[ "$(tmux display-message -p -t "$pane" '#{pane_dead}' 2>/dev/null || echo 0)" == "1" && -n "$root" && -d "$root" ]]; then
+      command="cd -- $(shell_quote "$root") && exec cockpit-memory"
+      tmux respawn-pane -k -t "$pane" -c "$root" "$command" 2>/dev/null || true
+    fi
+    tmux select-pane -t "$pane" -T MEMORY 2>/dev/null || true
+    tmux set-option -p -t "$pane" @cockpit_role memory 2>/dev/null || true
+    tmux set-option -p -t "$pane" remain-on-exit on 2>/dev/null || true
+    tmux set-option -w -t "$pane" automatic-rename off 2>/dev/null || true
+    tmux set-option -w -t "$pane" allow-rename off 2>/dev/null || true
+    return 0
+  fi
+  root="$(tmux display-message -p -t "$runtime" '#{pane_current_path}' 2>/dev/null || true)"
+  [[ -n "$root" && -d "$root" ]] || return 0
+  command="cd -- $(shell_quote "$root") && exec cockpit-memory"
+  tmux new-window -d -t "$session:" -n MEMORY -c "$root" "$command" 2>/dev/null || return 0
+  pane="$(tmux display-message -p -t "$session:MEMORY" '#{pane_id}' 2>/dev/null || true)"
+  [[ -n "$pane" ]] || return 0
+  tmux select-pane -t "$pane" -T MEMORY 2>/dev/null || true
+  tmux set-option -p -t "$pane" @cockpit_role memory 2>/dev/null || true
+  tmux set-option -p -t "$pane" remain-on-exit on 2>/dev/null || true
+  tmux set-option -w -t "$pane" automatic-rename off 2>/dev/null || true
+  tmux set-option -w -t "$pane" allow-rename off 2>/dev/null || true
+}
+
 runtime="$(pane_for runtime)"
 [[ -n "$runtime" ]] || exit 0
 ensure_setup
 reload_view diff
 reload_view map
-reload_view memory
+ensure_memory
 if command -v cockpit-adapt >/dev/null 2>&1; then
-  client="$(tmux list-clients -t "$session" -F '#{client_width} #{client_height} #{client_pid}' 2>/dev/null | head -1 || true)"
-  read -r width height client_pid <<<"$client"
-  cockpit-adapt attached "$session" "${width:-0}" "${height:-0}" "${client_pid:-}" >/dev/null 2>&1 || true
+  client="$(tmux list-clients -t "$session" -F '#{client_width} #{client_height}' 2>/dev/null | head -1 || true)"
+  read -r width height <<<"$client"
+  # Let cockpit-adapt classify the session, so a local Foot client wins if
+  # more than one transport is briefly attached during handoff.
+  cockpit-adapt attached "$session" "${width:-0}" "${height:-0}" >/dev/null 2>&1 || true
 fi
 reload_bar
-printf 'Cockpit reloaded: Agent controls, SETUP flow, DIFF, MAP, MEMORY (Agent and FILES untouched).\n'
+printf 'Cockpit reloaded: AGENT, FILES, DIFF, MAP, SETUP, PRS, MEMORY (Agent and FILES untouched).\n'

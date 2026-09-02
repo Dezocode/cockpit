@@ -48,8 +48,8 @@ plugin_dir() {
   [[ "$id" != */* && "$id" != .* && -n "$id" ]] || return 1
   case "$id" in
     cpr|cockpit.cpr) id=cockpit-cpr ;;
-    intercom|cockpit.intercom) id=cockpit-intercom ;;
     memory|cockpit.memory) id=cockpit-memory ;;
+    intercom|cockpit.intercom) id=cockpit-intercom ;;
   esac
   for root in "$installed_root" "$bundled_root"; do
     candidate="$root/$id"

@@ -94,7 +94,7 @@ spawn_runtime() {
   [[ -n "$start" ]] || return 1
   if [[ "$id" == codex* ]]; then
     codex_bin="$(cockpit_resolve_codex_bin || true)"
-    [[ -n "$codex_bin" ]] && start="$(cockpit_codex_runtime_command "$start" "$codex_bin")"
+    [[ -n "$codex_bin" ]] && start="$(cockpit_codex_runtime_command "$start" "$codex_bin" "$(root_path)")"
   fi
   runtime_env="$(cockpit_runtime_color_setup)"
   label="$(cockpit_auth_label "$id")"

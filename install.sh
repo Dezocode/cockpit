@@ -10,14 +10,9 @@ tmuxdir="$confdir/tmux"
 
 mkdir -p "$bindir" "$tmuxdir" \
   "$config_home/providers.d" "$config_home/nvim" \
-  "$config_home/plugins/cockpit-cpr" "$config_home/plugins/cockpit-intercom" \
-  "$config_home/plugins/cockpit-memory" \
-  "$config_home/skills.d" \
+  "$config_home/plugins/cockpit-cpr" "$config_home/plugins/cockpit-memory" "$config_home/plugins/cockpit-intercom" "$config_home/skills.d" \
   "$legacy_config_home/providers.d" "$legacy_config_home/nvim" \
-  "$legacy_config_home/plugins/cockpit-cpr" \
-  "$legacy_config_home/plugins/cockpit-intercom" \
-  "$legacy_config_home/plugins/cockpit-memory" \
-  "$legacy_config_home/skills.d"
+  "$legacy_config_home/plugins/cockpit-cpr" "$legacy_config_home/plugins/cockpit-memory" "$legacy_config_home/plugins/cockpit-intercom" "$legacy_config_home/skills.d"
 
 # The public command and every helper use the cockpit namespace. The old
 # codex-cockpit-* files are installed alongside them as compatibility shims.
@@ -91,6 +86,14 @@ install -m 0644 "$root/plugins/cockpit-cpr/plugin.conf" "$root/plugins/cockpit-c
   "$config_home/plugins/cockpit-cpr/"
 install -m 0755 "$root/plugins/cockpit-cpr/cpr" \
   "$config_home/plugins/cockpit-cpr/cpr"
+install -m 0644 "$root/plugins/cockpit-memory/plugin.conf" "$root/plugins/cockpit-memory/README.md" \
+  "$config_home/plugins/cockpit-memory/"
+install -m 0755 "$root/plugins/cockpit-memory/memory" \
+  "$config_home/plugins/cockpit-memory/memory"
+install -m 0644 "$root/plugins/cockpit-intercom/plugin.conf" "$root/plugins/cockpit-intercom/README.md" \
+  "$config_home/plugins/cockpit-intercom/"
+install -m 0755 "$root/plugins/cockpit-intercom/intercom" \
+  "$config_home/plugins/cockpit-intercom/intercom"
 if [[ ! -f "$legacy_config_home/plugins/cockpit-cpr/plugin.conf" ]]; then
   install -m 0644 "$root/plugins/cockpit-cpr/plugin.conf" "$legacy_config_home/plugins/cockpit-cpr/plugin.conf"
 fi
@@ -99,6 +102,24 @@ if [[ ! -f "$legacy_config_home/plugins/cockpit-cpr/README.md" ]]; then
 fi
 if [[ ! -f "$legacy_config_home/plugins/cockpit-cpr/cpr" ]]; then
   install -m 0755 "$root/plugins/cockpit-cpr/cpr" "$legacy_config_home/plugins/cockpit-cpr/cpr"
+fi
+if [[ ! -f "$legacy_config_home/plugins/cockpit-memory/plugin.conf" ]]; then
+  install -m 0644 "$root/plugins/cockpit-memory/plugin.conf" "$legacy_config_home/plugins/cockpit-memory/plugin.conf"
+fi
+if [[ ! -f "$legacy_config_home/plugins/cockpit-memory/README.md" ]]; then
+  install -m 0644 "$root/plugins/cockpit-memory/README.md" "$legacy_config_home/plugins/cockpit-memory/README.md"
+fi
+if [[ ! -f "$legacy_config_home/plugins/cockpit-memory/memory" ]]; then
+  install -m 0755 "$root/plugins/cockpit-memory/memory" "$legacy_config_home/plugins/cockpit-memory/memory"
+fi
+if [[ ! -f "$legacy_config_home/plugins/cockpit-intercom/plugin.conf" ]]; then
+  install -m 0644 "$root/plugins/cockpit-intercom/plugin.conf" "$legacy_config_home/plugins/cockpit-intercom/plugin.conf"
+fi
+if [[ ! -f "$legacy_config_home/plugins/cockpit-intercom/README.md" ]]; then
+  install -m 0644 "$root/plugins/cockpit-intercom/README.md" "$legacy_config_home/plugins/cockpit-intercom/README.md"
+fi
+if [[ ! -f "$legacy_config_home/plugins/cockpit-intercom/intercom" ]]; then
+  install -m 0755 "$root/plugins/cockpit-intercom/intercom" "$legacy_config_home/plugins/cockpit-intercom/intercom"
 fi
 
 install -m 0644 "$root/plugins/cockpit-intercom/plugin.conf" "$root/plugins/cockpit-intercom/README.md" \
@@ -179,6 +200,22 @@ if [[ ! -f "$legacy_overlay" ]]; then
 fi
 normalize_canonical_commands "$canonical_overlay"
 
+normalize_tmux_legacy_include() {
+  local file=$1 legacy_include tmp
+  legacy_include="if-shell '[ -f ~/.config/tmux/codex-cockpit.conf ]' 'source-file ~/.config/tmux/codex-cockpit.conf'"
+  [[ -f "$file" ]] || return 0
+  grep -Fqx "$legacy_include" "$file" || return 0
+  tmp="${file}.cockpit-include.$$"
+  awk -v legacy="$legacy_include" '$0 != legacy { print }' "$file" >"$tmp"
+  chmod --reference="$file" "$tmp" 2>/dev/null || true
+  mv "$tmp" "$file"
+}
+
+# A previous installer appended the canonical include while leaving the exact
+# stock legacy include in place, loading two overlays into the same server.
+# Remove only that known stock line; user-authored legacy includes remain
+# untouched and the compatibility overlay is still installed above.
+normalize_tmux_legacy_include "$confdir/tmux/tmux.conf"
 if [[ -f "$confdir/tmux/tmux.conf" ]] && ! grep -Fq "$canonical_overlay" "$confdir/tmux/tmux.conf"; then
   printf '\n# Cockpit overlay\nif-shell '\''[ -f %s ]'\'' '\''source-file %s'\''\n' \
     "$canonical_overlay" "$canonical_overlay" >>"$confdir/tmux/tmux.conf"

@@ -1,0 +1,93 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# First-launch intercom gate. The intercom directory is managed outside
+# Cockpit; this command only verifies that its local projection is mounted and
+# complete enough for cockpit.memory. It deliberately never clones, fetches,
+# pushes, or rewrites intercom files.
+# The shared intercom tree is an external coordination volume. Keep its
+# spelling and location canonical; callers may point tests at an isolated
+# projection with COCKPIT_INTERCOM_ROOT.
+intercom_root="${COCKPIT_INTERCOM_ROOT:-$HOME/intercom}"
+goal_file="$intercom_root/GOAL.md"
+handshake_file="$intercom_root/HANDSHAKE.md"
+memory_file="$intercom_root/memory/cockpit.mmd"
+
+mode=status
+summary=0
+case "${1:-status}" in
+  status) shift || true ;;
+  sync) mode=sync; shift || true ;;
+  -h|--help)
+    printf 'Usage: cockpit-intercom status [--summary] | cockpit-intercom sync [--summary]\n'
+    exit 0
+    ;;
+  *)
+    printf 'Usage: cockpit-intercom status [--summary] | cockpit-intercom sync [--summary]\n' >&2
+    exit 2
+    ;;
+esac
+if [[ "${1:-}" == --summary ]]; then
+  summary=1
+  shift
+fi
+[[ $# -eq 0 ]] || {
+  printf 'Usage: cockpit-intercom status [--summary] | cockpit-intercom sync [--summary]\n' >&2
+  exit 2
+}
+
+state=ready
+missing=()
+for file in "$goal_file" "$handshake_file" "$memory_file"; do
+  [[ -f "$file" ]] || missing+=("${file#"$intercom_root"/}")
+done
+if ((${#missing[@]} > 0)); then
+  state=needs-setup
+else
+  for name in index intercom handshake hooks; do
+    if ! grep -Eq "^[[:space:]]*subgraph[[:space:]]+${name}([[:space:]]|\[)" "$memory_file"; then
+      missing+=("memory subgraph ${name}")
+    fi
+  done
+  ((${#missing[@]} == 0)) || state=needs-source
+fi
+
+summary_line() {
+  case "$state" in
+    ready) printf 'ready\n' ;;
+    needs-setup) printf 'needs-setup: %s\n' "$(IFS=', '; printf '%s' "${missing[*]}")" ;;
+    needs-source) printf 'needs-source: %s\n' "$(IFS=', '; printf '%s' "${missing[*]}")" ;;
+  esac
+}
+
+if ((summary)); then
+  summary_line
+else
+  printf 'INTERCOM  local readiness gate\n\n'
+  printf 'Root:     %s\n' "$intercom_root"
+  printf 'GOAL:     %s\n' "$([[ -f "$goal_file" ]] && printf present || printf missing)"
+  printf 'HANDSHAKE:%s\n' "$([[ -f "$handshake_file" ]] && printf ' present' || printf ' missing')"
+  printf 'MEMORY:   %s\n' "$([[ -f "$memory_file" ]] && printf present || printf missing)"
+  printf 'State:    %s\n' "$state"
+  if ((${#missing[@]} > 0)); then
+    printf 'Needs:    %s\n' "$(IFS=', '; printf '%s' "${missing[*]}")"
+  fi
+fi
+
+if [[ "$mode" == sync && "$state" == ready ]]; then
+  # A sync is a local readiness check plus a wake for an already-running
+  # watcher. External mounting or synchronization remains an operator step.
+  session="$(tmux display-message -p '#{session_name}' 2>/dev/null || true)"
+  if [[ -n "$session" ]] && command -v cockpit-wake >/dev/null 2>&1; then
+    cockpit-wake "$session" MEMORY >/dev/null 2>&1 || true
+  fi
+  ((summary)) || printf 'Sync gate passed; no intercom files were changed.\n'
+  exit 0
+fi
+
+if [[ "$mode" == sync ]]; then
+  ((summary)) || printf 'Sync gate blocked; mount or repair the managed intercom projection, then retry.\n' >&2
+  exit 1
+fi
+
+[[ "$state" == ready ]]

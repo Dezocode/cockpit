@@ -165,12 +165,18 @@ cockpit_resolve_codex_bin() {
 # Replace only the stock `codex` provider command. Custom provider commands
 # remain untouched, while `codex --oss` still uses the resolved binary.
 cockpit_codex_runtime_command() {
-  local command=${1:-} codex_bin=${2:-} quoted
+  local command=${1:-} codex_bin=${2:-} project=${3:-} quoted prefix
   [[ -n "$command" && -n "$codex_bin" ]] || return 1
   quoted="$(cockpit_shell_quote "$codex_bin")"
+  prefix="$quoted"
+  # Keep the native Codex project selector tied to the same Git worktree as
+  # the tmux pages. Custom provider commands are deliberately left untouched.
+  if [[ -n "$project" ]]; then
+    prefix+=" -C $(cockpit_shell_quote "$project")"
+  fi
   case "$command" in
-    codex) printf '%s\n' "$quoted" ;;
-    'codex '*) printf '%s%s\n' "$quoted" "${command#codex}" ;;
+    codex) printf '%s\n' "$prefix" ;;
+    'codex '*) printf '%s%s\n' "$prefix" "${command#codex}" ;;
     *) printf '%s\n' "$command" ;;
   esac
 }

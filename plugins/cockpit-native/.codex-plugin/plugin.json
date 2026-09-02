@@ -1,0 +1,34 @@
+{
+  "name": "cockpit-native",
+  "version": "0.1.0+codex.20260831235016",
+  "description": "Native Codex skills for the Cockpit tmux workspace, Git worktrees, project pages, and regression-safe hooks.",
+  "author": {
+    "name": "Dezocode",
+    "url": "https://github.com/Dezocode/cockpit"
+  },
+  "repository": "https://github.com/Dezocode/cockpit",
+  "license": "MIT",
+  "keywords": [
+    "cockpit",
+    "tmux",
+    "codex",
+    "git-worktree",
+    "foot",
+    "omarchy"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Cockpit Native",
+    "shortDescription": "Project-aware Codex skills for Cockpit.",
+    "longDescription": "Cockpit Native keeps the Codex runtime, Git worktree, tmux pages, Foot/Omarchy chrome, project skills, and regression checks tied together.",
+    "developerName": "Dezocode",
+    "category": "Productivity",
+    "capabilities": [
+      "Interactive",
+      "Read",
+      "Write"
+    ],
+    "brandColor": "#4C8DFF",
+    "defaultPrompt": "Keep this Cockpit project worktree and Files page in sync."
+  }
+}

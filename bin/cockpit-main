@@ -205,6 +205,22 @@ fi
 # Already running: attach immediately. Do not show the gate (that race
 # dropped Termius onto a dying server with "[server exited]").
 if tmux has-session -t "$session" 2>/dev/null; then
+  if (( explicit_root )); then
+    active_pane="$(tmux list-panes -s -t "$session" -F '#{pane_id} #{@cockpit_role}' 2>/dev/null |
+      awk '$2 == "runtime" { print $1; exit }')"
+    active_path="$(tmux display-message -p -t "$active_pane" '#{pane_current_path}' 2>/dev/null || true)"
+    active_root="$(git -C "$active_path" rev-parse --show-toplevel 2>/dev/null || true)"
+    [[ -n "$active_root" ]] || active_root="$(tmux show-options -v -t "$session" @cockpit_project_root 2>/dev/null || true)"
+    [[ -n "$active_root" ]] || active_root="$active_path"
+    active_root="$(cd -- "$active_root" 2>/dev/null && pwd -P || printf '%s' "$active_root")"
+    if [[ "$active_root" != "$root" ]]; then
+      printf 'cockpit: session %s is already bound to %s\n' "$session" "$active_root" >&2
+      printf 'cockpit: refusing to attach the requested project %s to the wrong Agent/files pages\n' "$root" >&2
+      printf 'Use `cockpit worktree use %s %s --yes --restart-agent --restart-files --refresh-derived` at a safe boundary.\n' \
+        "$root" "$session" >&2
+      exit 2
+    fi
+  fi
   if [[ -t 1 ]]; then
     tmux set-option -t "$session" @cockpit_modality \
       "${COCKPIT_MODALITY:-$(tmux show-options -v -t "$session" @cockpit_modality 2>/dev/null || echo touch)}" \
@@ -273,7 +289,7 @@ if [[ -n "${authlib:-}" ]] && ! cockpit_auth_check "$runtime_id" 2>/dev/null; th
 fi
 runtime_cmd="$(cockpit_auth_field "$runtime_id" start 2>/dev/null || true)"
 if [[ -n "$runtime_cmd" ]]; then
-  runtime_cmd="$(cockpit_codex_runtime_command "$runtime_cmd" "$codex_bin")"
+  runtime_cmd="$(cockpit_codex_runtime_command "$runtime_cmd" "$codex_bin" "$root")"
 else
   runtime_cmd="$(cockpit_shell_quote "$codex_bin")"
 fi
@@ -305,25 +321,28 @@ tmux new-window -d -t "$session:" -n DIFF -c "$root" \
   "cd -- $root_q && exec cockpit-diff $root_q"
 tag "$session:DIFF" DIFF diff
 
-tmux new-window -d -t "$session:" -n SETUP -c "$root" \
-  "cd -- $root_q && exec cockpit-setup"
-tag "$session:SETUP" SETUP setup
-
 tmux new-window -d -t "$session:" -n MAP -c "$root" \
   "cd -- $root_q && exec cockpit-mermaid-watch $mermaid_args"
 tag "$session:MAP" MAP map
 
-tmux new-window -d -t "$session:" -n MEMORY -c "$root" \
-  "cd -- $root_q && exec cockpit-memory-watch $root_q"
-tag "$session:MEMORY" MEMORY memory
+tmux new-window -d -t "$session:" -n SETUP -c "$root" \
+  "cd -- $root_q && exec cockpit-setup"
+tag "$session:SETUP" SETUP setup
 
 tmux new-window -d -t "$session:" -n PRS -c "$root" "exec cockpit-prs"
 tag "$session:PRS" PRS prs
 
-cockpit_select_agent_pane "$session"
+tmux new-window -d -t "$session:" -n MEMORY -c "$root" \
+  "cd -- $root_q && exec cockpit-memory"
+tag "$session:MEMORY" MEMORY memory
+tmux set-option -p -t "$session:MEMORY" remain-on-exit on
+
+tmux select-window -t "$session:1"
+tmux select-pane -t "$session:1.1"
 tmux set-option -t "$session" @cockpit 1
 tmux set-option -t "$session" @cockpit_modality "$modality"
 tmux set-option -t "$session" @cockpit_runtime "$runtime_id"
+"$script_root/cockpit-worktree" bind "$root" "$session" >/dev/null 2>&1 || true
 tmux set-hook -t "$session" after-select-window \
   'run-shell -b "cockpit-wake #{session_name} #{window_name}"; run-shell -b "cockpit-popup gc"; run-shell -b "cockpit-agent-hook \"#{session_name}\""'
 tmux set-hook -t "$session" after-new-window \
