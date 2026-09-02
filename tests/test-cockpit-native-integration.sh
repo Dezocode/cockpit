@@ -4,6 +4,7 @@
 set -euo pipefail
 
 repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+expected_branch="$(git -C "$repo_root" branch --show-current)"
 skill_creator_root="/home/dezocode/.codex/skills/.system/skill-creator"
 test_root="$(mktemp -d /tmp/cockpit-native-test.XXXXXX)"
 tmux_socket="cockpit-native-$RANDOM-$$"
@@ -145,7 +146,7 @@ done
 
 [[ "$(tmux_test show-options -v -t "$session" @cockpit_project_root)" == "$repo_root" ]]
 [[ "$(tmux_test show-options -v -t "$session" @cockpit_git_worktree_path)" == "$repo_root" ]]
-[[ "$(tmux_test show-options -v -t "$session" @cockpit_git_branch)" == main ]]
+[[ "$(tmux_test show-options -v -t "$session" @cockpit_git_branch)" == "$expected_branch" ]]
 [[ "$(tmux_test show-options -v -t "$session" @cockpit_project_skill_count)" -ge 12 ]]
 [[ "$(tmux_test show-options -v -t "$session" @cockpit_project_hook_count)" -ge 12 ]]
 [[ "$(tmux_test list-windows -t "$session" | wc -l)" == "$before_windows" ]]

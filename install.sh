@@ -122,34 +122,6 @@ if [[ ! -f "$legacy_config_home/plugins/cockpit-intercom/intercom" ]]; then
   install -m 0755 "$root/plugins/cockpit-intercom/intercom" "$legacy_config_home/plugins/cockpit-intercom/intercom"
 fi
 
-install -m 0644 "$root/plugins/cockpit-intercom/plugin.conf" "$root/plugins/cockpit-intercom/README.md" \
-  "$config_home/plugins/cockpit-intercom/"
-install -m 0755 "$root/plugins/cockpit-intercom/intercom" \
-  "$config_home/plugins/cockpit-intercom/intercom"
-if [[ ! -f "$legacy_config_home/plugins/cockpit-intercom/plugin.conf" ]]; then
-  install -m 0644 "$root/plugins/cockpit-intercom/plugin.conf" "$legacy_config_home/plugins/cockpit-intercom/plugin.conf"
-fi
-if [[ ! -f "$legacy_config_home/plugins/cockpit-intercom/README.md" ]]; then
-  install -m 0644 "$root/plugins/cockpit-intercom/README.md" "$legacy_config_home/plugins/cockpit-intercom/README.md"
-fi
-if [[ ! -f "$legacy_config_home/plugins/cockpit-intercom/intercom" ]]; then
-  install -m 0755 "$root/plugins/cockpit-intercom/intercom" "$legacy_config_home/plugins/cockpit-intercom/intercom"
-fi
-
-install -m 0644 "$root/plugins/cockpit-memory/plugin.conf" "$root/plugins/cockpit-memory/README.md" \
-  "$config_home/plugins/cockpit-memory/"
-install -m 0755 "$root/plugins/cockpit-memory/memory" \
-  "$config_home/plugins/cockpit-memory/memory"
-if [[ ! -f "$legacy_config_home/plugins/cockpit-memory/plugin.conf" ]]; then
-  install -m 0644 "$root/plugins/cockpit-memory/plugin.conf" "$legacy_config_home/plugins/cockpit-memory/plugin.conf"
-fi
-if [[ ! -f "$legacy_config_home/plugins/cockpit-memory/README.md" ]]; then
-  install -m 0644 "$root/plugins/cockpit-memory/README.md" "$legacy_config_home/plugins/cockpit-memory/README.md"
-fi
-if [[ ! -f "$legacy_config_home/plugins/cockpit-memory/memory" ]]; then
-  install -m 0755 "$root/plugins/cockpit-memory/memory" "$legacy_config_home/plugins/cockpit-memory/memory"
-fi
-
 if [[ ! -f "$config_home/cockpit.bashrc" ]]; then
   install -m 0644 "$root/stage/shell/cockpit.bashrc" \
     "$config_home/cockpit.bashrc"
