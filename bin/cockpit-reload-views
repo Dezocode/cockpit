@@ -40,6 +40,7 @@ pane_for() {
     diff) window=DIFF ;;
     map) window=MAP ;;
     memory) window=MEMORY ;;
+    computers) window=COMPUTERS ;;
     *) window="${role^^}" ;;
   esac
   tmux list-panes -s -t "$session" -F '#{pane_id} #{@cockpit_role} #{window_name}' 2>/dev/null |
@@ -248,12 +249,47 @@ ensure_memory() {
   tmux set-option -w -t "$pane" allow-rename off 2>/dev/null || true
 }
 
+ensure_computers() {
+  local pane root command parent
+  pane="$(pane_for computers)"
+  if [[ -n "$pane" ]]; then
+    root="$(tmux display-message -p -t "$runtime" '#{pane_current_path}' 2>/dev/null || true)"
+    [[ -n "$root" && -d "$root" ]] || root="$(tmux display-message -p -t "$pane" '#{pane_current_path}' 2>/dev/null || true)"
+    parent="$(tmux display-message -p -t "$pane" '#{window_name}' 2>/dev/null || true)"
+    if [[ "$parent" != COMPUTERS ]]; then
+      tmux break-pane -d -n COMPUTERS -s "$pane" 2>/dev/null || true
+    fi
+    if [[ "$(tmux display-message -p -t "$pane" '#{pane_dead}' 2>/dev/null || echo 0)" == "1" && -n "$root" && -d "$root" ]]; then
+      command="cd -- $(shell_quote "$root") && exec cockpit-computers"
+      tmux respawn-pane -k -t "$pane" -c "$root" "$command" 2>/dev/null || true
+    fi
+    tmux select-pane -t "$pane" -T COMPUTERS 2>/dev/null || true
+    tmux set-option -p -t "$pane" @cockpit_role computers 2>/dev/null || true
+    tmux set-option -p -t "$pane" remain-on-exit on 2>/dev/null || true
+    tmux set-option -w -t "$pane" automatic-rename off 2>/dev/null || true
+    tmux set-option -w -t "$pane" allow-rename off 2>/dev/null || true
+    return 0
+  fi
+  root="$(tmux display-message -p -t "$runtime" '#{pane_current_path}' 2>/dev/null || true)"
+  [[ -n "$root" && -d "$root" ]] || return 0
+  command="cd -- $(shell_quote "$root") && exec cockpit-computers"
+  tmux new-window -d -t "$session:" -n COMPUTERS -c "$root" "$command" 2>/dev/null || return 0
+  pane="$(tmux display-message -p -t "$session:COMPUTERS" '#{pane_id}' 2>/dev/null || true)"
+  [[ -n "$pane" ]] || return 0
+  tmux select-pane -t "$pane" -T COMPUTERS 2>/dev/null || true
+  tmux set-option -p -t "$pane" @cockpit_role computers 2>/dev/null || true
+  tmux set-option -p -t "$pane" remain-on-exit on 2>/dev/null || true
+  tmux set-option -w -t "$pane" automatic-rename off 2>/dev/null || true
+  tmux set-option -w -t "$pane" allow-rename off 2>/dev/null || true
+}
+
 runtime="$(pane_for runtime)"
 [[ -n "$runtime" ]] || exit 0
 ensure_setup
 reload_view diff
 reload_view map
 ensure_memory
+ensure_computers
 if command -v cockpit-adapt >/dev/null 2>&1; then
   client="$(tmux list-clients -t "$session" -F '#{client_width} #{client_height}' 2>/dev/null | head -1 || true)"
   read -r width height <<<"$client"
@@ -262,4 +298,4 @@ if command -v cockpit-adapt >/dev/null 2>&1; then
   cockpit-adapt attached "$session" "${width:-0}" "${height:-0}" >/dev/null 2>&1 || true
 fi
 reload_bar
-printf 'Cockpit reloaded: AGENT, FILES, DIFF, MAP, SETUP, PRS, MEMORY (Agent and FILES untouched).\n'
+printf 'Cockpit reloaded: AGENT, FILES, DIFF, MAP, SETUP, PRS, MEMORY, COMPUTERS (Agent and FILES untouched).\n'

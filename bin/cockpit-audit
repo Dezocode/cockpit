@@ -99,6 +99,11 @@ cockpit_plugin_health() {
   else
     fail_check 'Cockpit MEMORY native plugin is missing or invalid'
   fi
+  if grep -Eq '^cockpit\.computers[[:space:]]+type=cockpit[[:space:]]+version=' <<<"$rows"; then
+    pass_check 'Cockpit COMPUTERS native plugin is available'
+  else
+    fail_check 'Cockpit COMPUTERS native plugin is missing or invalid'
+  fi
   if grep -Eq '^cockpit\.intercom[[:space:]]+type=cockpit[[:space:]]+version=' <<<"$rows"; then
     pass_check 'Cockpit INTERCOM native plugin is available'
   else
@@ -184,9 +189,23 @@ memory_source_health() {
   done
 }
 
+computers_source_health() {
+  local file
+  file="$HOME/intercom/computers/receipt.tsv"
+  if [[ ! -f "$file" ]]; then
+    fail_check 'COMPUTERS receipt is missing from ~/intercom/computers/receipt.tsv'
+    return 0
+  fi
+  if computers check >/dev/null 2>&1; then
+    pass_check 'COMPUTERS receipt validates (intercom-managed source)'
+  else
+    fail_check 'COMPUTERS receipt is present but invalid'
+  fi
+}
+
 page_topology_health() {
   local spec name role pane parent count
-  for spec in "FILES:files" "DIFF:diff" "MAP:map" "SETUP:setup" "PRS:prs" "MEMORY:memory"; do
+  for spec in "FILES:files" "DIFF:diff" "MAP:map" "SETUP:setup" "PRS:prs" "MEMORY:memory" "COMPUTERS:computers"; do
     name=${spec%%:*}
     role=${spec##*:}
     pane="$(tmux list-panes -s -t "$session" -F '#{pane_id} #{@cockpit_role} #{window_name}' 2>/dev/null |
@@ -306,14 +325,14 @@ if ! has_command tmux || ! tmux has-session -t "$session" 2>/dev/null; then
   fail_check "tmux session is not running: $session"
 else
   pass_check "tmux session is running: $session"
-  expected_windows='AGENT FILES DIFF MAP SETUP PRS MEMORY'
+  expected_windows='AGENT FILES DIFF MAP SETUP PRS MEMORY COMPUTERS'
   actual_windows="$(tmux list-windows -t "$session" -F '#{window_name}' 2>/dev/null | paste -sd' ' -)"
   if [[ "$actual_windows" == "$expected_windows" ]]; then
-    pass_check 'seven named Cockpit pages are ordered in the bar'
+    pass_check 'eight named Cockpit pages are ordered in the bar'
   else
     fail_check "named page bar is ${actual_windows:-empty}; expected ${expected_windows}"
   fi
-  for window in AGENT FILES DIFF MAP SETUP PRS MEMORY; do
+  for window in AGENT FILES DIFF MAP SETUP PRS MEMORY COMPUTERS; do
     if tmux list-windows -t "$session" -F '#W' 2>/dev/null | grep -Fxq "$window"; then
       pass_check "window $window exists"
     else
@@ -376,6 +395,7 @@ else
     fail_check 'F10 is still bound as a Cockpit page action'
   fi
   memory_source_health
+  computers_source_health
   intercom_source_health
 fi
 

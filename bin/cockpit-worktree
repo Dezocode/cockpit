@@ -251,7 +251,7 @@ use_worktree() {
   current_path="$(tmux display-message -p -t "$current_pane" '#{pane_current_path}' 2>/dev/null || true)"
   current_root="$(git -C "$current_path" rev-parse --show-toplevel 2>/dev/null || true)"
   [[ -n "$current_root" ]] && current_root="$(absolute_dir "$current_root")"
-  for role in files diff map memory; do
+  for role in files diff map memory computers; do
     page_is_bound "$session" "$role" || pages_aligned=0
   done
   if [[ "$current_root" == "$WT_PROJECT" && "$pages_aligned" == 1 ]]; then
@@ -260,9 +260,9 @@ use_worktree() {
     return 0
   fi
   if [[ "$current_root" == "$WT_PROJECT" ]]; then
-    printf 'planned=Agent already at %s; restart FILES; refresh DIFF/MAP/MEMORY; preserve page names\n' "$WT_PROJECT"
+    printf 'planned=Agent already at %s; restart FILES; refresh DIFF/MAP/MEMORY/COMPUTERS; preserve page names\n' "$WT_PROJECT"
   else
-    printf 'planned=restart Agent at %s; restart FILES; refresh DIFF/MAP/MEMORY; preserve page names\n' "$WT_PROJECT"
+    printf 'planned=restart Agent at %s; restart FILES; refresh DIFF/MAP/MEMORY/COMPUTERS; preserve page names\n' "$WT_PROJECT"
   fi
   if ((yes != 1)); then
     printf 'confirmation=required (--yes --restart-agent --restart-files --refresh-derived)\n'
@@ -302,6 +302,11 @@ use_worktree() {
   if [[ -n "$pane" ]]; then
     tmux respawn-pane -k -t "$pane" -c "$WT_PROJECT" \
       "cd -- $root_q && exec cockpit-memory"
+  fi
+  pane="$(pane_for_role "$session" computers)"
+  if [[ -n "$pane" ]]; then
+    tmux respawn-pane -k -t "$pane" -c "$WT_PROJECT" \
+      "cd -- $root_q && exec cockpit-computers"
   fi
   bind_session "$WT_PROJECT" "$session" >/dev/null
   "$script_root/cockpit-agent-hook" "$session" worktree-use >/dev/null 2>&1 || true

@@ -192,7 +192,7 @@ printf 'hooks=%s\n' "$([[ "$hooks_enabled" == 1 ]] && printf enabled || printf d
 printf 'agent_validation=%s\n' "$([[ "$agent_validation_enabled" == 1 ]] && printf enabled || printf disabled)"
 printf 'toolbar=%s\n' "$([[ -n "$bar" ]] && printf 'signal-refresh' || printf missing)"
 printf 'derived_views=%s\n' "$([[ "$refresh_derived" == 1 ]] && printf 'explicit-refresh' || printf preserved)"
-printf 'preserved=Agent,FILES,SETUP,DIFF,MAP,MEMORY\n'
+printf 'preserved=Agent,FILES,SETUP,DIFF,MAP,MEMORY,COMPUTERS\n'
 
 if [[ "$mode" == check ]]; then
   printf 'mode=check\n'
@@ -245,7 +245,7 @@ if [[ "$adapt_layout" == 1 ]] && command -v cockpit-adapt >/dev/null 2>&1; then
 fi
 
 if [[ "$refresh_derived" == 1 ]]; then
-  printf 'warning=--refresh-derived explicitly permits DIFF/MAP/MEMORY respawn\n'
+  printf 'warning=--refresh-derived explicitly permits DIFF/MAP/MEMORY/COMPUTERS respawn\n'
   command -v cockpit-reload-views >/dev/null 2>&1 &&
     cockpit-reload-views "$session" >/dev/null 2>&1 || true
 fi

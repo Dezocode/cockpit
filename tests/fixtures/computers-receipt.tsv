@@ -1,0 +1,3 @@
+device_id	display_name	kind	status	models
+local	This host	local	online	codex,gpt-4
+bench-vm	Benchmark VM	cloud	idle	codex

@@ -1,0 +1,266 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+script_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=cockpit-lib
+source "$script_root/cockpit-lib"
+export PATH="$script_root:$HOME/.local/bin:$PATH"
+
+receipt_source() {
+  local candidate directory
+  for candidate in \
+    "${COCKPIT_INTERCOM_HOME:-$HOME/intercom}/computers/receipt.tsv" \
+    "${COCKPIT_PROJECT:-${PWD:-.}}/computers/receipt.tsv"; do
+    if [[ -f "$candidate" ]]; then
+      directory="$(dirname -- "$candidate")"
+      printf '%s/%s\n' "$(cd -- "$directory" && pwd -P)" "$(basename -- "$candidate")"
+      return 0
+    fi
+  done
+  return 1
+}
+
+receipt_path() {
+  receipt_source || true
+}
+
+receipt_validate() {
+  local path line count=0
+  path="$(receipt_path)"
+  if [[ -z "$path" ]]; then
+    printf 'COMPUTERS unavailable: computers/receipt.tsv is missing (checked ~/intercom/computers/receipt.tsv and cwd-relative computers/receipt.tsv).\n' >&2
+    return 1
+  fi
+  if [[ ! -r "$path" ]]; then
+    printf 'COMPUTERS unavailable: receipt is not readable: %s\n' "$path" >&2
+    return 1
+  fi
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    [[ -z "$line" || "$line" == \#* ]] && continue
+    count=$((count + 1))
+  done <"$path"
+  if ((count < 2)); then
+    printf 'COMPUTERS unavailable: receipt must include a header row and at least one device: %s\n' "$path" >&2
+    return 1
+  fi
+  return 0
+}
+
+receipt_body_lines() {
+  local path=$1 first=1 line
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    [[ -z "$line" || "$line" == \#* ]] && continue
+    if ((first)); then
+      first=0
+      continue
+    fi
+    printf '%s\n' "$line"
+  done <"$path"
+}
+
+receipt_device_count() {
+  local path=$1
+  receipt_body_lines "$path" | sed '/^$/d' | wc -l | tr -d ' '
+}
+
+receipt_models_lines() {
+  local path=$1 line id models model
+  while IFS=$'\t' read -r id _ _ _ models || [[ -n "$id" ]]; do
+    [[ -z "$id" ]] && continue
+    IFS=',' read -ra model_list <<<"${models:-}"
+    for model in "${model_list[@]}"; do
+      model="${model#"${model%%[![:space:]]*}"}"
+      model="${model%"${model##*[![:space:]]}"}"
+      [[ -n "$model" ]] || continue
+      printf '%s\t%s\n' "$id" "$model"
+    done
+  done < <(receipt_body_lines "$path")
+}
+
+case "${1:-}" in
+  path)
+    receipt_source || exit 1
+    exit 0
+    ;;
+  check)
+    if ! receipt_validate; then
+      exit 1
+    fi
+    printf 'status=ok\n'
+    printf 'device_count=%s\n' "$(receipt_device_count "$(receipt_path)")"
+    exit 0
+    ;;
+  roster)
+    path="$(receipt_path)"
+    receipt_validate || exit 1
+    receipt_body_lines "$path"
+    exit 0
+    ;;
+  models)
+    path="$(receipt_path)"
+    receipt_validate || exit 1
+    receipt_models_lines "$path"
+    exit 0
+    ;;
+esac
+
+once=0
+view=roster
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --once) once=1 ;;
+    --models) view=models ;;
+    -h|--help)
+      printf 'Usage: cockpit-computers [path|check|roster|models] [--once] [--models]\n' >&2
+      exit 0
+      ;;
+    *)
+      printf 'Usage: cockpit-computers [path|check|roster|models] [--once] [--models]\n' >&2
+      exit 2
+      ;;
+  esac
+  shift
+done
+
+clear_screen() {
+  printf '\033[2J\033[H'
+}
+
+header() {
+  local path
+  path="$(receipt_path)"
+  if [[ "$view" == models ]]; then
+    printf '%sCOMPUTERS%s  %sMODELS%s  %s%s%s\n\n' \
+      "$(cockpit_theme_heading)" "$(cockpit_theme_reset)" \
+      "$(cockpit_theme_style accent '' 1)" "$(cockpit_theme_reset)" \
+      "$(cockpit_theme_muted)" "${path:-managed intercom receipt}" "$(cockpit_theme_reset)"
+    printf 'Read-only model catalog from receipt  ·  press r for roster\n\n'
+  else
+    printf '%sCOMPUTERS%s  %s%s%s\n\n' \
+      "$(cockpit_theme_heading)" "$(cockpit_theme_reset)" \
+      "$(cockpit_theme_muted)" "${path:-managed intercom receipt}" "$(cockpit_theme_reset)"
+    printf 'Read-only device roster  ·  press m for MODELS\n\n'
+  fi
+}
+
+render_roster() {
+  local path id name kind status models
+  path="$(receipt_path)"
+  printf '%-14s %-18s %-8s %-8s %s\n' 'DEVICE' 'NAME' 'KIND' 'STATUS' 'MODELS'
+  printf '%s\n' '────────────────────────────────────────────────────────────────'
+  while IFS=$'\t' read -r id name kind status models || [[ -n "$id" ]]; do
+    [[ -z "$id" ]] && continue
+    printf '%-14s %-18s %-8s %-8s %s\n' "$id" "$name" "$kind" "$status" "${models:-}"
+  done < <(receipt_body_lines "$path")
+}
+
+render_models() {
+  local path device model
+  path="$(receipt_path)"
+  printf '%-14s %s\n' 'DEVICE' 'MODEL'
+  printf '%s\n' '──────────────────────────────'
+  while IFS=$'\t' read -r device model || [[ -n "$device" ]]; do
+    [[ -z "$device" ]] && continue
+    printf '%-14s %s\n' "$device" "$model"
+  done < <(receipt_models_lines "$path")
+}
+
+render() {
+  clear_screen
+  header
+  if ! receipt_validate >/dev/null 2>&1; then
+    printf 'COMPUTERS unavailable: the managed receipt is missing or incomplete.\n'
+    printf 'Sync intercom or add computers/receipt.tsv under the active project.\n'
+    return 0
+  fi
+  if [[ "$view" == models ]]; then
+    render_models
+  else
+    render_roster
+  fi
+}
+
+if ((once)); then
+  if ! receipt_validate >/dev/null 2>&1; then
+    render
+    exit 1
+  fi
+  render
+  exit 0
+fi
+
+session="$(tmux display-message -p '#{session_name}' 2>/dev/null || echo unknown)"
+COCKPIT_DEBOUNCE=0.25
+
+maybe_render() {
+  if cockpit_view_visible; then
+    render
+  fi
+}
+
+if [[ "$session" == unknown ]]; then
+  printf 'COMPUTERS idle: open the Cockpit COMPUTERS page from the managed session.\n'
+  while true; do sleep 3600; done
+fi
+
+cockpit_event_open "$session" COMPUTERS
+computers_key_pid=''
+computers_key_reader() {
+  local key
+  while IFS= read -r -n 1 key; do
+    case "$key" in
+      m|M)
+        view=models
+        maybe_render
+        ;;
+      r|R)
+        view=roster
+        maybe_render
+        ;;
+      q|Q|$'\033')
+        printf 'QUIT\n' >"$COCKPIT_EVENT_FIFO" 2>/dev/null || true
+        return 0
+        ;;
+    esac
+  done
+}
+if [[ -t 0 ]]; then
+  computers_key_reader &
+  computers_key_pid=$!
+fi
+trap '[[ -n "$computers_key_pid" ]] && kill "$computers_key_pid" 2>/dev/null || true; cockpit_event_close; rm -f "$(cockpit_wake_dir "$session")/COMPUTERS.pid"' EXIT
+
+if cockpit_view_visible; then
+  render
+else
+  clear_screen
+  printf '%sCOMPUTERS%s  idle\n\n' \
+    "$(cockpit_theme_heading)" "$(cockpit_theme_reset)"
+  printf 'Open the COMPUTERS page to render the managed receipt roster.\n'
+fi
+
+watch_dir="${COCKPIT_INTERCOM_HOME:-$HOME/intercom}/computers"
+if [[ -d "$watch_dir" ]]; then
+  :
+elif [[ -d "${COCKPIT_PROJECT:-}/computers" ]]; then
+  watch_dir="${COCKPIT_PROJECT}/computers"
+else
+  watch_dir="${COCKPIT_INTERCOM_HOME:-$HOME/intercom}"
+fi
+
+cockpit_event_watch "$watch_dir" \
+  -e close_write,moved_to,create,delete \
+  --exclude "$cockpit_noise_exclude"
+
+while cockpit_event_read; do
+  if [[ "$COCKPIT_EVENT" == QUIT ]]; then
+    exit 0
+  fi
+  if [[ "$COCKPIT_EVENT" == WAKE ]]; then
+    maybe_render
+    continue
+  fi
+  sleep "$COCKPIT_DEBOUNCE"
+  cockpit_event_drain >/dev/null
+  maybe_render
+done

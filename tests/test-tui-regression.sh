@@ -51,18 +51,26 @@ chmod +x "$paste_stub"
 assert_source_contract() {
   local main="$repo_root/bin/cockpit-main"
   grep -q 'new-session.*-n AGENT' "$main" || fail 'cockpit-main missing AGENT window bootstrap'
-  for name in FILES DIFF MAP MEMORY SETUP PRS; do
+  for name in FILES DIFF MAP MEMORY SETUP PRS COMPUTERS; do
     grep -q "new-window.*-n ${name}" "$main" || fail "cockpit-main missing ${name} window bootstrap"
   done
-  grep -q 'cockpit-memory-watch' "$main" || fail 'cockpit-main missing MEMORY watcher bootstrap'
+  grep -q 'exec cockpit-memory' "$main" || fail 'cockpit-main missing MEMORY bootstrap command'
   grep -q 'tag "$session:MEMORY" MEMORY memory' "$main" || fail 'cockpit-main missing MEMORY role tag'
+  grep -q 'tag "$session:COMPUTERS" COMPUTERS computers' "$main" || fail 'cockpit-main missing COMPUTERS role tag'
+  grep -q 'exec cockpit-computers' "$main" || fail 'cockpit-main missing COMPUTERS bootstrap command'
   grep -q 'memory|MEMORY' "$repo_root/bin/cockpit-touch" ||
     fail 'cockpit-touch missing MEMORY routing'
+  grep -q 'computers|COMPUTERS' "$repo_root/bin/cockpit-touch" ||
+    fail 'cockpit-touch missing COMPUTERS routing'
   grep -q 'MEMORY|memory' "$repo_root/bin/cockpit-wake" ||
     fail 'cockpit-wake missing MEMORY wake routing'
-  grep -q 'reload_view memory' "$repo_root/bin/cockpit-reload-views" ||
+  grep -q 'COMPUTERS|computers' "$repo_root/bin/cockpit-wake" ||
+    fail 'cockpit-wake missing COMPUTERS wake routing'
+  grep -q 'ensure_memory' "$repo_root/bin/cockpit-reload-views" ||
     fail 'cockpit-reload-views missing MEMORY derived view'
-  pass 'source contract: seven-window bootstrap with MEMORY named page'
+  grep -q 'ensure_computers' "$repo_root/bin/cockpit-reload-views" ||
+    fail 'cockpit-reload-views missing COMPUTERS derived view'
+  pass 'source contract: eight-window bootstrap with MEMORY and COMPUTERS named pages'
 }
 
 assert_memory_bind_contract() {
@@ -90,7 +98,7 @@ exec bash --norc $(printf '%q' "$paste_stub")"
   tmux_test set-option -t "$session" @cockpit_runtime test
   tmux_test set-option -t "$session" @cockpit 1
 
-  for spec in "FILES:files" "DIFF:diff" "MAP:map" "MEMORY:memory" "SETUP:setup" "PRS:prs"; do
+  for spec in "FILES:files" "DIFF:diff" "MAP:map" "MEMORY:memory" "SETUP:setup" "PRS:prs" "COMPUTERS:computers"; do
     local name=${spec%%:*} role=${spec##*:}
     tmux_test new-window -d -t "$session:" -n "$name" -c "$root" 'exec sleep 600'
     local pane
@@ -102,14 +110,14 @@ exec bash --norc $(printf '%q' "$paste_stub")"
 assert_window_topology() {
   local -a names=()
   local count name agent_win map_win pane role window nested=0 agent_panes memory_in_map=0
-  local expect_count=${1:-7}
+  local expect_count=${1:-8}
 
   mapfile -t names < <(tmux_test list-windows -t "$session" -F '#{window_name}' | sort)
   count="${#names[@]}"
   [[ "$count" -eq "$expect_count" ]] ||
     fail "expected ${expect_count} windows, got ${count}: ${names[*]}"
 
-  for expected in AGENT DIFF FILES MAP MEMORY PRS SETUP; do
+  for expected in AGENT DIFF FILES MAP MEMORY PRS SETUP COMPUTERS; do
     printf '%s\n' "${names[@]}" | grep -Fxq "$expected" || fail "missing window ${expected}"
   done
 
@@ -121,7 +129,7 @@ assert_window_topology() {
       files|diff|map|setup|prs)
         [[ "$window" != "$agent_win" ]] || nested=1
         ;;
-      memory)
+      memory|computers)
         [[ "$window" != "$agent_win" ]] || nested=1
         [[ "$window" != "$map_win" ]] || memory_in_map=1
         ;;
@@ -134,14 +142,16 @@ assert_window_topology() {
   agent_panes="$(tmux_test list-panes -t "$session:AGENT" | wc -l | tr -d ' ')"
   [[ "$agent_panes" -le 2 ]] || fail "AGENT window has ${agent_panes} panes (not 5-up stack)"
 
-  if ((expect_count == 7)); then
+  if ((expect_count == 8)); then
     printf '%s\n' "${names[@]}" | grep -Fxq MEMORY ||
       fail 'canonical session must include MEMORY named window'
+    printf '%s\n' "${names[@]}" | grep -Fxq COMPUTERS ||
+      fail 'canonical session must include COMPUTERS named window'
   elif printf '%s\n' "${names[@]}" | grep -Fxq MEMORY; then
-    fail 'baseline session must stay windows==6 without MEMORY chrome'
+    fail 'baseline session must stay windows==7 without MEMORY chrome'
   fi
 
-  pass "topology: windows==${expect_count}, pages not nested, AGENT not 5-up, MEMORY not in MAP"
+  pass "topology: windows==${expect_count}, pages not nested, AGENT not 5-up, MEMORY/COMPUTERS not in MAP"
 }
 
 assert_no_extra_client() {
@@ -239,8 +249,59 @@ exec bash --norc $(printf '%q' "$paste_stub")"
   bar_cap="$(tmux_test capture-pane -t "$bar" -p -S -50)"
   grep -q SUBMITTED <<<"$bar_cap" && fail 'submit output appeared in BAR pane'
 
-  assert_window_topology 7
-  pass 'inject+submit: paste-buffer %0, wait chip, Enter; BAR untouched; windows stay 7'
+  assert_window_topology 8
+  pass 'inject+submit: paste-buffer %0, wait chip, Enter; BAR untouched; windows stay 8'
+}
+
+assert_computers_route() {
+  local computers_pane computers_win map_win
+  map_win="$(tmux_test display-message -p -t "$session:MAP" '#{window_id}')"
+  cockpit-touch "$session" computers >/dev/null 2>&1 || true
+  computers_pane="$(tmux_test display-message -p -t "$session:COMPUTERS" '#{pane_id}')"
+  computers_win="$(tmux_test display-message -p -t "$computers_pane" '#{window_id}')"
+  [[ "$computers_win" != "$map_win" ]] ||
+    fail 'COMPUTERS must not be nested inside MAP'
+  [[ "$(tmux_test display-message -p -t "$computers_pane" '#{@cockpit_role}')" == computers ]] ||
+    fail 'COMPUTERS pane is not tagged computers'
+  pass 'COMPUTERS route: named page via cockpit-touch, not nested in MAP'
+}
+
+assert_display_reload_pids() {
+  local runtime files bar runtime_pid files_pid bar_pane_pid bar_text runtime_after files_after
+  tmux_test set-option -t "$session" @cockpit_profile termius-ios
+  tmux_test set-option -t "$session" @cockpit_modality touch
+  cockpit-ensure-bar "$session" >/dev/null 2>&1 || true
+  sleep 0.2
+  runtime="$(tmux_test display-message -p -t "$session:AGENT" '#{pane_id}' 2>/dev/null || true)"
+  files="$(tmux_test display-message -p -t "$session:FILES" '#{pane_id}' 2>/dev/null || true)"
+  bar="$(tmux_test show-options -v -t "$session" @cockpit_bar_pane 2>/dev/null || true)"
+  [[ -z "$bar" ]] && bar="$(
+    tmux_test list-panes -s -t "$session" -F '#{pane_id} #{@cockpit_role}' |
+      awk '$2 == "bar" { print $1; exit }'
+  )"
+  [[ -n "$runtime" && -n "$files" && -n "$bar" ]] || fail 'runtime/files/bar missing for PID reload test'
+  runtime_pid="$(tmux_test display-message -p -t "$runtime" '#{pane_pid}')"
+  files_pid="$(tmux_test display-message -p -t "$files" '#{pane_pid}')"
+  bar_pane_pid="$(tmux_test display-message -p -t "$bar" '#{pane_pid}')"
+  bar_pid="$bar_pane_pid"
+  bar_text="$(tmux_test capture-pane -p -t "$bar" -S -3)"
+  grep -Fq '2:FILES' <<<"$bar_text"
+  grep -Fq 'MEMORY' <<<"$bar_text"
+  grep -Fq 'MODEL' <<<"$bar_text"
+  grep -Fq 'RESTART' <<<"$bar_text"
+  cockpit-adapt resized "$session" 120 40 >/dev/null 2>&1 || true
+  sleep 0.2
+  runtime_after="$(tmux_test display-message -p -t "$runtime" '#{pane_pid}')"
+  files_after="$(tmux_test display-message -p -t "$files" '#{pane_pid}')"
+  [[ "$runtime_pid" == "$runtime_after" ]] ||
+    fail 'display-only cockpit-adapt resized respawned runtime pane'
+  [[ "$files_pid" == "$files_after" ]] ||
+    fail 'display-only cockpit-adapt resized respawned FILES pane'
+  bar_text="$(tmux_test capture-pane -p -t "$bar" -S -3)"
+  grep -Fq '2:FILES' <<<"$bar_text"
+  [[ "$(tmux_test list-windows -t "$session" | wc -l | tr -d ' ')" == 8 ]] ||
+    fail 'display-only reload changed window count'
+  pass 'display-only reload: runtime/FILES PIDs unchanged, lower bar six chips, eight windows'
 }
 
 assert_memory_not_nested() {
@@ -282,7 +343,7 @@ main() {
   assert_memory_bind_contract
   assert_socket_path_documented
   bootstrap_canonical_session "$project"
-  assert_window_topology 7
+  assert_window_topology 8
   assert_no_extra_client
 
   tmux_test set-option -t "$session" @cockpit_profile termius-ios
@@ -292,6 +353,8 @@ main() {
   assert_no_extra_client
   assert_inject_submit "$project"
   assert_memory_not_nested
+  assert_computers_route
+  assert_display_reload_pids
   assert_platform_layout_classes
   assert_termius_toolbar_touch
 
