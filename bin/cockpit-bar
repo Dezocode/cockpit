@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Agent toolbar: PRS · provider · MODEL · RESTART as fixed hit zones.
+# Agent toolbar: PRS · provider · 2:FILES · MEMORY · MODEL · RESTART as fixed hit zones.
 # Keyboard and first tap. Never wraps the live Agent PTY. Never forwards CSI.
 set -euo pipefail
 
@@ -49,7 +49,7 @@ pane_size() {
   [[ "$cols" =~ ^[0-9]+$ ]] || cols=80
   [[ "$rows" =~ ^[0-9]+$ ]] || rows=6
   # The bar is a one-row tmux pane on mobile. Do not invent a minimum width:
-  # four minimum-width chips used to overflow narrow Termius panes and push
+  # Six minimum-width chips used to overflow narrow Termius panes and push
   # the provider/model controls off the right edge.
   if ((cols < 4)); then cols=4; fi
   if ((rows < 1)); then rows=1; fi
@@ -97,7 +97,7 @@ chip_row() {
 
 draw() {
   local id name cols rows gap box_w label_row i show end
-  local l1 l2 l3 l4
+  local l1 l2 l3 l4 l5 l6
   pane_size "${TMUX_PANE:-}"
   id="$(rid)"
   name="$(label "$id")"
@@ -109,13 +109,15 @@ draw() {
   # Keep a little visual separation on desktop. Termius gets contiguous chips
   # so a fat-finger tap cannot land in a one-column gutter.
   gap="$(chip_gap "$cols")"
-  box_w=$(( (cols - gap * 3) / 4 ))
+  box_w=$(( (cols - gap * 5) / 6 ))
   if ((box_w < 1)); then box_w=1; fi
   label_row=$((rows / 2))
   l1=PRS
   l2=$name
-  l3=MODEL
-  l4=RESTART
+  l3='2:FILES'
+  l4=MEMORY
+  l5=MODEL
+  l6=RESTART
 
   printf '\033[2J\033[H'
   for i in $(seq 0 $((rows - 1))); do
@@ -130,6 +132,10 @@ draw() {
     chip_row "$idle" "$l3" "$box_w" "$show"
     printf '%*s' "$gap" ""
     chip_row "$idle" "$l4" "$box_w" "$show"
+    printf '%*s' "$gap" ""
+    chip_row "$idle" "$l5" "$box_w" "$show"
+    printf '%*s' "$gap" ""
+    chip_row "$idle" "$l6" "$box_w" "$show"
     printf '%s' "$end"
   done
 }
@@ -158,6 +164,30 @@ open_model() {
   cockpit-touch "$session" setup model 2>/dev/null || true
 }
 
+open_files() {
+  local pane
+  pane="$(tmux list-panes -s -t "$session" -F '#{pane_id} #{@cockpit_role}' 2>/dev/null |
+    awk '$2 == "files" { print $1; exit }')"
+  if [[ -n "$pane" ]]; then
+    tmux select-window -t "$pane" 2>/dev/null || true
+    tmux select-pane -t "$pane" 2>/dev/null || true
+  else
+    cockpit-touch "$session" files 2>/dev/null || true
+  fi
+}
+
+open_memory() {
+  local pane
+  pane="$(tmux list-panes -s -t "$session" -F '#{pane_id} #{@cockpit_role}' 2>/dev/null |
+    awk '$2 == "memory" { print $1; exit }')"
+  if [[ -n "$pane" ]]; then
+    tmux select-window -t "$pane" 2>/dev/null || true
+    tmux select-pane -t "$pane" 2>/dev/null || true
+  else
+    cockpit-touch "$session" memory 2>/dev/null || true
+  fi
+}
+
 restart_runtime() {
   cockpit-restart "$session" >/dev/null 2>&1 || true
 }
@@ -168,8 +198,8 @@ which_btn() {
   [[ "$w" =~ ^[0-9]+$ ]] || w=80
   if ((w < 4)); then w=4; fi
   gap="$(chip_gap "$w")"
-  usable=$((w - gap * 3))
-  box=$((usable / 4))
+  usable=$((w - gap * 5))
+  box=$((usable / 6))
   if ((box < 1)); then box=1; fi
   end=$box
   if ((x < end)); then
@@ -177,6 +207,10 @@ which_btn() {
   elif ((x < end + gap + box)); then
     printf 'runtime\n'
   elif ((x < end + (gap + box) * 2)); then
+    printf 'files\n'
+  elif ((x < end + (gap + box) * 3)); then
+    printf 'memory\n'
+  elif ((x < end + (gap + box) * 4)); then
     printf 'model\n'
   else
     printf 'restart\n'
@@ -245,6 +279,8 @@ run_btn() {
   case "${1:-}" in
     prs) open_prs ;;
     runtime) open_runtime ;;
+    files) open_files ;;
+    memory) open_memory ;;
     model) open_model ;;
     restart) restart_runtime ;;
   esac

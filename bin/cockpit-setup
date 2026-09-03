@@ -242,8 +242,14 @@ draw() {
     printf '  %sCockpit plugin:%s %s\n' "$muted" "$reset" \
       "$(cockpit-plugin status 2>/dev/null | sed -n '2p' || printf 'unavailable')"
   fi
-  printf '  %su%s audit cockpit  ·  %sl%s browse/install Codex plugins\n\n' \
-    "$blue" "$reset" "$blue" "$reset"
+  if command -v cockpit-intercom >/dev/null 2>&1; then
+    printf '  %sIntercom:%s %s\n' "$muted" "$reset" \
+      "$(cockpit-intercom status --summary 2>/dev/null || printf 'unavailable')"
+  else
+    printf '  %sIntercom:%s unavailable\n' "$muted" "$reset"
+  fi
+  printf '  %su%s audit cockpit  ·  %sl%s browse/install Codex plugins  ·  %so%s intercom sync\n\n' \
+    "$blue" "$reset" "$blue" "$reset" "$blue" "$reset"
 
   printf '%sPROVIDERS / OAUTH%s\n' "$bright" "$reset"
   if ((${#ids[@]} == 0)); then
@@ -268,6 +274,7 @@ draw() {
   printf '  %su%s audit cockpit                   %se%s edit providers.conf in Vim\n' "$blue" "$reset" "$blue" "$reset"
   printf '  %sv%s validate .codex/.agent target   %sk%s confirm profile skill sync\n' "$blue" "$reset" "$blue" "$reset"
   printf '  %sc%s edit CPR/profile config          %sr%s refresh indicators\n' "$blue" "$reset" "$blue" "$reset"
+  printf '  %so%s verify/wake intercom projection\n' "$blue" "$reset"
   printf '  %sq%s close setup page\n' "$blue" "$reset"
   if [[ -n "$message" ]]; then
     printf '\n%s%s%s\n' "$bright" "$message" "$reset"
@@ -614,6 +621,24 @@ audit_flow() {
   pause_flow
 }
 
+intercom_flow() {
+  local status
+  printf '\033[2J\033[H'
+  printf '%sINTERCOM SYNC GATE%s\n\n' "$blue" "$reset"
+  printf 'This is a read-only local readiness check for the managed intercom projection.\n'
+  printf 'It never clones, fetches, pushes, or edits GOAL.md, HANDSHAKE.md, or MEMORY.\n\n'
+  set +e
+  "$script_root/cockpit-intercom" sync
+  status=$?
+  set -e
+  if ((status == 0)); then
+    message="Intercom projection is ready; MEMORY was woken if a watcher is running."
+  else
+    message="Intercom sync gate is blocked (exit $status); update the Thesis-managed projection, then retry. Cockpit will not edit MEMORY."
+  fi
+  pause_flow
+}
+
 agent_target_flow() {
   local root provider status
   root="$(project_root)"
@@ -865,6 +890,7 @@ run_action() {
     m) model_flow ;;
     l) plugin_flow ;;
     u) audit_flow ;;
+    o) intercom_flow ;;
     v) agent_target_flow ;;
     k) profile_skill_flow ;;
     c) edit_cockpit_config ;;
@@ -881,6 +907,7 @@ case "$focus" in
   model) run_action m ;;
   plugins|plugin) run_action l ;;
   audit) run_action u ;;
+  intercom) run_action o ;;
   agent|agent-config|validate) run_action v ;;
   profile|skills) run_action k ;;
   config|cockpit-config) run_action c ;;
@@ -898,6 +925,7 @@ while true; do
     m|M) run_action m ;;
     l|L) run_action l ;;
     u|U) run_action u ;;
+    o|O) run_action o ;;
     v|V) run_action v ;;
     k|K) run_action k ;;
     c|C) run_action c ;;

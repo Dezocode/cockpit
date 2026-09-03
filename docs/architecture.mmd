@@ -8,13 +8,14 @@ flowchart LR
     files[FILES nvim]
     diff[DIFF events]
     map[MAP mermaid]
+    memory[MEMORY intercom named page]
     setup[SETUP auth/provider/Git/Cockpit-profile/Codex-plugin/audit flow]
     cpr[Cockpit-native cockpit.cpr live updater]
     validator[provider-target .codex/.agent validator + hook]
     prs[PRS github]
   end
-  foot -->|2x2 pad| views
-  ios -->|fullscreen tabs| views
+  foot -->|named top-level tabs| views
+  ios -->|named top-level tabs| views
   runtime -->|writes| files
   runtime -->|writes| diff
   cpr -->|idempotent session/hooks/bar refresh| views

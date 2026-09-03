@@ -1,0 +1,1 @@
+../../../plugins/cockpit-native/skills/cockpit-foot-omarchy/SKILL.md

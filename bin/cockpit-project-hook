@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+# Safe project hook dispatcher used by the Cockpit tmux integration.
+# It records event usefulness, refreshes metadata, and never selects, splits,
+# kills, or respawns a pane. This makes it safe to call from tmux hooks.
+set -euo pipefail
+
+script_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=cockpit-lib
+source "$script_root/cockpit-lib"
+export PATH="$script_root:$HOME/.local/bin:$PATH"
+
+event="${1:-}"
+session="${2:-$(cockpit_session_name)}"
+
+case "$event" in
+  client-attached|client-resized|client-session-changed|session-created|\
+  after-select-window|after-new-window|after-rename-window|after-resize-pane|\
+  after-split-window|after-kill-pane|after-resize-window|after-rename-session) ;;
+  *) exit 0 ;;
+esac
+cockpit_session_is_managed "$session" || exit 0
+tmux has-session -t "$session" 2>/dev/null || exit 0
+
+safe_event="${event//[^A-Za-z0-9]/_}"
+previous="$(tmux show-options -v -t "$session" "@cockpit_hook_count_${safe_event}" 2>/dev/null || true)"
+[[ "$previous" =~ ^[0-9]+$ ]] || previous=0
+tmux set-option -t "$session" "@cockpit_hook_count_${safe_event}" "$((previous + 1))" 2>/dev/null || true
+tmux set-option -t "$session" @cockpit_hook_last_event "$event" 2>/dev/null || true
+tmux set-option -t "$session" @cockpit_hook_dispatch_version 1 2>/dev/null || true
+
+# Refresh only user-option metadata. The agent hook itself is read-only with
+# respect to the project and handles missing/non-Git roots gracefully.
+"$script_root/cockpit-agent-hook" "$session" "$event" >/dev/null 2>&1 || true
+
+if [[ "$event" == after-select-window ]]; then
+  selected="$(tmux display-message -p -t "$session:" '#{window_name}' 2>/dev/null || true)"
+  case "$selected" in
+    FILES|DIFF|MAP|MEMORY) "$script_root/cockpit-wake" "$session" "$selected" >/dev/null 2>&1 || true ;;
+  esac
+fi
+
+if [[ "${COCKPIT_PROJECT_HOOK_OUTPUT:-0}" == 1 ]]; then
+  printf 'event=%s\nsession=%s\ncount=%s\neffect=metadata-refresh\n' \
+    "$event" "$session" "$((previous + 1))"
+fi

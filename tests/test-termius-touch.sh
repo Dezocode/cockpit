@@ -13,6 +13,7 @@ bar_pid=""
 mkdir -p "$test_home" "$install_tmux_root" "$test_tmux_root"
 
 export HOME="$test_home"
+export XDG_CONFIG_HOME="$test_home/.config"
 export TMUX_TMPDIR="$install_tmux_root"
 export PATH="$test_home/.local/bin:$repo_root/bin:/usr/local/bin:/usr/bin:/bin"
 
@@ -52,7 +53,7 @@ tmux_test set-option -t "$session" @cockpit_modality touch
 tmux_test set-option -t "$session" mouse on
 tmux_test source-file "$HOME/.config/tmux/cockpit.conf"
 
-for spec in "FILES:files" "DIFF:diff" "SETUP:setup" "MAP:map" "PRS:prs"; do
+for spec in "FILES:files" "DIFF:diff" "SETUP:setup" "MAP:map" "PRS:prs" "MEMORY:memory"; do
   name=${spec%%:*}
   role=${spec##*:}
   tmux_test new-window -d -t "$session:" -n "$name" 'exec sleep 120'
@@ -77,10 +78,14 @@ bar_pid="$(tmux_test display-message -p -t "$bar" '#{pane_pid}' 2>/dev/null || t
 
 [[ "$(tmux_test display-message -p -t "$bar" '#{@cockpit_role}')" == bar ]]
 [[ "$(tmux_test display-message -p -t "$bar" '#{pane_height}')" == 2 ]]
+bar_text="$(tmux_test capture-pane -p -t "$bar" -S -3)"
+grep -Fq '2:FILES' <<<"$bar_text"
 [[ "$(cockpit-bar which 5 "$bar" "$session")" == prs ]]
 [[ "$(cockpit-bar which 25 "$bar" "$session")" == runtime ]]
-[[ "$(cockpit-bar which 45 "$bar" "$session")" == model ]]
-[[ "$(cockpit-bar which 65 "$bar" "$session")" == restart ]]
+[[ "$(cockpit-bar which 35 "$bar" "$session")" == files ]]
+[[ "$(cockpit-bar which 45 "$bar" "$session")" == memory ]]
+[[ "$(cockpit-bar which 55 "$bar" "$session")" == model ]]
+[[ "$(cockpit-bar which 70 "$bar" "$session")" == restart ]]
 
 keys="$(tmux_test list-keys -T root)"
 grep -Fq 'MouseDown1Pane' <<<"$keys"
@@ -155,17 +160,23 @@ def release(x: int, y: int) -> None:
 
 drain(0.8)
 
-# Toolbar zones: PRS, provider, MODEL, and RESTART.
+# Toolbar zones: PRS, provider, 2:FILES, MEMORY, MODEL, and RESTART.
 tap(5, 1)
 expect("PRS")
 select_window("AGENT")
 tap(25, 1)
 expect("SETUP")
 select_window("AGENT")
+tap(35, 1)
+expect("FILES")
+select_window("AGENT")
 tap(45, 1)
+expect("MEMORY")
+select_window("AGENT")
+tap(55, 1)
 expect("SETUP")
 select_window("AGENT")
-tap(65, 1)
+tap(70, 1)
 expect("AGENT")
 
 # The bottom status row remains canonical and uses the window under the tap.
@@ -191,5 +202,11 @@ try:
 except ChildProcessError:
     pass
 PY
+
+# Apply the adapter after the input-path checks so this display-only assertion
+# cannot alter the PTY session before its first tap.
+cockpit-adapt resized "$session" 80 24 >/dev/null
+[[ "$(tmux_test show-options -v -t "$session" window-status-format)" == *'#I:#W'* ]]
+[[ "$(tmux_test show-options -v -t "$session" window-status-current-format)" == *'#I:#W'* ]]
 
 printf '%s\n' 'Termius touch regression: PASS'

@@ -1,0 +1,337 @@
+#!/usr/bin/env bash
+# Git worktree inspection and explicit Cockpit session binding.
+# Metadata writes are limited to tmux user options; adding a worktree requires
+# an explicit --yes and never overwrites an existing directory.
+set -euo pipefail
+
+script_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=cockpit-lib
+source "$script_root/cockpit-lib"
+export PATH="$script_root:$HOME/.local/bin:$PATH"
+
+usage() {
+  cat <<'EOF'
+Usage: cockpit worktree <inspect|list|bind|use|add> [PATH] [OPTIONS]
+
+Commands:
+  inspect [PATH]                 print the selected Git worktree metadata
+  list [PATH]                    print Git's worktree porcelain listing
+  bind [PATH] [SESSION]          bind tmux metadata to the runtime worktree
+  use PATH SESSION --yes         explicitly re-root Agent and page watchers
+  add PATH --branch NAME --yes   add a new worktree after an explicit confirm
+
+PATH defaults to the runtime pane's current directory, then $PWD.
+Relative add paths are resolved from PATH's current project root.
+EOF
+}
+
+die() {
+  printf 'cockpit worktree: %s\n' "$*" >&2
+  exit 1
+}
+
+absolute_dir() {
+  local path=${1:-}
+  [[ -n "$path" && -d "$path" ]] || return 1
+  (cd -- "$path" && pwd -P)
+}
+
+runtime_path() {
+  local session pane
+  session="${1:-$(cockpit_session_name)}"
+  tmux has-session -t "$session" 2>/dev/null || return 1
+  pane="$(tmux list-panes -s -t "$session" -F '#{pane_id} #{@cockpit_role}' 2>/dev/null |
+    awk '$2 == "runtime" { print $1; exit}')"
+  [[ -n "$pane" ]] || return 1
+  tmux display-message -p -t "$pane" '#{pane_current_path}'
+}
+
+resolve_path() {
+  local requested=${1:-} fallback
+  if [[ -n "$requested" ]]; then
+    absolute_dir "$requested" || die "directory not found: $requested"
+    return 0
+  fi
+  fallback="$(runtime_path 2>/dev/null || true)"
+  [[ -n "$fallback" ]] || fallback="$PWD"
+  absolute_dir "$fallback" || die "directory not found: $fallback"
+}
+
+WT_PROJECT=''
+WT_GIT_ROOT=''
+WT_COMMON_DIR=''
+WT_GIT_DIR=''
+WT_BRANCH=''
+WT_WORKTREE_PATH=''
+WT_WORKTREE_COUNT=0
+WT_BARE=0
+WT_DETACHED=0
+
+load_info() {
+  local requested=${1:-} raw
+  WT_PROJECT="$(resolve_path "$requested")"
+  WT_GIT_ROOT="$(git -C "$WT_PROJECT" rev-parse --show-toplevel 2>/dev/null || true)"
+  [[ -n "$WT_GIT_ROOT" ]] || return 1
+  WT_GIT_ROOT="$(absolute_dir "$WT_GIT_ROOT")"
+  WT_WORKTREE_PATH="$WT_GIT_ROOT"
+  raw="$(git -C "$WT_PROJECT" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
+  if [[ -z "$raw" ]]; then
+    raw="$(git -C "$WT_PROJECT" rev-parse --git-common-dir 2>/dev/null || true)"
+  fi
+  if [[ "$raw" != /* ]]; then
+    raw="$WT_GIT_ROOT/$raw"
+  fi
+  WT_COMMON_DIR="$(cd -- "$raw" 2>/dev/null && pwd -P || printf '%s' "$raw")"
+  raw="$(git -C "$WT_PROJECT" rev-parse --path-format=absolute --git-dir 2>/dev/null || true)"
+  if [[ -z "$raw" ]]; then
+    raw="$(git -C "$WT_PROJECT" rev-parse --git-dir 2>/dev/null || true)"
+  fi
+  if [[ "$raw" != /* ]]; then
+    raw="$WT_PROJECT/$raw"
+  fi
+  WT_GIT_DIR="$(cd -- "$raw" 2>/dev/null && pwd -P || printf '%s' "$raw")"
+  if WT_BRANCH="$(git -C "$WT_PROJECT" symbolic-ref --short -q HEAD 2>/dev/null)"; then
+    WT_DETACHED=0
+  else
+    WT_BRANCH="$(git -C "$WT_PROJECT" rev-parse --short HEAD 2>/dev/null || true)"
+    WT_DETACHED=1
+  fi
+  [[ -n "$WT_BRANCH" ]] || WT_BRANCH=unborn
+  WT_WORKTREE_COUNT="$(git -C "$WT_PROJECT" worktree list --porcelain 2>/dev/null |
+    awk '$1 == "worktree" { n++ } END { print n + 0 }')"
+  [[ "$WT_WORKTREE_COUNT" =~ ^[0-9]+$ ]] || WT_WORKTREE_COUNT=0
+  [[ "$(git -C "$WT_PROJECT" rev-parse --is-bare-repository 2>/dev/null || true)" == true ]] && WT_BARE=1
+  return 0
+}
+
+print_info() {
+  printf 'project=%s\n' "$WT_PROJECT"
+  printf 'is_git=1\n'
+  printf 'git_root=%s\n' "$WT_GIT_ROOT"
+  printf 'git_common_dir=%s\n' "$WT_COMMON_DIR"
+  printf 'git_dir=%s\n' "$WT_GIT_DIR"
+  printf 'branch=%s\n' "$WT_BRANCH"
+  printf 'worktree_path=%s\n' "$WT_WORKTREE_PATH"
+  printf 'worktree_count=%s\n' "$WT_WORKTREE_COUNT"
+  printf 'is_bare=%s\n' "$WT_BARE"
+  printf 'is_detached=%s\n' "$WT_DETACHED"
+}
+
+set_session_option() {
+  local session=$1 key=$2 value=$3
+  tmux set-option -t "$session" "$key" "$value" 2>/dev/null || true
+}
+
+bind_session() {
+  local requested=${1:-} session=${2:-$(cockpit_session_name)}
+  if ! load_info "$requested"; then
+    die "not inside a non-bare Git worktree: ${WT_PROJECT:-${requested:-$PWD}}"
+  fi
+  if [[ "$WT_PROJECT" == "$(cd -- "$HOME" && pwd -P)" &&
+    "${COCKPIT_ALLOW_HOME_WORKTREE:-0}" != 1 ]]; then
+    die 'HOME is a container, not a Cockpit project worktree'
+  fi
+  cockpit_session_is_managed "$session" || die "unmanaged tmux session: $session"
+  tmux has-session -t "$session" 2>/dev/null || die "tmux session is not running: $session"
+  set_session_option "$session" @cockpit_project_root "$WT_PROJECT"
+  set_session_option "$session" @cockpit_git_root "$WT_GIT_ROOT"
+  set_session_option "$session" @cockpit_git_common_dir "$WT_COMMON_DIR"
+  set_session_option "$session" @cockpit_git_dir "$WT_GIT_DIR"
+  set_session_option "$session" @cockpit_git_branch "$WT_BRANCH"
+  set_session_option "$session" @cockpit_git_worktree "$WT_GIT_ROOT"
+  set_session_option "$session" @cockpit_git_worktree_path "$WT_WORKTREE_PATH"
+  set_session_option "$session" @cockpit_worktree "${WT_GIT_ROOT##*/}"
+  set_session_option "$session" @cockpit_worktree_count "$WT_WORKTREE_COUNT"
+  set_session_option "$session" @cockpit_git_detached "$WT_DETACHED"
+  set_session_option "$session" @cockpit_worktree_hook_version 1
+  print_info
+  printf 'bound_session=%s\n' "$session"
+}
+
+add_worktree() {
+  local target='' branch='' base='' session='' yes=0 root_arg='' root_abs target_abs parent
+  while (($#)); do
+    case "$1" in
+      --yes) yes=1; shift ;;
+      --branch)
+        (($# > 1)) || die '--branch needs a name'
+        branch=$2; shift 2 ;;
+      --base)
+        (($# > 1)) || die '--base needs a ref'
+        base=$2; shift 2 ;;
+      --session)
+        (($# > 1)) || die '--session needs a name'
+        session=$2; shift 2 ;;
+      -h|--help) usage; exit 0 ;;
+      -*) die "unknown option: $1" ;;
+      *)
+        if [[ -z "$target" ]]; then target=$1
+        elif [[ -z "$root_arg" ]]; then root_arg=$1
+        else die "unexpected argument: $1"; fi
+        shift ;;
+    esac
+  done
+  [[ -n "$target" ]] || die 'add needs a target path'
+  [[ -n "$branch" ]] || die 'add needs --branch NAME'
+  [[ "$branch" =~ ^[A-Za-z0-9._/-]+$ ]] || die 'branch contains unsupported characters'
+  root_abs="$(resolve_path "$root_arg")"
+  load_info "$root_abs" || die "not inside a non-bare Git worktree: $root_abs"
+  if [[ "$target" == /* ]]; then target_abs="$target"; else target_abs="$root_abs/$target"; fi
+  if [[ -e "$target_abs" || -L "$target_abs" ]]; then
+    die "refusing to overwrite existing path: $target_abs"
+  fi
+  parent="$(dirname -- "$target_abs")"
+  [[ -d "$parent" ]] || die "parent directory does not exist: $parent"
+  git -C "$root_abs" check-ref-format --branch "$branch" >/dev/null 2>&1 ||
+    die "invalid Git branch: $branch"
+  printf 'planned=git -C %s worktree add -b %s %s %s\n' \
+    "$WT_GIT_ROOT" "$branch" "$target_abs" "${base:-HEAD}"
+  ((yes == 1)) || {
+    printf 'confirmation=required (--yes)\n'
+    exit 2
+  }
+  if [[ -n "$base" ]]; then
+    git -C "$root_abs" worktree add -b "$branch" "$target_abs" "$base"
+  else
+    git -C "$root_abs" worktree add -b "$branch" "$target_abs" HEAD
+  fi
+  if [[ -n "$session" ]]; then
+    bind_session "$target_abs" "$session" >/dev/null
+  fi
+}
+
+pane_for_role() {
+  local session=$1 role=$2
+  tmux list-panes -s -t "$session" -F '#{pane_id} #{@cockpit_role}' 2>/dev/null |
+    awk -v r="$role" '$2 == r { print $1; exit }'
+}
+
+page_is_bound() {
+  local session=$1 role=$2 pane page_path page_root
+  pane="$(pane_for_role "$session" "$role")"
+  [[ -n "$pane" ]] || return 1
+  page_path="$(tmux display-message -p -t "$pane" '#{pane_current_path}' 2>/dev/null || true)"
+  [[ -n "$page_path" ]] || return 1
+  page_root="$(git -C "$page_path" rev-parse --show-toplevel 2>/dev/null || true)"
+  [[ -n "$page_root" ]] || return 1
+  page_root="$(absolute_dir "$page_root")"
+  [[ "$page_root" == "$WT_PROJECT" ]]
+}
+
+use_worktree() {
+  local target='' session="$(cockpit_session_name)" yes=0 restart_agent=0 restart_files=0
+  local refresh_derived=0 current_pane current_path current_root root_q pane
+  local pages_aligned=1 role
+  while (($#)); do
+    case "$1" in
+      --yes) yes=1; shift ;;
+      --restart-agent) restart_agent=1; shift ;;
+      --restart-files) restart_files=1; shift ;;
+      --refresh-derived) refresh_derived=1; shift ;;
+      --session)
+        (($# > 1)) || die '--session needs a name'
+        session=$2; shift 2 ;;
+      -h|--help) usage; exit 0 ;;
+      -*) die "unknown option: $1" ;;
+      *)
+        if [[ -z "$target" ]]; then target=$1
+        elif [[ "$session" == "$(cockpit_session_name)" ]]; then session=$1
+        else die "unexpected argument: $1"; fi
+        shift ;;
+    esac
+  done
+  [[ -n "$target" ]] || die 'use needs a target PATH'
+  load_info "$target" || die "not inside a non-bare Git worktree: $target"
+  [[ "$WT_PROJECT" != "$(cd -- "$HOME" && pwd -P)" ]] ||
+    die 'HOME is a container, not a Cockpit project worktree'
+  cockpit_session_is_managed "$session" || die "unmanaged tmux session: $session"
+  tmux has-session -t "$session" 2>/dev/null || die "tmux session is not running: $session"
+  current_pane="$(pane_for_role "$session" runtime)"
+  [[ -n "$current_pane" ]] || die 'live Agent pane is missing'
+  current_path="$(tmux display-message -p -t "$current_pane" '#{pane_current_path}' 2>/dev/null || true)"
+  current_root="$(git -C "$current_path" rev-parse --show-toplevel 2>/dev/null || true)"
+  [[ -n "$current_root" ]] && current_root="$(absolute_dir "$current_root")"
+  for role in files diff map memory; do
+    page_is_bound "$session" "$role" || pages_aligned=0
+  done
+  if [[ "$current_root" == "$WT_PROJECT" && "$pages_aligned" == 1 ]]; then
+    bind_session "$WT_PROJECT" "$session" >/dev/null
+    printf 'already_bound=%s\nsession=%s\n' "$WT_PROJECT" "$session"
+    return 0
+  fi
+  if [[ "$current_root" == "$WT_PROJECT" ]]; then
+    printf 'planned=Agent already at %s; restart FILES; refresh DIFF/MAP/MEMORY; preserve page names\n' "$WT_PROJECT"
+  else
+    printf 'planned=restart Agent at %s; restart FILES; refresh DIFF/MAP/MEMORY; preserve page names\n' "$WT_PROJECT"
+  fi
+  if ((yes != 1)); then
+    printf 'confirmation=required (--yes --restart-agent --restart-files --refresh-derived)\n'
+    exit 2
+  fi
+  if [[ "$current_root" != "$WT_PROJECT" ]]; then
+    ((restart_agent == 1)) || die 'switching worktrees requires --restart-agent'
+  fi
+  ((restart_files == 1)) || die 'switching worktrees requires --restart-files to keep FILES aligned'
+  ((refresh_derived == 1)) || die 'switching worktrees requires --refresh-derived to keep watcher pages aligned'
+  root_q="$(cockpit_shell_quote "$WT_PROJECT")"
+
+  # The explicit flags make the process-changing boundary visible. Agent is
+  # moved first so the metadata-only hooks never rebind the session back to
+  # the old project while FILES and derived watchers are being replaced.
+  if [[ "$current_root" != "$WT_PROJECT" || "$restart_agent" == 1 ]]; then
+    COCKPIT_RESTART_ROOT="$WT_PROJECT" "$script_root/cockpit-restart" "$session"
+  fi
+  bind_session "$WT_PROJECT" "$session" >/dev/null
+
+  pane="$(pane_for_role "$session" files)"
+  if [[ -n "$pane" ]]; then
+    tmux respawn-pane -k -t "$pane" -c "$WT_PROJECT" \
+      "cd -- $root_q && exec cockpit-files $root_q"
+  fi
+  pane="$(pane_for_role "$session" diff)"
+  if [[ -n "$pane" ]]; then
+    tmux respawn-pane -k -t "$pane" -c "$WT_PROJECT" \
+      "cd -- $root_q && exec cockpit-diff $root_q"
+  fi
+  pane="$(pane_for_role "$session" map)"
+  if [[ -n "$pane" ]]; then
+    tmux respawn-pane -k -t "$pane" -c "$WT_PROJECT" \
+      "cd -- $root_q && exec cockpit-mermaid-watch $root_q"
+  fi
+  pane="$(pane_for_role "$session" memory)"
+  if [[ -n "$pane" ]]; then
+    tmux respawn-pane -k -t "$pane" -c "$WT_PROJECT" \
+      "cd -- $root_q && exec cockpit-memory"
+  fi
+  bind_session "$WT_PROJECT" "$session" >/dev/null
+  "$script_root/cockpit-agent-hook" "$session" worktree-use >/dev/null 2>&1 || true
+  "$script_root/cockpit-adapt" attached "$session" 0 0 "" >/dev/null 2>&1 || true
+  printf 'switched=%s\nsession=%s\n' "$WT_PROJECT" "$session"
+}
+
+command_name=${1:-inspect}
+[[ $# -gt 0 ]] && shift || true
+case "$command_name" in
+  inspect)
+    [[ $# -le 1 ]] || die 'inspect accepts at most one PATH'
+    if load_info "${1:-}"; then print_info
+    else
+      project="$(resolve_path "${1:-}")"
+      printf 'project=%s\nis_git=0\n' "$project"
+      exit 1
+    fi
+    ;;
+  list)
+    [[ $# -le 1 ]] || die 'list accepts at most one PATH'
+    load_info "${1:-}" || die "not inside a non-bare Git worktree"
+    git -C "$WT_PROJECT" worktree list --porcelain
+    ;;
+  bind)
+    [[ $# -le 2 ]] || die 'bind accepts PATH and SESSION'
+    bind_session "${1:-}" "${2:-$(cockpit_session_name)}"
+    ;;
+  use) use_worktree "$@" ;;
+  add) add_worktree "$@" ;;
+  -h|--help) usage ;;
+  *) die "unknown command: $command_name" ;;
+esac

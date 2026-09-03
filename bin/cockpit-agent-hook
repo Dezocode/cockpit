@@ -12,6 +12,7 @@ source "$script_root/cockpit-auth-lib"
 source "$script_root/cockpit-agent-lib"
 
 session="${1:-$(cockpit_session_name)}"
+event="${2:-agent-target}"
 if [[ -z "$session" && -n "${TMUX:-}" ]]; then
   session="$(tmux display-message -p '#{session_name}' 2>/dev/null || true)"
 fi
@@ -29,6 +30,43 @@ provider="${provider:-codex}"
 project="$(tmux display-message -p -t "$runtime_pane" '#{pane_current_path}' 2>/dev/null || true)"
 [[ -n "$project" && -d "$project" ]] || exit 0
 
+# A pane may be inside a subdirectory of a linked worktree. Keep the agent
+# target and all page metadata tied to the worktree root, not an incidental
+# shell directory.
+project_git_root="$(git -C "$project" rev-parse --show-toplevel 2>/dev/null || true)"
+if [[ -n "$project_git_root" && -d "$project_git_root" ]]; then
+  project="$(cd -- "$project_git_root" && pwd -P)"
+fi
+
+home_root="$(cd -- "$HOME" && pwd -P)"
+if [[ "$project" == "$home_root" ]]; then
+  # HOME may itself be a Git worktree and may contain user-level .codex
+  # skills. It is still not a Cockpit project, so never report those skills or
+  # bind the live session to HOME as if it were a project root.
+  project_skill_count=0
+  project_hook_count=0
+else
+  project_skill_count="$(find -L "$project/.codex/skills" -type f -name SKILL.md -print 2>/dev/null |
+    awk 'NF {n++} END {print n + 0}')"
+  project_hook_count="$(awk '/^\[\[hook\]\]/{n++} END {print n + 0}' \
+    "$project/.codex/hooks/cockpit-hooks.toml" 2>/dev/null || printf '0')"
+fi
+[[ "$project_skill_count" =~ ^[0-9]+$ ]] || project_skill_count=0
+[[ "$project_hook_count" =~ ^[0-9]+$ ]] || project_hook_count=0
+
+# This is a metadata-only bind. It never changes a running Agent or Files
+# pane, which keeps a cooking runtime and an open Neovim buffer intact.
+if [[ "$project" != "$home_root" ]]; then
+  "$script_root/cockpit-worktree" bind "$project" "$session" >/dev/null 2>&1 || true
+else
+  for key in @cockpit_project_root @cockpit_git_root @cockpit_git_common_dir \
+    @cockpit_git_dir @cockpit_git_branch @cockpit_git_worktree_path; do
+    tmux set-option -t "$session" "$key" '' 2>/dev/null || true
+  done
+  tmux set-option -t "$session" @cockpit_worktree_count 0 2>/dev/null || true
+  tmux set-option -t "$session" @cockpit_git_detached 0 2>/dev/null || true
+fi
+
 cockpit_agent_inspect "$project" "$provider" || true
 state="${COCKPIT_AGENT_TARGET_STATE:-unknown}"
 missing="${COCKPIT_AGENT_MISSING_SKILLS:-}"
@@ -42,12 +80,16 @@ tmux set-option -t "$session" @cockpit_agent_target_state "$state" 2>/dev/null |
 tmux set-option -t "$session" @cockpit_agent_profile_enabled "${COCKPIT_AGENT_PROFILE_ENABLED:-0}" 2>/dev/null || true
 tmux set-option -t "$session" @cockpit_agent_skill_count "${COCKPIT_AGENT_SKILL_COUNT:-0}" 2>/dev/null || true
 tmux set-option -t "$session" @cockpit_agent_missing_skills "$missing" 2>/dev/null || true
-tmux set-option -t "$session" @cockpit_agent_hook_version 1 2>/dev/null || true
+tmux set-option -t "$session" @cockpit_project_skill_count "$project_skill_count" 2>/dev/null || true
+tmux set-option -t "$session" @cockpit_project_hook_count "$project_hook_count" 2>/dev/null || true
+tmux set-option -t "$session" @cockpit_hook_last_event "$event" 2>/dev/null || true
+tmux set-option -t "$session" @cockpit_agent_hook_version 2 2>/dev/null || true
 
 if [[ "${COCKPIT_AGENT_HOOK_OUTPUT:-0}" == 1 ]]; then
-  printf 'provider=%s\nproject=%s\ntarget=%s\ntarget_state=%s\nmissing_profile_skills=%s\n' \
+  printf 'provider=%s\nproject=%s\ntarget=%s\ntarget_state=%s\nmissing_profile_skills=%s\nproject_skills=%s\nproject_hooks=%s\nevent=%s\n' \
     "$provider" "${COCKPIT_AGENT_PROJECT:-$project}" \
-    "${COCKPIT_AGENT_TARGET_REL:-missing}" "$state" "$missing"
+    "${COCKPIT_AGENT_TARGET_REL:-missing}" "$state" "$missing" \
+    "$project_skill_count" "$project_hook_count" "$event"
 fi
 
 if [[ "$state" == valid && -z "${COCKPIT_AGENT_MISSING_SKILLS:-}" ]]; then

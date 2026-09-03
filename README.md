@@ -40,10 +40,11 @@ Endpoint size still wins for fit: phone-sized clients stay on tabs.
 
 | Profile | Detected when | Chrome |
 | --- | --- | --- |
-| **Foot / Omarchy** | local Foot, `xdg-terminal-exec`, Wayland | 2×2 pad, status top, prefix `Ctrl-Space` |
+| **Foot / Omarchy** | local Foot, `xdg-terminal-exec`, Wayland | named pages in the bar, status top, prefix `Ctrl-Space` |
 | **Termius iOS** | iPhone SSH footprint (Tailscale `100.64/10`, `tailscaled`→`login`, no `COLORTERM`, or `TERM_PROGRAM=Termius`) | full-screen tabs, status bottom, prefix `Ctrl-B`, F1–F6, long-press menu |
 
-Local Foot wins if both clients are attached, so the Omarchy pad is not crushed by a 54-column phone.
+The Omarchy adapter owns the single Foot client and keeps the named page row
+stable.
 
 Views (same in both profiles):
 
@@ -51,8 +52,13 @@ Views (same in both profiles):
 - **FILES** — Neovim, following files Codex just wrote
 - **DIFF** — scoped, event-driven patch; optional Vim diff view
 - **MAP** — browserless Mermaid with a local Show Me graph adapter
-- **SETUP** — persistent terminal flow for auth, Agent switching, Git targets, plugins, and audit
+- **SETUP** — persistent terminal flow for auth, Agent switching, Git targets, plugins, intercom sync, and audit
 - **PRS** — GitHub PRs
+- **MEMORY** — intercom-managed memory projection
+
+The seven canonical tmux windows remain **AGENT**, **FILES**, **DIFF**, **MAP**,
+**SETUP**, **PRS**, and **MEMORY**. They are separate named pages in the bar;
+MEMORY never splits or replaces MAP. F10 is not a Cockpit page binding.
 
 The AGENT pane launches the native Codex CLI with inherited no-color/CI
 switches cleared and truecolor negotiated through tmux. If `codex` is a
@@ -65,6 +71,13 @@ read-only Neovim/Vim two-pane diff. It opens one changed file at a time, so
 the resident DIFF watcher stays event-driven and cheap.
 The tmux status-right label is the Git worktree name, branch, and live state
 (`✓` clean or `!` dirty); the runtime selector still keeps the provider name.
+When a project has linked worktrees, `cockpit worktree inspect` shows the
+worktree/common Git directories and branch, while `cockpit worktree bind`
+records the selected worktree in the live session without restarting Agent or
+Neovim. New Cockpit sessions pass the same root to native Codex with `-C`.
+At a safe runtime boundary, `cockpit worktree use PATH SESSION --yes
+--restart-agent --restart-files --refresh-derived` explicitly re-roots the
+existing Agent, Files, Diff, Map, and Memory pages.
 
 FILES, DIFF, MAP, and the runtime chrome read the active Omarchy
 `colors.toml`, so Git additions/removals and Neovim diff bands follow the
@@ -82,12 +95,15 @@ cockpit
 After installation, `cpr` runs the Cockpit-native `cockpit.cpr` plugin. It
 validates the overlay, applies only idempotent session options/hooks, and
 refreshes the Agent toolbar with a signal. The live Agent, FILES, SETUP, DIFF,
-and MAP pane processes are preserved:
+MAP, and MEMORY pane processes are preserved:
 
 ```bash
 cpr
 cpr --check                 # plan only; no live tmux changes
 cockpit plugin list         # Cockpit-native plugins, not Codex plugins
+codex plugin list --json    # native Codex plugins, including cockpit-native
+cockpit worktree inspect    # selected Git worktree identity
+cockpit worktree list       # all linked worktrees
 ```
 
 `cpr` does not create a tmux server or session when one is absent. That is the
@@ -95,7 +111,7 @@ main reason a transient “server exited” message can appear: tmux has no
 session to keep alive, or an older reload path is respawning the last useful
 pane during an attach race. Run `cockpit /path/to/project` to create the
 canonical session, then use `cpr --check` to inspect it. The optional
-`--refresh-derived` flag is the only CPR mode that permits DIFF/MAP respawns;
+`--refresh-derived` flag is the only CPR mode that permits DIFF/MAP/MEMORY respawns;
 it is disabled by default. Configure the behavior in
 `~/.config/cockpit/cockpit.conf`:
 
@@ -113,9 +129,9 @@ ensure_bar=0
 `cockpit` attaches the tmux workspace. `cockpit agent` jumps to the live
 Agent pane when tabs or chips stop responding. `codex` is the Codex CLI.
 The workspace is displayed as **COCKPIT**; its canonical tmux session is
-`cockpit` (legacy `codex-cockpit` sessions are upgraded automatically). On the **AGENT** page, fat **PRS / provider /
-MODEL / RESTART** buttons sit above the live Agent. **PRS** opens the PR page,
-the provider button opens the persistent **SETUP** flow, and **MODEL** opens
+`cockpit` (legacy `codex-cockpit` sessions are upgraded automatically). On the **AGENT** page, fat **PRS / provider / 2:FILES /
+MEMORY / MODEL / RESTART** buttons sit above the live Agent. **PRS** opens the PR page,
+**2:FILES** opens the FILES page, the provider button opens the persistent **SETUP** flow, and **MODEL** opens
 the shared provider/model picker in **SETUP**. Its OAuth indicators are local
 CLI checks. In SETUP, `a` starts configured OAuth in-pane, `p` changes the
 live Agent CLI, `m` opens the model catalog, `g` selects a target project,
@@ -123,7 +139,8 @@ live Agent CLI, `m` opens the model catalog, `g` selects a target project,
 Codex marketplace plugin, `u` runs a read-only Cockpit audit, `v` validates the
 active provider's `.codex`/`.agent` project target, `k` previews and confirms
 user-profile skill additions, and `e` opens
-`~/.config/cockpit/providers.conf` in Vim. The top chips use these same
+`~/.config/cockpit/providers.conf` in Vim. `o` verifies/wakes the local
+intercom projection for MEMORY. The top chips use these same
 in-pane flows; they do not open a second desktop popup.
 
 Cockpit also has its own provider-aware profile layer. It detects project-local
@@ -148,6 +165,12 @@ events, so validation follows the provider currently occupying AGENT. The
 Cockpit profile plugin is not a Codex marketplace plugin; `l` remains the
 separate native Codex plugin flow.
 
+The repository also ships the `cockpit-native` Codex plugin. Its 12 focused
+skills are mirrored under `.codex/skills`, and the 12 project hook workflows
+are declared in `.codex/hooks/cockpit-hooks.toml`. The hook dispatcher refreshes
+metadata only; it never respawns Agent, replaces the Files page, or creates a
+second tmux client.
+
 `prefix + R` (or
 long-press → Restart runtime) relaunches the
 active provider in the same pane with the current color environment. `prefix + e`
@@ -168,9 +191,9 @@ The runtime picker also includes **Open Source (gpt-oss)**. It launches the
 native Codex TUI with `codex --oss`; Codex uses a configured LM Studio or
 Ollama provider for the local model.
 
-Desktop Foot uses a click-out overlay box. Termius iOS cannot paint that overlay,
-so the same command opens as a full tab; **q / Esc / success / tap AGENT**
-closes it and returns to the agent. Tokens never go in git. The public tree is
+Desktop Foot and Termius both use the named page row for Cockpit views. Nested
+auth/provider flows may still use an overlay where the endpoint supports it.
+Tokens never go in git. The public tree is
 **https://github.com/Dezocode/cockpit** (live as soon as it is pushed — GitHub
 does not wait for you to reopen the page; search `cockpit`, not only
 `codex-cockpit`).
@@ -178,7 +201,7 @@ does not wait for you to reopen the page; search `cockpit`, not only
 For Termius, enable **Send mouse events** and enter through `cockpit` (or
 `cockpit agent`). Those attach commands use the bundled PTY bridge to
 repair Termius' negative-row SGR packets before tmux sees them; the toolbar is
-then four full-width touch zones above AGENT, and the bottom tabs remain the
+then six full-width touch zones above AGENT, including 2:FILES and MEMORY, and the bottom tabs remain the
 canonical page navigation.
 
 From Omarchy/Foot:

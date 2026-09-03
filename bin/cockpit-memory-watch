@@ -1,0 +1,221 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+lib="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/cockpit-lib"
+# shellcheck source=cockpit-lib
+source "$lib"
+script_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+
+root="${1:-$PWD}"
+root="$(cd -- "$root" && pwd -P)"
+export COCKPIT_PROJECT="$root"
+session="$(tmux display-message -p '#{session_name}' 2>/dev/null || echo unknown)"
+last_error=""
+COCKPIT_DEBOUNCE=0.25
+last_fp=""
+dirty=1
+diagram=""
+filtered=""
+memory_plugin=""
+
+resolve_memory_plugin() {
+  local dir
+  if command -v memory >/dev/null 2>&1; then
+    memory_plugin=memory
+    return 0
+  fi
+  if command -v cockpit-plugin >/dev/null 2>&1; then
+    memory_plugin="cockpit-plugin run cockpit.memory"
+    return 0
+  fi
+  for dir in \
+    "$script_root/../plugins/cockpit-memory" \
+    "${COCKPIT_PLUGIN_HOME:-${COCKPIT_CONFIG_HOME:-${XDG_CONFIG_HOME:-$HOME/.config}/cockpit}/plugins}/cockpit-memory"; do
+    if [[ -x "$dir/memory" ]]; then
+      memory_plugin="$dir/memory"
+      return 0
+    fi
+  done
+  return 1
+}
+
+memory_path() {
+  $memory_plugin path 2>/dev/null
+}
+
+ensure_diagram() {
+  local path err
+  resolve_memory_plugin || {
+    last_error='cockpit.memory plugin is not installed'
+    return 1
+  }
+  path="$(memory_path || true)"
+  [[ -n "$path" ]] || {
+    last_error='memory path is unavailable'
+    return 1
+  }
+  diagram="$path"
+  if ! err="$($memory_plugin check 2>&1 >/dev/null)"; then
+    last_error="$err"
+    return 1
+  fi
+  filtered="$(
+    cache_dir="$(cockpit_runtime_home)/$session"
+    mkdir -p "$cache_dir"
+    printf '%s\n' "$cache_dir/memory.filtered.mmd"
+  )"
+  $memory_plugin show >"$filtered"
+  last_error=""
+  return 0
+}
+
+show_error() {
+  clear_screen
+  header_error "${last_error:-memory diagram unavailable}"
+}
+
+clear_screen() {
+  printf '\033[2J\033[H'
+}
+
+header() {
+  printf '%sMEMORY%s  %sINTERCOM%s  %s%s%s\n\n' \
+    "$(cockpit_theme_heading)" "$(cockpit_theme_reset)" \
+    "$(cockpit_theme_style accent '' 1)" "$(cockpit_theme_reset)" \
+    "$(cockpit_theme_muted)" "${diagram:-memory/cockpit.mmd}" "$(cockpit_theme_reset)"
+}
+
+header_error() {
+  printf '%sMEMORY%s  %sINTERCOM%s\n\n' \
+    "$(cockpit_theme_heading)" "$(cockpit_theme_reset)" \
+    "$(cockpit_theme_style accent '' 1)" "$(cockpit_theme_reset)"
+  printf '%s\n' "$1"
+  printf '\n%sClone Intercom with `intercom sync` or set COCKPIT_INTERCOM_HOME.%s\n' \
+    "$(cockpit_theme_muted)" "$(cockpit_theme_reset)"
+}
+
+file_fp() {
+  local path=$1
+  [[ -f "$path" ]] || { printf 'missing\n'; return 0; }
+  stat -c '%Y %s' "$path" 2>/dev/null
+}
+
+render_graph() {
+  local plugin="$script_root/cockpit-showmegraphs"
+  local renderer="${COCKPIT_MEMORY_RENDERER:-${COCKPIT_MAP_RENDERER:-showmegraphs}}"
+
+  case "$renderer" in
+    showmegraphs|show-me|auto)
+      if [[ -x "$plugin" && -f "$filtered" ]]; then
+        "$plugin" "$filtered"
+        return 0
+      fi
+      if command -v mermaid-ascii >/dev/null 2>&1; then
+        mermaid-ascii -f "$filtered" -x 2 -y 1
+        return 0
+      fi
+      if command -v merman-cli >/dev/null 2>&1; then
+        merman-cli render "$filtered" --format unicode --output -
+        return 0
+      fi
+      ;;
+    mermaid-ascii)
+      if command -v mermaid-ascii >/dev/null 2>&1; then
+        mermaid-ascii -f "$filtered" -x 2 -y 1
+        return 0
+      fi
+      ;;
+    merman-cli)
+      if command -v merman-cli >/dev/null 2>&1; then
+        merman-cli render "$filtered" --format unicode --output -
+        return 0
+      fi
+      ;;
+  esac
+
+  cat -- "$filtered"
+  printf '\n%s(ascii renderer optional: mermaid-ascii)%s\n' \
+    "$(cockpit_theme_muted)" "$(cockpit_theme_reset)"
+}
+
+render() {
+  local fp
+  if ! ensure_diagram; then
+    show_error
+    dirty=0
+    return 0
+  fi
+  fp="$(file_fp "${diagram:-}")"
+  if [[ -n "$filtered" ]]; then
+    fp="${fp} $(file_fp "$filtered")"
+  fi
+  if [[ "$fp" == "$last_fp" && -n "$last_fp" ]]; then
+    dirty=0
+    return 0
+  fi
+  last_fp=$fp
+  dirty=0
+
+  clear_screen
+  header
+  render_graph
+}
+
+maybe_render() {
+  if cockpit_view_visible; then
+    render
+  else
+    dirty=1
+  fi
+}
+
+if [[ "$root" == "$HOME" ]]; then
+  while true; do sleep 3600; done
+fi
+
+if ! resolve_memory_plugin; then
+  last_error='cockpit.memory plugin is not installed'
+else
+  diagram="$(memory_path 2>/dev/null || true)"
+fi
+watch_dir="$(dirname -- "${diagram:-${COCKPIT_INTERCOM_HOME:-$HOME/intercom}/memory/cockpit.mmd}")"
+[[ -d "$watch_dir" ]] || watch_dir="${COCKPIT_INTERCOM_HOME:-$HOME/intercom}"
+
+cockpit_event_open "$session" MEMORY
+trap 'cockpit_event_close; rm -f "$(cockpit_wake_dir "$session")/MEMORY.pid"' EXIT
+
+if cockpit_view_visible; then
+  render
+else
+  dirty=1
+  printf '\033[2J\033[H'
+  printf '%sMEMORY%s  idle\n\n' "$(cockpit_theme_heading)" "$(cockpit_theme_reset)"
+  printf 'Intercom memory renders when you open this tab.\n'
+fi
+
+cockpit_event_watch "$watch_dir" \
+  -e close_write,moved_to,create,delete \
+  --exclude "$cockpit_noise_exclude"
+
+while cockpit_event_read; do
+  if [[ "$COCKPIT_EVENT" == "WAKE" ]]; then
+    last_fp=""
+    maybe_render
+    continue
+  fi
+  sleep "$COCKPIT_DEBOUNCE"
+  cockpit_event_drain >/dev/null
+  base="${COCKPIT_EVENT##*/}"
+  case "$base" in
+    cockpit.mmd|WAKE)
+      last_fp=""
+      maybe_render
+      ;;
+    *)
+      if [[ "$COCKPIT_EVENT" == "$diagram" || "$base" == "cockpit.mmd" ]]; then
+        last_fp=""
+        maybe_render
+      fi
+      ;;
+  esac
+done

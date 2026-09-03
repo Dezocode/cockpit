@@ -29,3 +29,31 @@ tmux set-hook -g after-select-window[92] \
   'if-shell -F "#{||:#{m:cockpit*,#{session_name}},#{m:codex-cockpit*,#{session_name}}}" { run-shell -b "cockpit-agent-hook \"#{session_name}\"" }'
 tmux set-hook -g after-new-window[92] \
   'if-shell -F "#{||:#{m:cockpit*,#{session_name}},#{m:codex-cockpit*,#{session_name}}}" { run-shell -b "cockpit-agent-hook \"#{session_name}\"" }'
+
+# Project/worktree hooks are metadata-only and fixed at a separate index. They
+# intentionally do not select windows or create panes, so page routing cannot
+# recurse when tmux fires after-select-window or after-new-window.
+tmux set-hook -g client-attached[93] \
+  'if-shell -F "#{||:#{m:cockpit*,#{client_session}},#{m:codex-cockpit*,#{client_session}}}" { run-shell -b "cockpit-project-hook client-attached \"#{client_session}\"" }'
+tmux set-hook -g client-resized[93] \
+  'if-shell -F "#{||:#{m:cockpit*,#{client_session}},#{m:codex-cockpit*,#{client_session}}}" { run-shell -b "cockpit-project-hook client-resized \"#{client_session}\"" }'
+tmux set-hook -g client-session-changed[93] \
+  'if-shell -F "#{||:#{m:cockpit*,#{client_session}},#{m:codex-cockpit*,#{client_session}}}" { run-shell -b "cockpit-project-hook client-session-changed \"#{client_session}\"" }'
+tmux set-hook -g session-created[93] \
+  'if-shell -F "#{||:#{m:cockpit*,#{session_name}},#{m:codex-cockpit*,#{session_name}}}" { run-shell -b "cockpit-project-hook session-created \"#{session_name}\"" }'
+tmux set-hook -g after-select-window[93] \
+  'if-shell -F "#{||:#{m:cockpit*,#{session_name}},#{m:codex-cockpit*,#{session_name}}}" { run-shell -b "cockpit-project-hook after-select-window \"#{session_name}\"" }'
+tmux set-hook -g after-new-window[93] \
+  'if-shell -F "#{||:#{m:cockpit*,#{session_name}},#{m:codex-cockpit*,#{session_name}}}" { run-shell -b "cockpit-project-hook after-new-window \"#{session_name}\"" }'
+tmux set-hook -g after-rename-window[93] \
+  'if-shell -F "#{||:#{m:cockpit*,#{session_name}},#{m:codex-cockpit*,#{session_name}}}" { run-shell -b "cockpit-project-hook after-rename-window \"#{session_name}\"" }'
+tmux set-hook -g after-resize-pane[93] \
+  'if-shell -F "#{||:#{m:cockpit*,#{session_name}},#{m:codex-cockpit*,#{session_name}}}" { run-shell -b "cockpit-project-hook after-resize-pane \"#{session_name}\"" }'
+tmux set-hook -g after-split-window[93] \
+  'if-shell -F "#{||:#{m:cockpit*,#{session_name}},#{m:codex-cockpit*,#{session_name}}}" { run-shell -b "cockpit-project-hook after-split-window \"#{session_name}\"" }'
+tmux set-hook -g after-kill-pane[93] \
+  'if-shell -F "#{||:#{m:cockpit*,#{session_name}},#{m:codex-cockpit*,#{session_name}}}" { run-shell -b "cockpit-project-hook after-kill-pane \"#{session_name}\"" }'
+tmux set-hook -g after-resize-window[93] \
+  'if-shell -F "#{||:#{m:cockpit*,#{session_name}},#{m:codex-cockpit*,#{session_name}}}" { run-shell -b "cockpit-project-hook after-resize-window \"#{session_name}\"" }'
+tmux set-hook -g after-rename-session[93] \
+  'if-shell -F "#{||:#{m:cockpit*,#{session_name}},#{m:codex-cockpit*,#{session_name}}}" { run-shell -b "cockpit-project-hook after-rename-session \"#{session_name}\"" }'
