@@ -3,12 +3,15 @@
 local M = {}
 
 local NAV_LEFT = "cockpit · MEMORY  COMPUTERS  MODELS  BENCH  FILES  PRS"
-local NAV_RIGHT = "BENCH  ghui  read-only"
+local NAV_RIGHT_BENCH = "BENCH"
+local NAV_RIGHT_REST = "  ghui  read-only" -- approved: BENCH  ghui  read-only
+local NAV_RIGHT = NAV_RIGHT_BENCH .. NAV_RIGHT_REST
 local NS = vim.api.nvim_create_namespace("CockpitBench")
 
 local PUNCH_CYAN = "#5ccfe6"
 local PUNCH_GOLD = "#e6c07b"
-local PUNCH_GOLD_LABEL = "#f5c962"
+local PUNCH_GOLD_LABEL = "#ffcc66"
+local GOLD_LABEL_BG = "#252018"
 local CHIP_BG = "#2a2418"
 
 local state = {
@@ -199,22 +202,25 @@ local function setup_highlights()
           colors.dim = value
         elseif key == "foreground" then
           colors.chrome = value
-        elseif key == "yellow" then
-          colors.gold_label = value
         end
       end
     end
   end
+  -- gold_label stays on PUNCH_GOLD_LABEL — theme yellow washes approved punch
   vim.api.nvim_set_hl(0, "TabLine", { bg = "NONE", fg = colors.dim })
   vim.api.nvim_set_hl(0, "TabLineFill", { bg = "NONE" })
   vim.api.nvim_set_hl(0, "CockpitBenchSel", { fg = colors.cyan, bold = true })
-  vim.api.nvim_set_hl(0, "CockpitBenchGoldLabel", { fg = colors.gold_label, bold = true })
+  vim.api.nvim_set_hl(0, "CockpitBenchGoldLabel", {
+    fg = colors.gold_label,
+    bg = GOLD_LABEL_BG,
+    bold = true,
+  })
   vim.api.nvim_set_hl(0, "CockpitBenchYellow", { fg = colors.gold, bold = true })
   vim.api.nvim_set_hl(0, "CockpitBenchDim", { fg = colors.dim })
   vim.api.nvim_set_hl(0, "CockpitBenchChrome", { fg = colors.chrome })
-  vim.api.nvim_set_hl(0, "CockpitBenchNavLeft", { fg = colors.chrome })
-  vim.api.nvim_set_hl(0, "CockpitBenchNavBench", { fg = colors.cyan, bold = true })
-  vim.api.nvim_set_hl(0, "CockpitBenchNavRight", { fg = colors.cyan, bold = true })
+  vim.api.nvim_set_hl(0, "CockpitBenchNavLeft", { fg = colors.dim })
+  vim.api.nvim_set_hl(0, "CockpitBenchNavRight", { fg = colors.cyan })
+  vim.api.nvim_set_hl(0, "CockpitBenchNavRest", { fg = colors.dim })
   vim.api.nvim_set_hl(0, "CockpitBenchChip", { fg = colors.gold, bg = colors.chip_bg, bold = true })
   vim.api.nvim_set_hl(0, "CockpitBenchChipSel", { fg = colors.gold, bg = colors.chip_bg, bold = true, underline = true })
   vim.api.nvim_set_hl(0, "CockpitBenchChipBorder", { fg = colors.gold })
@@ -785,25 +791,18 @@ end
 
 function M.tabline()
   local width = vim.o.columns
-  local left = clip(NAV_LEFT, math.max(1, width - strwidth(NAV_RIGHT) - 2))
-  local pad = math.max(0, width - strwidth(left) - strwidth(NAV_RIGHT))
-  local bench_pos = left:find("BENCH", 1, true)
-  if bench_pos then
-    local before = left:sub(1, bench_pos - 1)
-    local after = left:sub(bench_pos + 5)
-    return table.concat({
-      "%#CockpitBenchNavLeft#",
-      before,
-      "%#CockpitBenchNavBench#",
-      "BENCH",
-      "%#CockpitBenchNavLeft#",
-      after,
-      string.rep(" ", pad),
-      "%#CockpitBenchNavRight#",
-      NAV_RIGHT,
-    })
-  end
-  return "%#CockpitBenchNavLeft#" .. left .. string.rep(" ", pad) .. "%#CockpitBenchNavRight#" .. NAV_RIGHT
+  local right = NAV_RIGHT
+  local left = clip(NAV_LEFT, math.max(1, width - strwidth(right) - 2))
+  local pad = math.max(0, width - strwidth(left) - strwidth(right))
+  return table.concat({
+    "%#CockpitBenchNavLeft#",
+    left,
+    string.rep(" ", pad),
+    "%#CockpitBenchNavRight#",
+    NAV_RIGHT_BENCH,
+    "%#CockpitBenchNavRest#",
+    NAV_RIGHT_REST,
+  })
 end
 
 function M.statusline()
@@ -849,6 +848,11 @@ end
 function M.setup()
   state.absent = vim.env.COCKPIT_BENCH_ABSENT == "1" or db_path() == ""
   setup_highlights()
+  local hl_group = vim.api.nvim_create_augroup("CodexCockpitBenchHl", { clear = true })
+  vim.api.nvim_create_autocmd("ColorScheme", {
+    group = hl_group,
+    callback = setup_highlights,
+  })
   vim.o.showtabline = 2
   vim.o.laststatus = 3
   vim.o.ruler = false
