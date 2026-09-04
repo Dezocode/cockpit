@@ -9,7 +9,9 @@ export PATH="$script_root:$HOME/.local/bin:$PATH"
 receipt_source() {
   local candidate directory
   for candidate in \
+    "${COCKPIT_INTERCOM_HOME:-$HOME/intercom}/models/deck.json" \
     "${COCKPIT_INTERCOM_HOME:-$HOME/intercom}/computers/receipt.tsv" \
+    "${COCKPIT_PROJECT:-${PWD:-.}}/models/deck.json" \
     "${COCKPIT_PROJECT:-${PWD:-.}}/computers/receipt.tsv"; do
     if [[ -f "$candidate" ]]; then
       directory="$(dirname -- "$candidate")"
@@ -24,31 +26,95 @@ receipt_path() {
   receipt_source || true
 }
 
+receipt_kind() {
+  case "${1:-}" in
+    */deck.json) printf 'json\n' ;;
+    *) printf 'tsv\n' ;;
+  esac
+}
+
+json_receipt_validate() {
+  local path=$1
+  if ! command -v jq >/dev/null 2>&1; then
+    printf 'COMPUTERS unavailable: jq is required to read the managed Deck receipt: %s\n' "$path" >&2
+    return 1
+  fi
+  jq -e '
+    type == "object" and
+    (.schema == 1) and
+    (.node | type == "string" and length > 0) and
+    ((.notes? // []) | type == "array") and
+    all((.notes? // [])[]; type == "string") and
+    (.runtimes | type == "array" and length > 0) and
+    all(.runtimes[];
+      (type == "object") and
+      (.runtime | type == "string" and length > 0) and
+      (.endpoint | type == "string" and length > 0) and
+      (.reachable | type == "boolean") and
+      (.gateway_state | type == "string" and length > 0) and
+      (.models | type == "array") and
+      all(.models[];
+        (type == "object") and
+        (.id | type == "string" and length > 0) and
+        (.state | type == "string" and length > 0)
+      )
+    )
+  ' "$path" >/dev/null 2>&1
+}
+
+tsv_receipt_validate() {
+  local path=$1 line header_seen=0 count=0
+  local id name kind status models extra
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    line="${line%$'\r'}"
+    [[ -z "$line" || "$line" == \#* ]] && continue
+    if ((header_seen == 0)); then
+      header_seen=1
+      [[ "$line" == $'device_id\tdisplay_name\tkind\tstatus\tmodels' ]] || {
+        printf 'COMPUTERS unavailable: receipt header is invalid: %s\n' "$path" >&2
+        return 1
+      }
+      continue
+    fi
+    IFS=$'\t' read -r id name kind status models extra <<<"$line"
+    [[ -n "$id" && -n "$name" && -n "$kind" && -n "$status" && -z "${extra:-}" ]] || {
+      printf 'COMPUTERS unavailable: receipt has an incomplete device row: %s\n' "$path" >&2
+      return 1
+    }
+    count=$((count + 1))
+  done <"$path"
+  if ((header_seen == 0 || count == 0)); then
+    printf 'COMPUTERS unavailable: receipt must include a header row and at least one device: %s\n' "$path" >&2
+    return 1
+  fi
+}
+
 receipt_validate() {
-  local path line count=0
+  local path kind
   path="$(receipt_path)"
   if [[ -z "$path" ]]; then
-    printf 'COMPUTERS unavailable: computers/receipt.tsv is missing (checked ~/intercom/computers/receipt.tsv and cwd-relative computers/receipt.tsv).\n' >&2
+    printf 'COMPUTERS unavailable: no managed receipt found (checked ~/intercom/models/deck.json, ~/intercom/computers/receipt.tsv, and project fallbacks).\n' >&2
     return 1
   fi
   if [[ ! -r "$path" ]]; then
     printf 'COMPUTERS unavailable: receipt is not readable: %s\n' "$path" >&2
     return 1
   fi
-  while IFS= read -r line || [[ -n "$line" ]]; do
-    [[ -z "$line" || "$line" == \#* ]] && continue
-    count=$((count + 1))
-  done <"$path"
-  if ((count < 2)); then
-    printf 'COMPUTERS unavailable: receipt must include a header row and at least one device: %s\n' "$path" >&2
-    return 1
+  kind="$(receipt_kind "$path")"
+  if [[ "$kind" == json ]]; then
+    json_receipt_validate "$path" || {
+      printf 'COMPUTERS unavailable: managed Deck receipt is invalid or incomplete: %s\n' "$path" >&2
+      return 1
+    }
+  else
+    tsv_receipt_validate "$path" || return 1
   fi
-  return 0
 }
 
-receipt_body_lines() {
+tsv_body_lines() {
   local path=$1 first=1 line
   while IFS= read -r line || [[ -n "$line" ]]; do
+    line="${line%$'\r'}"
     [[ -z "$line" || "$line" == \#* ]] && continue
     if ((first)); then
       first=0
@@ -58,12 +124,48 @@ receipt_body_lines() {
   done <"$path"
 }
 
-receipt_device_count() {
+json_roster_lines() {
   local path=$1
-  receipt_body_lines "$path" | sed '/^$/d' | wc -l | tr -d ' '
+  jq -r '
+    def roster_id:
+      (([.notes[]? | select(type == "string" and startswith("tailscale_hostname="))
+        | sub("^tailscale_hostname="; "") | select(length > 0)] | first) // .node);
+    def models:
+      ([.runtimes[]?.models[]?.id | select(type == "string" and length > 0)]
+        | unique | join(","));
+    [
+      roster_id,
+      .node,
+      "node",
+      (if all(.runtimes[]; .reachable == true and .gateway_state == "running")
+       then "online"
+       elif any(.runtimes[]; .reachable == true) then "degraded"
+       else "offline"
+       end),
+      models
+    ] | @tsv
+  ' "$path"
 }
 
-receipt_models_lines() {
+receipt_roster_lines() {
+  local path=$1
+  if [[ "$(receipt_kind "$path")" == json ]]; then
+    json_roster_lines "$path"
+  else
+    tsv_body_lines "$path"
+  fi
+}
+
+receipt_device_count() {
+  local path=$1
+  if [[ "$(receipt_kind "$path")" == json ]]; then
+    printf '1\n'
+  else
+    tsv_body_lines "$path" | sed '/^$/d' | wc -l | tr -d ' '
+  fi
+}
+
+tsv_models_lines() {
   local path=$1 line id models model
   while IFS=$'\t' read -r id _ _ _ models || [[ -n "$id" ]]; do
     [[ -z "$id" ]] && continue
@@ -74,7 +176,32 @@ receipt_models_lines() {
       [[ -n "$model" ]] || continue
       printf '%s\t%s\n' "$id" "$model"
     done
-  done < <(receipt_body_lines "$path")
+  done < <(tsv_body_lines "$path")
+}
+
+json_models_lines() {
+  local path=$1
+  jq -r '
+    def roster_id:
+      (([.notes[]? | select(type == "string" and startswith("tailscale_hostname="))
+        | sub("^tailscale_hostname="; "") | select(length > 0)] | first) // .node);
+    . as $root |
+    [
+      $root.runtimes[]?.models[]?
+      | select(type == "object" and (.id | type == "string" and length > 0))
+      | . as $model
+      | [$root | roster_id, $model.id]
+    ] | unique[]? | @tsv
+  ' "$path"
+}
+
+receipt_models_lines() {
+  local path=$1
+  if [[ "$(receipt_kind "$path")" == json ]]; then
+    json_models_lines "$path"
+  else
+    tsv_models_lines "$path"
+  fi
 }
 
 case "${1:-}" in
@@ -93,7 +220,7 @@ case "${1:-}" in
   roster)
     path="$(receipt_path)"
     receipt_validate || exit 1
-    receipt_body_lines "$path"
+    receipt_roster_lines "$path"
     exit 0
     ;;
   models)
@@ -151,7 +278,7 @@ render_roster() {
   while IFS=$'\t' read -r id name kind status models || [[ -n "$id" ]]; do
     [[ -z "$id" ]] && continue
     printf '%-14s %-18s %-8s %-8s %s\n' "$id" "$name" "$kind" "$status" "${models:-}"
-  done < <(receipt_body_lines "$path")
+  done < <(receipt_roster_lines "$path")
 }
 
 render_models() {
@@ -170,7 +297,7 @@ render() {
   header
   if ! receipt_validate >/dev/null 2>&1; then
     printf 'COMPUTERS unavailable: the managed receipt is missing or incomplete.\n'
-    printf 'Sync intercom or add computers/receipt.tsv under the active project.\n'
+    printf 'Sync intercom or provide models/deck.json or computers/receipt.tsv under the active project.\n'
     return 0
   fi
   if [[ "$view" == models ]]; then
@@ -207,15 +334,13 @@ cockpit_event_open "$session" COMPUTERS
 computers_key_pid=''
 computers_key_reader() {
   local key
-  while IFS= read -r -n 1 key; do
+  while IFS= read -r -s -n 1 key; do
     case "$key" in
       m|M)
-        view=models
-        maybe_render
+        printf 'KEY_MODELS\n' >"$COCKPIT_EVENT_FIFO" 2>/dev/null || true
         ;;
       r|R)
-        view=roster
-        maybe_render
+        printf 'KEY_ROSTER\n' >"$COCKPIT_EVENT_FIFO" 2>/dev/null || true
         ;;
       q|Q|$'\033')
         printf 'QUIT\n' >"$COCKPIT_EVENT_FIFO" 2>/dev/null || true
@@ -230,6 +355,20 @@ if [[ -t 0 ]]; then
 fi
 trap '[[ -n "$computers_key_pid" ]] && kill "$computers_key_pid" 2>/dev/null || true; cockpit_event_close; rm -f "$(cockpit_wake_dir "$session")/COMPUTERS.pid"' EXIT
 
+computers_event_drain() {
+  local extra
+  while IFS= read -r -t 0.02 -u "$COCKPIT_EVENT_FD" extra; do
+    case "$extra" in
+      KEY_MODELS) view=models ;;
+      KEY_ROSTER) view=roster ;;
+      QUIT) return 1 ;;
+      WAKE) : ;;
+      *) : ;;
+    esac
+  done || true
+  return 0
+}
+
 if cockpit_view_visible; then
   render
 else
@@ -239,11 +378,17 @@ else
   printf 'Open the COMPUTERS page to render the managed receipt roster.\n'
 fi
 
-watch_dir="${COCKPIT_INTERCOM_HOME:-$HOME/intercom}/computers"
-if [[ -d "$watch_dir" ]]; then
-  :
-elif [[ -d "${COCKPIT_PROJECT:-}/computers" ]]; then
-  watch_dir="${COCKPIT_PROJECT}/computers"
+source_path="$(receipt_path)"
+if [[ -n "$source_path" ]]; then
+  watch_dir="$(dirname -- "$source_path")"
+elif [[ -d "${COCKPIT_INTERCOM_HOME:-$HOME/intercom}/models" ]]; then
+  watch_dir="${COCKPIT_INTERCOM_HOME:-$HOME/intercom}/models"
+elif [[ -d "${COCKPIT_INTERCOM_HOME:-$HOME/intercom}/computers" ]]; then
+  watch_dir="${COCKPIT_INTERCOM_HOME:-$HOME/intercom}/computers"
+elif [[ -d "${COCKPIT_PROJECT:-${PWD:-.}}/models" ]]; then
+  watch_dir="${COCKPIT_PROJECT:-${PWD:-.}}/models"
+elif [[ -d "${COCKPIT_PROJECT:-${PWD:-.}}/computers" ]]; then
+  watch_dir="${COCKPIT_PROJECT:-${PWD:-.}}/computers"
 else
   watch_dir="${COCKPIT_INTERCOM_HOME:-$HOME/intercom}"
 fi
@@ -253,14 +398,13 @@ cockpit_event_watch "$watch_dir" \
   --exclude "$cockpit_noise_exclude"
 
 while cockpit_event_read; do
-  if [[ "$COCKPIT_EVENT" == QUIT ]]; then
-    exit 0
-  fi
-  if [[ "$COCKPIT_EVENT" == WAKE ]]; then
-    maybe_render
-    continue
-  fi
+  case "$COCKPIT_EVENT" in
+    QUIT) exit 0 ;;
+    KEY_MODELS) view=models; maybe_render; continue ;;
+    KEY_ROSTER) view=roster; maybe_render; continue ;;
+    WAKE) maybe_render; continue ;;
+  esac
   sleep "$COCKPIT_DEBOUNCE"
-  cockpit_event_drain >/dev/null
+  computers_event_drain || exit 0
   maybe_render
 done

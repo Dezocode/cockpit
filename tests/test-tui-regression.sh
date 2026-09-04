@@ -9,9 +9,9 @@ source "$repo_root/bin/cockpit-lib"
 test_root="$(mktemp -d /tmp/cockpit-tui-regression.XXXXXX)"
 test_home="$test_root/home"
 tmux_root="$test_root/tmux"
-session=cockpit
+session=cockpit-tui-regression
 uid="$(id -u)"
-canonical_socket="/tmp/tmux-${uid}/default"
+canonical_socket="$tmux_root/tmux-${uid}/default"
 paste_stub="$repo_root/tests/fixtures/codex-paste-stub.sh"
 stub_marker="$test_root/submit.marker"
 stub_state="$test_root/submit.state"
@@ -21,7 +21,7 @@ cleanup() {
   if [[ "$bar_pid" =~ ^[0-9]+$ ]]; then
     kill "$bar_pid" >/dev/null 2>&1 || true
   fi
-  env -u TMUX -u TMUX_PANE tmux kill-server >/dev/null 2>&1 || true
+  tmux_test kill-server >/dev/null 2>&1 || true
   rm -rf "$test_root"
 }
 trap cleanup EXIT
@@ -36,7 +36,7 @@ pass() {
 }
 
 tmux_test() {
-  env -u TMUX -u TMUX_PANE tmux "$@"
+  env -u TMUX -u TMUX_PANE TMUX_TMPDIR="$tmux_root" tmux "$@"
 }
 
 export HOME="$test_home"
@@ -44,6 +44,7 @@ export TMUX_TMPDIR="$tmux_root"
 export PATH="$test_home/.local/bin:$repo_root/bin:/usr/bin:/bin"
 unset TMUX TMUX_PANE
 
+mkdir -p "$tmux_root"
 mkdir -p "$test_home/.config/cockpit"
 install -m 0644 "$repo_root/tests/fixtures/providers.conf" "$test_home/.config/cockpit/providers.conf"
 chmod +x "$paste_stub"
@@ -158,7 +159,7 @@ assert_no_extra_client() {
   local clients
   clients="$(tmux_test list-clients -t "$session" 2>/dev/null | wc -l | tr -d ' ')"
   [[ "$clients" == 0 ]] || fail "extra tmux client attached (${clients}); Foot must be sole size owner"
-  pass 'clients: zero attached (no second client / attach probe)'
+  pass 'clients: zero attached (no second client / attach attempt)'
 }
 
 wait_paste_indicator() {
@@ -330,9 +331,12 @@ assert_termius_toolbar_touch() {
 }
 
 assert_socket_path_documented() {
-  [[ "$canonical_socket" == "/tmp/tmux-${uid}/default" ]] ||
-    fail "unexpected canonical socket path: ${canonical_socket}"
-  pass "canonical socket path ${canonical_socket} (session name ${session})"
+  local actual_socket
+  [[ "$session" != cockpit ]] || fail 'TUI pack must use a non-cockpit session name'
+  actual_socket="$(tmux_test display-message -p -t "$session" '#{socket_path}')"
+  [[ "$actual_socket" == "$canonical_socket" ]] ||
+    fail "TUI pack escaped isolated TMUX_TMPDIR: ${actual_socket}"
+  pass "isolated TMUX_TMPDIR socket ${canonical_socket} (session name ${session})"
 }
 
 main() {
@@ -341,8 +345,8 @@ main() {
 
   assert_source_contract
   assert_memory_bind_contract
-  assert_socket_path_documented
   bootstrap_canonical_session "$project"
+  assert_socket_path_documented
   assert_window_topology 8
   assert_no_extra_client
 

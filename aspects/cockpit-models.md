@@ -12,16 +12,19 @@ entrypoint=computers
 
 ## Source contract (fail-closed)
 
-Receipt order:
+Receipt order (the JSON receipt is the live node contract):
 
-1. `$COCKPIT_INTERCOM_HOME/computers/receipt.tsv` (default `~/intercom/computers/receipt.tsv`)
-2. `$COCKPIT_PROJECT/computers/receipt.tsv` (cwd-relative project fallback)
+1. `$COCKPIT_INTERCOM_HOME/models/deck.json` (default `~/intercom/models/deck.json`)
+2. `$COCKPIT_INTERCOM_HOME/computers/receipt.tsv` (legacy compatibility)
+3. `$COCKPIT_PROJECT/models/deck.json` (cwd-relative project fallback)
+4. `$COCKPIT_PROJECT/computers/receipt.tsv` (cwd-relative project fallback)
 
-If neither path exists or the receipt is unreadable, COMPUTERS shows an explicit
-error. Cockpit does not attach to remote hosts, spawn cross-device daemons,
-scrape workspace aspects, or synthesize roster rows.
+If the preferred JSON receipt exists but is invalid or unreadable, COMPUTERS
+shows an explicit error and does not fall through to another source. Cockpit
+does not attach to remote hosts, spawn cross-device daemons, scrape workspace
+aspects, dispatch commands, or synthesize roster rows.
 
-## Receipt format
+## Legacy TSV format
 
 Tab-separated values with a header row:
 
@@ -32,6 +35,31 @@ local	This host	local	online	codex
 
 - `models` is a comma-separated catalog for the device (MODELS subview input).
 - Rows are read-only; no control plane or live sync beyond filesystem events.
+
+## Node JSON format
+
+The node-local `models/deck.json` receipt is schema 1:
+
+```json
+{
+  "schema": 1,
+  "node": "deck",
+  "runtimes": [
+    {
+      "runtime": "hermes+llama.cpp",
+      "endpoint": "127.0.0.1:8080",
+      "reachable": true,
+      "gateway_state": "running",
+      "models": [{"id": "local/Qwen3.5-4B", "state": "served"}]
+    }
+  ],
+  "notes": ["tailscale_hostname=dezodeck"]
+}
+```
+
+`node` and the first non-empty `tailscale_hostname=` note identify the one
+receipt-backed roster node. Runtime/model rows are read-only projections; no
+Surface-to-node SSH or command bus is opened by COMPUTERS.
 
 ## CLI entry points
 

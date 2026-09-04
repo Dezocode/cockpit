@@ -8,7 +8,8 @@ test_home="$test_root/home"
 intercom_home="$test_root/intercom"
 fakebin="$test_root/bin"
 log="$test_root/tmux.log"
-mkdir -p "$test_home/.config/cockpit" "$test_home/.config/tmux" "$fakebin" "$intercom_home/computers"
+mkdir -p "$test_home/.config/cockpit" "$test_home/.config/tmux" "$fakebin" \
+  "$intercom_home/models" "$intercom_home/computers"
 
 cleanup() { rm -rf "$test_root"; }
 trap cleanup EXIT
@@ -60,37 +61,48 @@ chmod +x "$fakebin/tmux"
 
 computers="$repo_root/bin/cockpit-computers"
 fixture="$repo_root/tests/fixtures/computers-receipt.tsv"
+json_fixture="$repo_root/tests/fixtures/deck.json"
 
 missing_output="$("$computers" check 2>&1 || true)"
-grep -qi 'missing' <<<"$missing_output"
+grep -Eqi 'missing|no managed receipt' <<<"$missing_output"
 
+install -m 0644 "$json_fixture" "$intercom_home/models/deck.json"
 install -m 0644 "$fixture" "$intercom_home/computers/receipt.tsv"
 
 path_output="$("$computers" path)"
-grep -Fxq "$intercom_home/computers/receipt.tsv" <<<"$path_output"
+grep -Fxq "$intercom_home/models/deck.json" <<<"$path_output"
 
 check_output="$("$computers" check)"
 grep -q '^status=ok$' <<<"$check_output"
-grep -q '^device_count=2$' <<<"$check_output"
+grep -q '^device_count=1$' <<<"$check_output"
 
 roster_output="$("$computers" roster)"
-grep -q $'local\tThis host' <<<"$roster_output"
-grep -q $'bench-vm\tBenchmark VM' <<<"$roster_output"
+grep -q $'dezodeck\tdeck\tnode\tonline' <<<"$roster_output"
+if grep -q 'bench-vm' <<<"$roster_output"; then
+  printf 'preferred JSON receipt leaked a legacy roster row\n' >&2
+  exit 1
+fi
 
 models_output="$("$computers" models)"
-grep -q $'local\tcodex' <<<"$models_output"
-grep -q $'local\tgpt-4' <<<"$models_output"
+grep -q $'dezodeck\tlocal/Qwen3.5-4B' <<<"$models_output"
 
-rm -f "$intercom_home/computers/receipt.tsv"
+printf '%s\n' '{"schema":1,"node":"deck"}' >"$intercom_home/models/deck.json"
+if "$computers" check >/dev/null 2>&1; then
+  printf 'preferred JSON receipt did not fail closed\n' >&2
+  exit 1
+fi
+install -m 0644 "$json_fixture" "$intercom_home/models/deck.json"
+
+rm -f "$intercom_home/models/deck.json" "$intercom_home/computers/receipt.tsv"
 project="$test_root/project"
-mkdir -p "$project/computers"
-install -m 0644 "$fixture" "$project/computers/receipt.tsv"
+mkdir -p "$project/models"
+install -m 0644 "$json_fixture" "$project/models/deck.json"
 cwd_path="$(COCKPIT_PROJECT="$project" "$computers" path)"
-grep -Fxq "$project/computers/receipt.tsv" <<<"$cwd_path"
+grep -Fxq "$project/models/deck.json" <<<"$cwd_path"
 cwd_check="$(COCKPIT_PROJECT="$project" "$computers" check)"
 grep -q '^status=ok$' <<<"$cwd_check"
 
-install -m 0644 "$fixture" "$intercom_home/computers/receipt.tsv"
+install -m 0644 "$json_fixture" "$intercom_home/models/deck.json"
 
 list_output="$(cockpit-plugin list)"
 grep -q '^cockpit\.computers[[:space:]]' <<<"$list_output"

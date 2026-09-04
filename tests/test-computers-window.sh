@@ -6,6 +6,7 @@ repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 test_root="$(mktemp -d /tmp/cockpit-computers-window.XXXXXX)"
 session=cockpit-computers-test
 intercom_home="$test_root/intercom"
+tmux_root="$test_root/tmux"
 
 cleanup() {
   tmux kill-session -t "$session" 2>/dev/null || true
@@ -13,11 +14,14 @@ cleanup() {
 }
 trap cleanup EXIT
 
-mkdir -p "$intercom_home/computers"
-install -m 0644 "$repo_root/tests/fixtures/computers-receipt.tsv" "$intercom_home/computers/receipt.tsv"
+mkdir -p "$intercom_home/models"
+install -m 0644 "$repo_root/tests/fixtures/deck.json" "$intercom_home/models/deck.json"
+mkdir -p "$tmux_root"
 
 export COCKPIT_INTERCOM_HOME="$intercom_home"
+export TMUX_TMPDIR="$tmux_root"
 export PATH="$repo_root/bin:/usr/bin:/bin"
+unset TMUX TMUX_PANE
 
 tmux new-session -d -s "$session" -n AGENT -c "$test_root" 'exec sleep 120'
 tmux set-option -p -t "$session:AGENT" @cockpit_role runtime

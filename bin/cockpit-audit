@@ -190,16 +190,21 @@ memory_source_health() {
 }
 
 computers_source_health() {
-  local file
-  file="$HOME/intercom/computers/receipt.tsv"
+  local file source_label
+  file="$HOME/intercom/models/deck.json"
+  source_label='~/intercom/models/deck.json'
   if [[ ! -f "$file" ]]; then
-    fail_check 'COMPUTERS receipt is missing from ~/intercom/computers/receipt.tsv'
+    file="$HOME/intercom/computers/receipt.tsv"
+    source_label='~/intercom/computers/receipt.tsv'
+  fi
+  if [[ ! -f "$file" ]]; then
+    fail_check 'COMPUTERS receipt is missing from ~/intercom/models/deck.json (or the legacy TSV fallback)'
     return 0
   fi
-  if computers check >/dev/null 2>&1; then
-    pass_check 'COMPUTERS receipt validates (intercom-managed source)'
+  if COCKPIT_INTERCOM_HOME="$HOME/intercom" computers check >/dev/null 2>&1; then
+    pass_check "COMPUTERS receipt validates (intercom-managed source: $source_label)"
   else
-    fail_check 'COMPUTERS receipt is present but invalid'
+    fail_check "COMPUTERS receipt is present but invalid: $source_label"
   fi
 }
 
