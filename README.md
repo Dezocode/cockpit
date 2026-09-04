@@ -56,9 +56,10 @@ Views (same in both profiles):
 - **PRS** — GitHub PRs
 - **MEMORY** — intercom-managed memory projection
 - **COMPUTERS** — intercom-managed node roster with in-pane MODELS (`m`)
+- **BENCH** — read-only Proctor benchmark model/run/backlink drill
 
-The eight canonical tmux windows are **AGENT**, **FILES**, **DIFF**, **MAP**,
-**SETUP**, **PRS**, **MEMORY**, and **COMPUTERS**. They are separate named pages in the bar;
+The nine canonical tmux windows are **AGENT**, **FILES**, **DIFF**, **MAP**,
+**SETUP**, **PRS**, **MEMORY**, **COMPUTERS**, and **BENCH**. They are separate named pages in the bar;
 MEMORY never splits or replaces MAP. F10 is not a Cockpit page binding.
 
 The AGENT pane launches the native Codex CLI with inherited no-color/CI
@@ -78,7 +79,7 @@ records the selected worktree in the live session without restarting Agent or
 Neovim. New Cockpit sessions pass the same root to native Codex with `-C`.
 At a safe runtime boundary, `cockpit worktree use PATH SESSION --yes
 --restart-agent --restart-files --refresh-derived` explicitly re-roots the
-existing Agent, Files, Diff, Map, and Memory pages.
+existing Agent, Files, Diff, Map, Memory, Computers, and BENCH pages.
 
 FILES, DIFF, MAP, and the runtime chrome read the active Omarchy
 `colors.toml`, so Git additions/removals and Neovim diff bands follow the
@@ -96,7 +97,7 @@ cockpit
 After installation, `cpr` runs the Cockpit-native `cockpit.cpr` plugin. It
 validates the overlay, applies only idempotent session options/hooks, and
 refreshes the Agent toolbar with a signal. The live Agent, FILES, SETUP, DIFF,
-MAP, and MEMORY pane processes are preserved:
+MAP, MEMORY, COMPUTERS, and BENCH pane processes are preserved:
 
 ```bash
 cpr
@@ -112,7 +113,7 @@ main reason a transient “server exited” message can appear: tmux has no
 session to keep alive, or an older reload path is respawning the last useful
 pane during an attach race. Run `cockpit /path/to/project` to create the
 canonical session, then use `cpr --check` to inspect it. The optional
-`--refresh-derived` flag is the only CPR mode that permits DIFF/MAP/MEMORY respawns;
+`--refresh-derived` flag is the only CPR mode that permits DIFF/MAP/MEMORY/COMPUTERS/BENCH respawns;
 it is disabled by default. Configure the behavior in
 `~/.config/cockpit/cockpit.conf`:
 
@@ -204,6 +205,11 @@ For Termius, enable **Send mouse events** and enter through `cockpit` (or
 repair Termius' negative-row SGR packets before tmux sees them; the toolbar is
 then six full-width touch zones above AGENT, including 2:FILES and MEMORY, and the bottom tabs remain the
 canonical page navigation.
+
+BENCH is available with `cockpit bench` or `cockpit plugin run cockpit.bench`. It reads only the
+Proctor mirror at `~/intercom/proctor/db/runs.sqlite` plus its model index; missing or invalid data stays visibly unavailable.
+The page is read-only and drills from models to runs to resolved `sol_session_ref` backlinks. It never
+opens the box SQLite database or spreadsheets and does not add a toolbar chip.
 
 From Omarchy/Foot:
 

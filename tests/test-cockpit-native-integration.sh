@@ -51,6 +51,7 @@ map_usefulness() {
     cockpit-map) printf 'local topology inspection' ;;
     cockpit-memory) printf 'fail-closed managed memory' ;;
     cockpit-computers) printf 'fail-closed managed computer receipt' ;;
+    cockpit-bench) printf 'fail-closed Proctor benchmark drill' ;;
     cockpit-setup) printf 'persistent provider and setup flow' ;;
     cockpit-hooks) printf 'idempotent tmux event dispatch' ;;
     cockpit-plugin) printf 'native Codex plugin lifecycle' ;;
@@ -156,7 +157,7 @@ done
 # Exercise the explicit project switch on the same private server. The fake
 # provider/editor keep this test entirely offline and make process replacement
 # observable without ever starting the user's real Codex or Neovim.
-for spec in "FILES:files" "DIFF:diff" "MAP:map" "MEMORY:memory" "COMPUTERS:computers"; do
+for spec in "FILES:files" "DIFF:diff" "MAP:map" "MEMORY:memory" "COMPUTERS:computers" "BENCH:bench"; do
   name="${spec%%:*}"
   role="${spec##*:}"
   tmux_test new-window -d -t "$session:" -n "$name" -c "$repo_root" 'exec sleep 120'
@@ -168,7 +169,7 @@ switch_output="$("$repo_root/bin/cockpit-worktree" use "$fixture_linked" "$sessi
 grep -Fq "switched=$fixture_linked" <<<"$switch_output"
 sleep 0.8
 grep -Fq -- "-C $fixture_linked" "$TEST_CODEX_ARGS"
-for spec in "AGENT:runtime" "FILES:files" "DIFF:diff" "MAP:map" "MEMORY:memory" "COMPUTERS:computers"; do
+for spec in "AGENT:runtime" "FILES:files" "DIFF:diff" "MAP:map" "MEMORY:memory" "COMPUTERS:computers" "BENCH:bench"; do
   name="${spec%%:*}"
   role="${spec##*:}"
   page_pane="$(tmux_test list-panes -s -t "$session" -F '#{pane_id} #{@cockpit_role}' |

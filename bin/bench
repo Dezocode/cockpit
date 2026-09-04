@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
+# Standalone equivalent of the interactive `bench` shell function.
 set -euo pipefail
-
-export PATH="$HOME/.local/bin:$PATH"
-exec cockpit-bench "$@"
+exec cockpit-plugin run bench "$@"

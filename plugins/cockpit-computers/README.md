@@ -2,7 +2,7 @@
 
 `cockpit.computers` is a Cockpit-native plugin with the same manifest shape as
 `cockpit.memory`. Its `computers` entrypoint backs the named COMPUTERS page as
-the eighth allowed top-level tmux window.
+the eighth allowed top-level tmux window; BENCH is the ninth named page.
 
 The renderer accepts intercom-managed node receipts, in this order:
 

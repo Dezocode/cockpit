@@ -47,7 +47,7 @@ Options:
   --no-hooks              do not refresh Cockpit hooks
   --no-agent-validation   do not run the provider-target validation hook
   --ensure-bar            repair a missing toolbar (may create one pane)
-  --refresh-derived       explicitly respawn DIFF/MAP/MEMORY derived views
+  --refresh-derived       explicitly respawn DIFF/MAP/MEMORY/COMPUTERS/BENCH derived views
   --config PATH           use a different [cpr] config file
 EOF
 }

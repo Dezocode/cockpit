@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Fail-closed TUI regression pack (BENCH / 9-window topology).
+# Fail-closed TUI regression pack (COMPUTERS + BENCH / 9-window topology).
 #
 # Isolation contract (cockpit-tmux-product-socket-kill / t359u excellence):
 # - session name MUST NOT be "cockpit" (uses cockpit-tui-regression)
 # - ALL tmux calls go through tmux_test with TMUX_TMPDIR under mktemp
 # - kill-server must never touch /tmp/tmux-${UID}/default product socket
 # - assert_socket_path_documented enforces non-cockpit session + isolated socket
-# Pack that can kill the product socket = incomplete (BENCH done-bar).
+# Pack that can kill the product socket = incomplete (COMPUTERS done-bar).
 set -euo pipefail
 
 repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -72,12 +72,12 @@ assert_source_contract() {
     fail 'cockpit-touch missing MEMORY routing'
   grep -q 'computers|COMPUTERS' "$repo_root/bin/cockpit-touch" ||
     fail 'cockpit-touch missing COMPUTERS routing'
-  grep -q 'bench|BENCH' "$repo_root/bin/cockpit-touch" ||
-    fail 'cockpit-touch missing BENCH routing'
   grep -q 'MEMORY|memory' "$repo_root/bin/cockpit-wake" ||
     fail 'cockpit-wake missing MEMORY wake routing'
   grep -q 'COMPUTERS|computers' "$repo_root/bin/cockpit-wake" ||
     fail 'cockpit-wake missing COMPUTERS wake routing'
+  grep -q 'bench|BENCH' "$repo_root/bin/cockpit-touch" ||
+    fail 'cockpit-touch missing BENCH routing'
   grep -q 'BENCH|bench' "$repo_root/bin/cockpit-wake" ||
     fail 'cockpit-wake missing BENCH wake routing'
   grep -q 'ensure_memory' "$repo_root/bin/cockpit-reload-views" ||
@@ -165,8 +165,6 @@ assert_window_topology() {
       fail 'canonical session must include COMPUTERS named window'
     printf '%s\n' "${names[@]}" | grep -Fxq BENCH ||
       fail 'canonical session must include BENCH named window'
-  elif printf '%s\n' "${names[@]}" | grep -Fxq MEMORY; then
-    fail 'baseline session must stay windows==7 without MEMORY chrome'
   fi
 
   pass "topology: windows==${expect_count}, pages not nested, AGENT not 5-up, MEMORY/COMPUTERS/BENCH not in MAP"
@@ -271,19 +269,6 @@ exec bash --norc $(printf '%q' "$paste_stub")"
   pass 'inject+submit: paste-buffer %0, wait chip, Enter; BAR untouched; windows stay 9'
 }
 
-assert_bench_route() {
-  local bench_pane bench_win map_win
-  map_win="$(tmux_test display-message -p -t "$session:MAP" '#{window_id}')"
-  cockpit-touch "$session" bench >/dev/null 2>&1 || true
-  bench_pane="$(tmux_test display-message -p -t "$session:BENCH" '#{pane_id}')"
-  bench_win="$(tmux_test display-message -p -t "$bench_pane" '#{window_id}')"
-  [[ "$bench_win" != "$map_win" ]] ||
-    fail 'BENCH must not be nested inside MAP'
-  [[ "$(tmux_test display-message -p -t "$bench_pane" '#{@cockpit_role}')" == bench ]] ||
-    fail 'BENCH pane is not tagged bench'
-  pass 'BENCH route: named page via cockpit-touch, not nested in MAP'
-}
-
 assert_computers_route() {
   local computers_pane computers_win map_win
   map_win="$(tmux_test display-message -p -t "$session:MAP" '#{window_id}')"
@@ -295,6 +280,19 @@ assert_computers_route() {
   [[ "$(tmux_test display-message -p -t "$computers_pane" '#{@cockpit_role}')" == computers ]] ||
     fail 'COMPUTERS pane is not tagged computers'
   pass 'COMPUTERS route: named page via cockpit-touch, not nested in MAP'
+}
+
+assert_bench_route() {
+  local bench_pane bench_win map_win
+  map_win="$(tmux_test display-message -p -t "$session:MAP" '#{window_id}')"
+  cockpit-touch "$session" bench >/dev/null 2>&1 || true
+  bench_pane="$(tmux_test display-message -p -t "$session:BENCH" '#{pane_id}')"
+  bench_win="$(tmux_test display-message -p -t "$bench_pane" '#{window_id}')"
+  [[ "$bench_win" != "$map_win" ]] ||
+    fail 'BENCH must not be nested inside MAP'
+  [[ "$(tmux_test display-message -p -t "$bench_pane" '#{@cockpit_role}')" == bench ]] ||
+    fail 'BENCH pane is not tagged bench'
+  pass 'BENCH route: named page via cockpit-touch, not nested in MAP'
 }
 
 assert_display_reload_pids() {
@@ -317,6 +315,7 @@ assert_display_reload_pids() {
   bar_pid="$bar_pane_pid"
   bar_text="$(tmux_test capture-pane -p -t "$bar" -S -3)"
   grep -Fq '2:FILES' <<<"$bar_text"
+  ! grep -Fq 'BENCH' <<<"$bar_text"
   grep -Fq 'MEMORY' <<<"$bar_text"
   grep -Fq 'MODEL' <<<"$bar_text"
   grep -Fq 'RESTART' <<<"$bar_text"

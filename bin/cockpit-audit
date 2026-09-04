@@ -104,6 +104,11 @@ cockpit_plugin_health() {
   else
     fail_check 'Cockpit COMPUTERS native plugin is missing or invalid'
   fi
+  if grep -Eq '^cockpit\.bench[[:space:]]+type=cockpit[[:space:]]+version=' <<<"$rows"; then
+    pass_check 'Cockpit BENCH native plugin is available'
+  else
+    fail_check 'Cockpit BENCH native plugin is missing or invalid'
+  fi
   if grep -Eq '^cockpit\.intercom[[:space:]]+type=cockpit[[:space:]]+version=' <<<"$rows"; then
     pass_check 'Cockpit INTERCOM native plugin is available'
   else
@@ -208,9 +213,26 @@ computers_source_health() {
   fi
 }
 
+bench_source_health() {
+  local root db source_label
+  root="${COCKPIT_PROCTOR_HOME:-${COCKPIT_INTERCOM_HOME:-$HOME/intercom}/proctor}"
+  db="$root/db/runs.sqlite"
+  if [[ ! -f "$db" ]]; then
+    warn_check "BENCH source is absent; page is fail-closed ($db)"
+    return 0
+  fi
+  source_label="$db"
+  [[ -f "$root/MODELS_INDEX.csv" ]] && source_label="$db + $root/MODELS_INDEX.csv"
+  if has_command cockpit-bench && COCKPIT_PROCTOR_HOME="$root" cockpit-bench check >/dev/null 2>&1; then
+    pass_check "BENCH Proctor mirror validates (source: $source_label)"
+  else
+    warn_check "BENCH Proctor mirror is present but unavailable: $source_label"
+  fi
+}
+
 page_topology_health() {
   local spec name role pane parent count
-  for spec in "FILES:files" "DIFF:diff" "MAP:map" "SETUP:setup" "PRS:prs" "MEMORY:memory" "COMPUTERS:computers"; do
+  for spec in "FILES:files" "DIFF:diff" "MAP:map" "SETUP:setup" "PRS:prs" "MEMORY:memory" "COMPUTERS:computers" "BENCH:bench"; do
     name=${spec%%:*}
     role=${spec##*:}
     pane="$(tmux list-panes -s -t "$session" -F '#{pane_id} #{@cockpit_role} #{window_name}' 2>/dev/null |
@@ -330,14 +352,14 @@ if ! has_command tmux || ! tmux has-session -t "$session" 2>/dev/null; then
   fail_check "tmux session is not running: $session"
 else
   pass_check "tmux session is running: $session"
-  expected_windows='AGENT FILES DIFF MAP SETUP PRS MEMORY COMPUTERS'
+  expected_windows='AGENT FILES DIFF MAP SETUP PRS MEMORY COMPUTERS BENCH'
   actual_windows="$(tmux list-windows -t "$session" -F '#{window_name}' 2>/dev/null | paste -sd' ' -)"
   if [[ "$actual_windows" == "$expected_windows" ]]; then
-    pass_check 'eight named Cockpit pages are ordered in the bar'
+    pass_check 'nine named Cockpit pages are ordered in the bar'
   else
     fail_check "named page bar is ${actual_windows:-empty}; expected ${expected_windows}"
   fi
-  for window in AGENT FILES DIFF MAP SETUP PRS MEMORY COMPUTERS; do
+  for window in AGENT FILES DIFF MAP SETUP PRS MEMORY COMPUTERS BENCH; do
     if tmux list-windows -t "$session" -F '#W' 2>/dev/null | grep -Fxq "$window"; then
       pass_check "window $window exists"
     else
@@ -401,6 +423,7 @@ else
   fi
   memory_source_health
   computers_source_health
+  bench_source_health
   intercom_source_health
 fi
 

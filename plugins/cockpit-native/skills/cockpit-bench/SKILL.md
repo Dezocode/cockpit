@@ -1,36 +1,24 @@
 ---
 name: cockpit-bench
-description: >-
-  use when reading Cockpit BENCH / Proctor receipts — machine-readable
-  1–2 command access to models, runs, backlinks, roster (t213u-5)
+description: Keep Cockpit BENCH as a read-only Proctor SQLite mirror with a ghui-style model/run/backlink drill.
 ---
-# Cockpit BENCH CLI (t213u/t524u/t533u)
 
-Proctor truth: `~/intercom/proctor/` (runs.sqlite + MODELS_INDEX.csv + CROSSREF_LINKS.csv).
-TUI is a view. Not VisiData. Stay draft.
+# BENCH page
 
-## Commands (prefer these)
+Use `cockpit bench` to open the named `BENCH` page. It reads only the Proctor
+mirror at `~/intercom/proctor` (or the explicit `COCKPIT_PROCTOR_HOME` test
+mirror) and fails closed when the mirror is absent, unreadable, incomplete, or
+contains a dangling backlink.
 
-```bash
-export COCKPIT_INTERCOM_HOME="${COCKPIT_INTERCOM_HOME:-$HOME/intercom}"
-bench path          # resolved root + db + csv paths
-bench check         # status=ok + counts or fail-closed
-bench models        # model_id TAB display (TSV)
-bench runs MODEL_ID # runs for one model (TSV)
-bench show-run ID   # run detail + backlink TAB lines
-```
+The mirror source is `db/runs.sqlite`, accompanied by `MODELS_INDEX.csv`.
+Required tables are `models`, `runs`, and `run_links`. L1 renders models with
+their stored `agent_class` badge; L2 renders runs; L3 renders a run and
+resolved backlinks. Enter on a backlink follows its `to_run_id`, including
+`sol_session_ref` links. Esc restores the jump history and pops drill levels.
 
-Roster (COMPUTERS):
+The page is read-only. Proctor is the sole writer. Do not open Box truth or
+its spreadsheets from the surface, write scores, attach to a remote session,
+or create rows from missing data. If source truth is absent, show `ABSENT` and
+no invented rows.
 
-```bash
-cockpit-computers path
-cockpit-computers roster
-cockpit-computers models
-```
-
-## Locks
-- Data = sqlite/CROSSREF — never bench.json-only product path
-- Visual TUI = t533u approved Miller PNG
-- Soft-steer only while %0 Pursuing (t404u)
-- t213u: resize must not obfuscate; touch+keyboard both live; idle panes cheap
-
+BENCH is a top-level named page, not a nested pane and not a toolbar chip.

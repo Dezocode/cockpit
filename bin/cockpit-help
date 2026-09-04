@@ -19,7 +19,7 @@ if [[ "$profile" == "termius-ios" ]]; then
   map_title="Termius iOS  ·  touch"
   map_body=$(cat <<EOF
 ${bright}TOUCH${reset}  (this client: iPhone SSH / Tailscale)
-  ${blue}Tap a tab${reset}                     AGENT  FILES  DIFF  MAP  SETUP  PRS  MEMORY
+  ${blue}Tap a tab${reset}                     AGENT  FILES  DIFF  MAP  SETUP  PRS  MEMORY  COMPUTERS  BENCH
   ${blue}Tap COCKPIT${reset}                   provider/OAuth/Git/plugin setup flow
   ${blue}Tap PRS / provider / 2:FILES / MEMORY / MODEL${reset} PRS, FILES, MEMORY, or SETUP flow; RESTART immediate
   ${blue}Long-press${reset}                    Cockpit menu
@@ -103,7 +103,7 @@ At an idle Agent boundary, `worktree use PATH SESSION --yes --restart-agent
 --restart-files --refresh-derived` explicitly re-roots the existing pages.
 
 Endpoint size still applies to chrome fit, but every client keeps the same
-named page row: AGENT, FILES, DIFF, MAP, SETUP, PRS, MEMORY.
+named page row: AGENT, FILES, DIFF, MAP, SETUP, PRS, MEMORY, COMPUTERS, BENCH.
 
 ${map_body}
 
@@ -113,6 +113,8 @@ ${bright}PANES${reset}
   ${blue}DIFF${reset}    Project patch; prefix + V opens read-only Vim diffs
   ${blue}MAP${reset}     Show Me graphs / Mermaid; redraws on diagram changes
   ${blue}MEMORY${reset}  Intercom-managed `memory/cockpit.mmd`; seventh named page in the bar
+  ${blue}COMPUTERS${reset} Intercom-managed node roster with in-pane MODELS
+  ${blue}BENCH${reset}  Read-only Proctor model/run/backlink drill; `cockpit bench`
   ${blue}SETUP${reset}   Auth/provider/Git flow, agent target/profile validation, plugins, audit
   ${blue}PRS${reset}     GitHub PRs
 

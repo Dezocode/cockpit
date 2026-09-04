@@ -53,7 +53,7 @@ tmux_test set-option -t "$session" @cockpit_modality touch
 tmux_test set-option -t "$session" mouse on
 tmux_test source-file "$HOME/.config/tmux/cockpit.conf"
 
-for spec in "FILES:files" "DIFF:diff" "SETUP:setup" "MAP:map" "PRS:prs" "MEMORY:memory"; do
+for spec in "FILES:files" "DIFF:diff" "SETUP:setup" "MAP:map" "PRS:prs" "MEMORY:memory" "COMPUTERS:computers" "BENCH:bench"; do
   name=${spec%%:*}
   role=${spec##*:}
   tmux_test new-window -d -t "$session:" -n "$name" 'exec sleep 120'

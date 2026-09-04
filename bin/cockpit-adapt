@@ -330,7 +330,7 @@ hide_auxiliary_tabs() {
   done < <(tmux list-windows -t "$session" -F '#{window_id} #{window_name}' 2>/dev/null || true)
 }
 
-# Keep the restored page order stable in the bar. The eight allowed pages are
+# Keep the restored page order stable in the bar. The nine allowed pages are
 # AGENT, FILES, DIFF, MAP, SETUP, PRS, MEMORY, COMPUTERS, and BENCH.
 normalize_primary_tabs() {
   local runtime_win pane role window current target spec

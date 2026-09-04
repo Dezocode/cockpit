@@ -1,50 +1,31 @@
 # BENCH ghui approved style (t533u)
 
-Status: **HARD STYLE LOCK** — live renderer must match exactly.
+BENCH uses the same resident terminal-page grammar as FILES: three Miller
+columns remain visible while focus moves between them.
 
-Reference: `proofs/approved-style/bench-ghui-approved-t533u.png`
+| Column | Content |
+|---|---|
+| 1 | `Models` with the Proctor `agent_class` badge |
+| 2 | `Runs — <model>` |
+| 3 | `Run + backlinks`, with yellow backlink chips |
 
-## Layout
+Top-left chrome is:
+`cockpit · MEMORY  COMPUTERS  MODELS  BENCH  FILES  PRS`
 
-Three **Miller columns** visible simultaneously (not a stack drill, not VisiData):
+Top-right chrome is:
+`BENCH  ghui  read-only`
 
-| Column | Header | Content |
-|--------|--------|---------|
-| 1 | `Models` | Model id + site badge (`frontier`, `local`, `ABSENT`) |
-| 2 | `Runs — <model_id>` | Run id (2 lines: id + status) |
-| 3 | `Run + backlinks` | Selected run id + yellow backlink chips |
+The footer identifies the drill and source:
+`t524u ghui  ·  Esc=pop  Enter=drill/backlink  ·  data: ~/intercom/proctor/  ·  writer: Proctor`
 
-Vertical column separators between panes.
+Keyboard behavior:
 
-## Chrome
+- Up/Down or `j`/`k` moves within the focused column.
+- Left/Right or Tab moves focus between columns.
+- Enter drills from model to runs to detail and follows a selected backlink's
+  `to_run_id`.
+- Esc restores the backlink jump stack, then pops drill focus.
+- `q` exits the temporary drill; the named BENCH pane remains the page.
 
-**Top left:** `cockpit · MEMORY  COMPUTERS  MODELS  BENCH  FILES  PRS`
-
-**Top right:** `BENCH  ghui  read-only`
-
-**Footer:** `t524u ghui  ·  Esc=pop  Enter=drill/backlink  ·  data: ~/intercom/proctor/  ·  writer: Proctor`
-
-(`data:` path reflects resolved receipt root, `~`-shortened when under `$HOME`.)
-
-## Selection & color
-
-- Cyan `>` cursor on the active row in the focused column
-- Model site badges: `frontier` / `local` / `ABSENT` (muted when ABSENT)
-- Backlinks section header: yellow `Backlinks (Enter → jump)`
-- Backlink targets: yellow-bordered chips with `link_kind` label + truncated run id
-
-## Keys (t524u grammar)
-
-| Key | Action |
-|-----|--------|
-| ↑↓ | Move within focused column |
-| ←→ / Tab | Focus adjacent column |
-| Enter | Drill selection / jump backlink peer run |
-| Esc | Pop backlink jump stack |
-| q | Quit drill |
-
-## Non-goals
-
-- Not a single-column stack replacing columns
-- Not VisiData / sc-im / Excel product UI
-- No invented scores; Proctor sole writer
+The surface remains read-only and fail-closed. It never turns the benchmark
+source into a toolbar chip or a nested pane.

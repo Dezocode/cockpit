@@ -35,7 +35,7 @@ tmux set-option -t "$session" @cockpit_hook_dispatch_version 1 2>/dev/null || tr
 if [[ "$event" == after-select-window ]]; then
   selected="$(tmux display-message -p -t "$session:" '#{window_name}' 2>/dev/null || true)"
   case "$selected" in
-    FILES|DIFF|MAP|MEMORY) "$script_root/cockpit-wake" "$session" "$selected" >/dev/null 2>&1 || true ;;
+    FILES|DIFF|MAP|MEMORY|COMPUTERS|BENCH) "$script_root/cockpit-wake" "$session" "$selected" >/dev/null 2>&1 || true ;;
   esac
 fi
 
