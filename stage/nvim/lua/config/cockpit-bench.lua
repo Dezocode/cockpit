@@ -23,6 +23,7 @@ local state = {
   jump_stack = {},
   models = {},
   runs = {},
+  run_display = {},
   run = nil,
   backlinks = {},
   absent = false,
@@ -221,8 +222,10 @@ local function setup_highlights()
   vim.api.nvim_set_hl(0, "CockpitBenchDim", { fg = colors.dim })
   vim.api.nvim_set_hl(0, "CockpitBenchChrome", { fg = colors.chrome })
   vim.api.nvim_set_hl(0, "CockpitBenchNavLeft", { fg = colors.dim })
+  vim.api.nvim_set_hl(0, "CockpitBenchNavBrand", { fg = colors.cyan, bold = true })
   vim.api.nvim_set_hl(0, "CockpitBenchNavRight", { fg = colors.cyan })
   vim.api.nvim_set_hl(0, "CockpitBenchNavRest", { fg = colors.dim })
+  vim.api.nvim_set_hl(0, "CockpitBenchBadgeDim", { fg = colors.dim })
   vim.api.nvim_set_hl(0, "CockpitBenchChipFill", { bg = colors.chip_bg })
   vim.api.nvim_set_hl(0, "CockpitBenchChip", { fg = colors.yellow_chip, bg = colors.chip_bg, bold = true })
   vim.api.nvim_set_hl(0, "CockpitBenchChipId", { fg = colors.dim, bg = colors.chip_bg })
@@ -276,6 +279,86 @@ local function truncate_run_id(run_id, width)
   return clip(run_id, 8) .. "..."
 end
 
+local function parent_run_id(run_id)
+  local parent = run_id:match("^(.-)::")
+  if parent and parent ~= "" then
+    return parent
+  end
+  return run_id
+end
+
+local function is_child_run(run_id)
+  return run_id:find("::", 1, true) ~= nil
+end
+
+local function build_run_display(runs)
+  local display = {}
+  local children_by_parent = {}
+  local parent_runs = {}
+  local parent_order = {}
+  local parent_seen = {}
+
+  for _, run in ipairs(runs) do
+    if is_child_run(run.run_id) then
+      local pid = parent_run_id(run.run_id)
+      children_by_parent[pid] = children_by_parent[pid] or {}
+      table.insert(children_by_parent[pid], run)
+    else
+      parent_runs[run.run_id] = run
+      if not parent_seen[run.run_id] then
+        table.insert(parent_order, run.run_id)
+        parent_seen[run.run_id] = true
+      end
+    end
+  end
+
+  for _, run in ipairs(runs) do
+    if is_child_run(run.run_id) then
+      local pid = parent_run_id(run.run_id)
+      if not parent_seen[pid] then
+        table.insert(parent_order, pid)
+        parent_seen[pid] = true
+        if not parent_runs[pid] then
+          parent_runs[pid] = {
+            run_id = pid,
+            model_id = run.model_id,
+            role = run.role,
+            campaign = run.campaign,
+            status = run.status,
+            scored_at = run.scored_at,
+            synthetic = true,
+          }
+        end
+      end
+    end
+  end
+
+  for _, pid in ipairs(parent_order) do
+    local parent = parent_runs[pid]
+    if parent then
+      table.insert(display, { run = parent, depth = 0 })
+    end
+    for _, child in ipairs(children_by_parent[pid] or {}) do
+      table.insert(display, { run = child, depth = 1, parent_id = pid })
+    end
+  end
+
+  return display
+end
+
+local function chip_run_id_label(run_id, width)
+  local suffix = run_id:match("::(.+)$")
+  if suffix then
+    local label = clip(parent_run_id(run_id), 8) .. "::" .. suffix
+    return clip(label, width)
+  end
+  return truncate_run_id(run_id, width)
+end
+
+local function in_cockpit_tmux()
+  return vim.env.TMUX ~= nil and vim.env.TMUX ~= "" and vim.env.COCKPIT_BENCH_ONCE ~= "1"
+end
+
 local function set_buffer_lines(buf, lines)
   vim.bo[buf].modifiable = true
   vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
@@ -325,13 +408,13 @@ function M.render_models_col()
     local site_start = math.max(0, #line - #site)
     local selected = state.focus_col == 0 and i - 1 == state.model_idx
     if selected then
-      vim.api.nvim_buf_add_highlight(buf, NS, "CockpitBenchSel", row, 0, -1)
+      vim.api.nvim_buf_add_highlight(buf, NS, "CockpitBenchSel", row, 0, 2 + #name_part)
     end
+    local badge_group = "CockpitBenchBadgeDim"
     if site == "ABSENT" then
-      vim.api.nvim_buf_add_highlight(buf, NS, "CockpitBenchDim", row, site_start, #line)
-    elseif selected then
-      vim.api.nvim_buf_add_highlight(buf, NS, "CockpitBenchDim", row, site_start, #line)
+      badge_group = "CockpitBenchDim"
     end
+    vim.api.nvim_buf_add_highlight(buf, NS, badge_group, row, site_start, #line)
     row = row + 1
   end
   if #state.models == 0 then
@@ -352,25 +435,28 @@ function M.render_runs_col()
   local model_id = model and model[1] or nil
   local title = model_id and ("Runs — " .. model_id) or "Runs"
   local lines = { clip(title, width), "" }
-  if not model_id or #state.runs == 0 then
+  if not model_id or #state.run_display == 0 then
     table.insert(lines, "ABSENT")
   else
-    for i, run in ipairs(state.runs) do
+    for i, entry in ipairs(state.run_display) do
       local selected = state.focus_col == 1 and i - 1 == state.run_idx
       local cursor = selected and ">" or " "
-      table.insert(lines, string.format("%s %s", cursor, clip(run.run_id, width - 3)))
-      table.insert(lines, clip(run.status or "ABSENT", width - 2))
+      local indent = string.rep(" ", entry.depth * 2)
+      local prefix = cursor .. indent
+      local id_w = math.max(4, width - strwidth(prefix) - 1)
+      table.insert(lines, prefix .. clip(entry.run.run_id, id_w))
+      table.insert(lines, indent .. clip(entry.run.status or "ABSENT", width - #indent - 1))
     end
   end
   set_buffer_lines(buf, lines)
   clear_ns(buf)
   vim.api.nvim_buf_add_highlight(buf, NS, "CockpitBenchChrome", 0, 0, -1)
-  if not model_id or #state.runs == 0 then
+  if not model_id or #state.run_display == 0 then
     vim.api.nvim_buf_add_highlight(buf, NS, "CockpitBenchDim", 2, 0, -1)
     return
   end
   local row = 2
-  for i in ipairs(state.runs) do
+  for i in ipairs(state.run_display) do
     if state.focus_col == 1 and i - 1 == state.run_idx then
       vim.api.nvim_buf_add_highlight(buf, NS, "CockpitBenchSel", row, 0, -1)
     end
@@ -382,7 +468,7 @@ end
 local function draw_backlink_chip_lines(kind, run_id, width)
   local inner = math.max(1, width)
   local label = clip(kind or "backlink", inner)
-  local rid = truncate_run_id(run_id, inner)
+  local rid = chip_run_id_label(run_id, inner)
   return {
     center_text(label, inner),
     center_text(rid, inner),
@@ -401,8 +487,9 @@ function M.render_detail_col()
   if not state.run then
     table.insert(lines, "ABSENT")
   else
+    local parent_id = parent_run_id(state.run.run_id)
     table.insert(lines, "run_id (selected)")
-    table.insert(lines, clip(state.run.run_id, width))
+    table.insert(lines, clip(parent_id, width))
     local meta_parts = {}
     for _, value in ipairs({
       state.run.model_id,
@@ -416,17 +503,17 @@ function M.render_detail_col()
       end
     end
     local metadata = table.concat(meta_parts, " · ")
+    local meta_row = nil
     if metadata ~= "" then
       table.insert(lines, clip(metadata, width))
+      meta_row = #lines - 1
     end
-    table.insert(lines, "")
     table.insert(lines, "Backlinks (Enter → jump)")
-    table.insert(lines, "")
     if #state.backlinks == 0 then
       table.insert(lines, "ABSENT")
     else
       for i, link in ipairs(state.backlinks) do
-        local chip_w = math.min(22, math.max(14, width - 4))
+        local chip_w = math.min(26, math.max(16, width - 2))
         local chip_lines = draw_backlink_chip_lines(link.link_kind, link.to_run_id, chip_w)
         local chip_row = #lines
         for _, cl in ipairs(chip_lines) do
@@ -437,40 +524,49 @@ function M.render_detail_col()
           bl_idx = i - 1,
           selected = state.focus_col == 2 and i - 1 == state.bl_idx,
         })
-        table.insert(lines, "")
+        if i < #state.backlinks then
+          table.insert(lines, "")
+        end
       end
     end
+    set_buffer_lines(buf, lines)
+    clear_ns(buf)
+    vim.api.nvim_buf_add_highlight(buf, NS, "CockpitBenchChrome", 0, 0, -1)
+    vim.api.nvim_buf_add_highlight(buf, NS, "CockpitBenchGoldLabel", 2, 0, -1)
+    vim.api.nvim_buf_add_highlight(buf, NS, "CockpitBenchDim", 3, 0, -1)
+    if meta_row then
+      vim.api.nvim_buf_add_highlight(buf, NS, "CockpitBenchDim", meta_row, 0, -1)
+    end
+    local bl_header = 0
+    for i, line in ipairs(lines) do
+      if line == "Backlinks (Enter → jump)" then
+        bl_header = i - 1
+        break
+      end
+    end
+    if bl_header > 0 then
+      vim.api.nvim_buf_add_highlight(buf, NS, "CockpitBenchGoldLabel", bl_header, 0, -1)
+    end
+    for _, chip in ipairs(state.chip_rows) do
+      local label_group = chip.selected and "CockpitBenchChipSel" or "CockpitBenchChip"
+      for r = chip.start, chip.start + 1 do
+        local line = lines[r + 1] or ""
+        local line_end = math.max(0, #line)
+        vim.api.nvim_buf_add_highlight(buf, NS, "CockpitBenchChipFill", r, 0, line_end)
+        if r == chip.start then
+          vim.api.nvim_buf_add_highlight(buf, NS, label_group, r, 0, line_end)
+        else
+          vim.api.nvim_buf_add_highlight(buf, NS, "CockpitBenchChipId", r, 0, line_end)
+        end
+      end
+    end
+    return
   end
   set_buffer_lines(buf, lines)
   clear_ns(buf)
   vim.api.nvim_buf_add_highlight(buf, NS, "CockpitBenchChrome", 0, 0, -1)
   if not state.run then
     vim.api.nvim_buf_add_highlight(buf, NS, "CockpitBenchDim", 2, 0, -1)
-    return
-  end
-  vim.api.nvim_buf_add_highlight(buf, NS, "CockpitBenchGoldLabel", 2, 0, -1)
-  local bl_header = 0
-  for i, line in ipairs(lines) do
-    if line == "Backlinks (Enter → jump)" then
-      bl_header = i - 1
-      break
-    end
-  end
-  if bl_header > 0 then
-    vim.api.nvim_buf_add_highlight(buf, NS, "CockpitBenchGoldLabel", bl_header, 0, -1)
-  end
-  for _, chip in ipairs(state.chip_rows) do
-    local label_group = chip.selected and "CockpitBenchChipSel" or "CockpitBenchChip"
-    for r = chip.start, chip.start + 1 do
-      local line = lines[r + 1] or ""
-      local line_end = math.max(0, #line)
-      vim.api.nvim_buf_add_highlight(buf, NS, "CockpitBenchChipFill", r, 0, line_end)
-      if r == chip.start then
-        vim.api.nvim_buf_add_highlight(buf, NS, label_group, r, 0, line_end)
-      else
-        vim.api.nvim_buf_add_highlight(buf, NS, "CockpitBenchChipId", r, 0, line_end)
-      end
-    end
   end
 end
 
@@ -488,15 +584,44 @@ local function current_model_id()
   return model and model[1] or nil
 end
 
+local function model_agent_class(model_id)
+  for _, item in ipairs(state.models) do
+    if item[1] == model_id then
+      return item[3] or ""
+    end
+  end
+  return ""
+end
+
+local function hydrate_run_entry(entry)
+  if not entry then
+    return nil
+  end
+  local run = fetch_run(entry.run.run_id)
+  if run then
+    return run
+  end
+  return {
+    run_id = entry.run.run_id,
+    model_id = entry.run.model_id or current_model_id() or "",
+    agent_class = entry.run.agent_class or model_agent_class(entry.run.model_id or ""),
+    role = entry.run.role or "",
+    campaign = entry.run.campaign or "",
+    status = entry.run.status or "ABSENT",
+    scored_at = entry.run.scored_at or "",
+  }
+end
+
 local function current_run_id()
-  local run = state.runs[state.run_idx + 1]
-  return run and run.run_id or nil
+  local entry = state.run_display[state.run_idx + 1]
+  return entry and entry.run.run_id or nil
 end
 
 local function sync_data()
   if state.absent then
     state.models = {}
     state.runs = {}
+    state.run_display = {}
     state.run = nil
     state.backlinks = {}
     return
@@ -507,12 +632,15 @@ local function sync_data()
   end
   local model_id = current_model_id()
   state.runs = model_id and fetch_runs(model_id) or {}
-  if state.run_idx >= #state.runs then
-    state.run_idx = math.max(0, #state.runs - 1)
+  state.run_display = build_run_display(state.runs)
+  if state.run_idx >= #state.run_display then
+    state.run_idx = math.max(0, #state.run_display - 1)
   end
   local run_id = current_run_id()
-  state.run = run_id and fetch_run(run_id) or nil
-  state.backlinks = run_id and fetch_backlinks(run_id) or {}
+  local entry = state.run_display[state.run_idx + 1]
+  state.run = hydrate_run_entry(entry)
+  local backlink_from = run_id and parent_run_id(run_id) or nil
+  state.backlinks = backlink_from and fetch_backlinks(backlink_from) or {}
   if state.bl_idx >= #state.backlinks then
     state.bl_idx = math.max(0, #state.backlinks - 1)
   end
@@ -530,8 +658,9 @@ local function select_run_by_id(run_id)
     end
   end
   state.runs = fetch_runs(run.model_id)
-  for i, r in ipairs(state.runs) do
-    if r.run_id == run_id then
+  state.run_display = build_run_display(state.runs)
+  for i, entry in ipairs(state.run_display) do
+    if entry.run.run_id == run_id then
       state.run_idx = i - 1
       state.focus_col = 1
       return true
@@ -642,7 +771,7 @@ local function move_down()
     state.model_idx = state.model_idx + 1
     state.run_idx = 0
     state.bl_idx = 0
-  elseif state.focus_col == 1 and state.run_idx < #state.runs - 1 then
+  elseif state.focus_col == 1 and state.run_idx < #state.run_display - 1 then
     state.run_idx = state.run_idx + 1
     state.bl_idx = 0
   elseif state.focus_col == 2 and state.bl_idx < #state.backlinks - 1 then
@@ -701,7 +830,7 @@ local function on_mouse(line0, col)
       return
     end
     local idx = math.floor((line0 - 2) / 2)
-    if idx >= #state.runs then
+    if idx >= #state.run_display then
       state.focus_col = 1
       focus_window()
       return
@@ -798,12 +927,32 @@ end
 
 function M.tabline()
   local width = vim.o.columns
+  if in_cockpit_tmux() then
+    local nav_rest = " · MEMORY  COMPUTERS  MODELS  BENCH  FILES  PRS"
+    local right = "ghui  read-only"
+    local brand = "cockpit"
+    local left_w = strwidth(brand) + strwidth(nav_rest)
+    local pad = math.max(1, width - left_w - strwidth(right) - 2)
+    return table.concat({
+      "%#CockpitBenchNavBrand#",
+      brand,
+      "%#CockpitBenchNavLeft#",
+      nav_rest,
+      string.rep(" ", pad),
+      "%#CockpitBenchNavRest#",
+      right,
+    })
+  end
   local right = NAV_RIGHT
   local left = clip(NAV_LEFT, math.max(1, width - strwidth(right) - 2))
   local pad = math.max(0, width - strwidth(left) - strwidth(right))
+  local brand = "cockpit"
+  local nav_rest = left:match("^cockpit(.*)$") or left
   return table.concat({
+    "%#CockpitBenchNavBrand#",
+    brand,
     "%#CockpitBenchNavLeft#",
-    left,
+    nav_rest,
     string.rep(" ", pad),
     "%#CockpitBenchNavRight#",
     NAV_RIGHT_BENCH,

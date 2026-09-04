@@ -74,16 +74,22 @@ INSERT INTO models VALUES
   ('gpt-5.6-sol', 'frontier_subscription', 'bench/codex/sol', 'peer fixture');
 INSERT INTO runs VALUES
   ('run-local-001', 'local/Qwen3.5-4B', 'experiment_worker', 'sol-v1.7.1', 'repair', '2026-09-04T19:54:34Z', '{"agent_class":"local","node":"deck","administered_by":"sol"}'),
-  ('run-sol-001', 'gpt-5.6-sol', 'sol_admin', 'sol-v1.7.1', 'incomplete', '2026-09-04T19:54:34Z', '{"agent_class":"frontier_subscription","node":"deck-sol"}');
-INSERT INTO run_links VALUES ('run-local-001', 'run-sol-001', 'sol_session_ref');
+  ('run-sol-001', 'gpt-5.6-sol', 'sol_admin', 'sol-v1.7.1', 'incomplete', '2026-09-04T19:54:34Z', '{"agent_class":"frontier_subscription","node":"deck-sol"}'),
+  ('parent-run-001', 'gpt-5.6-sol', 'sol_admin', 'sol-v1.7.1', 'incomplete', '2026-09-04T20:00:00Z', '{"agent_class":"frontier_subscription","node":"deck-sol"}'),
+  ('parent-run-001::abc1', 'gpt-5.6-sol', 'experiment_worker', 'sol-v1.7.1', 'incomplete', '2026-09-04T20:01:00Z', '{"agent_class":"frontier_subscription","node":"deck-sol"}'),
+  ('parent-run-001::def2', 'gpt-5.6-sol', 'experiment_worker', 'sol-v1.7.1', 'incomplete', '2026-09-04T20:02:00Z', '{"agent_class":"frontier_subscription","node":"deck-sol"}');
+INSERT INTO run_links VALUES
+  ('run-local-001', 'run-sol-001', 'sol_session_ref'),
+  ('parent-run-001', 'run-sol-001', 'worker_deck_run'),
+  ('parent-run-001', 'run-local-001', 'worker_deck_run');
 SQL
 
 valid_check="$(COCKPIT_PROCTOR_HOME="$mirror" bench check)"
 grep -Fxq 'status=ok' <<<"$valid_check" || fail 'valid Proctor mirror did not validate'
 grep -Fxq 'source=intercom' <<<"$valid_check" || fail 'mirror source was not identified as intercom'
 grep -Fxq 'model_count=2' <<<"$valid_check" || fail 'model count is not receipt-backed'
-grep -Fxq 'run_count=2' <<<"$valid_check" || fail 'run count is not receipt-backed'
-grep -Fxq 'backlink_count=1' <<<"$valid_check" || fail 'backlink count is not receipt-backed'
+grep -Fxq 'run_count=5' <<<"$valid_check" || fail 'run count is not receipt-backed'
+grep -Fxq 'backlink_count=3' <<<"$valid_check" || fail 'backlink count is not receipt-backed'
 
 mkdir -p "$test_root/home/intercom/proctor"
 cp -a "$mirror/." "$test_root/home/intercom/proctor/"

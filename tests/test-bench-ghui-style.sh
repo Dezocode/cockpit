@@ -48,6 +48,8 @@ grep -Fq 'render_detail_col' "$layout" ||
   fail 'missing Miller detail column renderer'
 grep -Fq 'draw_vrules' "$layout" ||
   fail 'missing Miller vertical column separators'
+grep -Fq 'build_run_display' "$layout" ||
+  fail 'missing nested runs display builder'
 
 # t649u: legacy ASCII chip drawer (+---+ / | pipes) must stay absent from source
 grep -Fq 'string.rep("-", inner) .. "+"' "$layout" &&
