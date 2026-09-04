@@ -6,12 +6,50 @@ script_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 source "$script_root/cockpit-lib"
 export PATH="$script_root:$HOME/.local/bin:$PATH"
 
-receipt_source() {
+COMPUTERS_VALID_RECEIPTS=()
+COMPUTERS_RECEIPT_MODE=''
+
+receipt_json_directory() {
+  local intercom_models="${COCKPIT_INTERCOM_HOME:-$HOME/intercom}/models"
+  local project_models="${COCKPIT_PROJECT:-${PWD:-.}}/models"
+  local files=()
+
+  if [[ -d "$intercom_models" ]]; then
+    shopt -s nullglob
+    files=("$intercom_models"/*.json)
+    shopt -u nullglob
+    if ((${#files[@]} > 0)); then
+      cd -- "$intercom_models" && pwd -P
+      return 0
+    fi
+  fi
+
+  if [[ -d "$project_models" ]]; then
+    shopt -s nullglob
+    files=("$project_models"/*.json)
+    shopt -u nullglob
+    if ((${#files[@]} > 0)); then
+      cd -- "$project_models" && pwd -P
+      return 0
+    fi
+  fi
+  return 1
+}
+
+receipt_json_candidates() {
+  local dir path
+  dir="$(receipt_json_directory)" || return 1
+  shopt -s nullglob
+  for path in "$dir"/*.json; do
+    [[ -f "$path" && -r "$path" ]] && printf '%s\n' "$path"
+  done | LC_ALL=C sort
+  shopt -u nullglob
+}
+
+receipt_tsv_source() {
   local candidate directory
   for candidate in \
-    "${COCKPIT_INTERCOM_HOME:-$HOME/intercom}/models/deck.json" \
     "${COCKPIT_INTERCOM_HOME:-$HOME/intercom}/computers/receipt.tsv" \
-    "${COCKPIT_PROJECT:-${PWD:-.}}/models/deck.json" \
     "${COCKPIT_PROJECT:-${PWD:-.}}/computers/receipt.tsv"; do
     if [[ -f "$candidate" ]]; then
       directory="$(dirname -- "$candidate")"
@@ -22,13 +60,49 @@ receipt_source() {
   return 1
 }
 
+receipt_source() {
+  receipt_validate || return 1
+  if [[ "$COMPUTERS_RECEIPT_MODE" == json ]]; then
+    printf '%s\n' "${COMPUTERS_VALID_RECEIPTS[@]}"
+  else
+    printf '%s\n' "${COMPUTERS_VALID_RECEIPTS[0]}"
+  fi
+}
+
 receipt_path() {
-  receipt_source || true
+  if ((${#COMPUTERS_VALID_RECEIPTS[@]} > 0)); then
+    printf '%s' "${COMPUTERS_VALID_RECEIPTS[0]}"
+    return 0
+  fi
+  receipt_validate >/dev/null 2>&1 || true
+  if ((${#COMPUTERS_VALID_RECEIPTS[@]} > 0)); then
+    printf '%s' "${COMPUTERS_VALID_RECEIPTS[0]}"
+  fi
+}
+
+receipt_display_label() {
+  local dir
+  if [[ "${COMPUTERS_RECEIPT_MODE:-}" == json ]]; then
+    dir="$(receipt_json_directory || true)"
+    if ((${#COMPUTERS_VALID_RECEIPTS[@]} > 1)) && [[ -n "$dir" ]]; then
+      printf '%s (%d nodes)' "$dir" "${#COMPUTERS_VALID_RECEIPTS[@]}"
+    elif ((${#COMPUTERS_VALID_RECEIPTS[@]} == 1)); then
+      printf '%s' "${COMPUTERS_VALID_RECEIPTS[0]}"
+    elif [[ -n "$dir" ]]; then
+      printf '%s' "$dir"
+    else
+      printf 'managed intercom receipt'
+    fi
+  elif ((${#COMPUTERS_VALID_RECEIPTS[@]} > 0)); then
+    printf '%s' "${COMPUTERS_VALID_RECEIPTS[0]}"
+  else
+    printf 'managed intercom receipt'
+  fi
 }
 
 receipt_kind() {
   case "${1:-}" in
-    */deck.json) printf 'json\n' ;;
+    *.json) printf 'json\n' ;;
     *) printf 'tsv\n' ;;
   esac
 }
@@ -36,7 +110,7 @@ receipt_kind() {
 json_receipt_validate() {
   local path=$1
   if ! command -v jq >/dev/null 2>&1; then
-    printf 'COMPUTERS unavailable: jq is required to read the managed Deck receipt: %s\n' "$path" >&2
+    printf 'COMPUTERS unavailable: jq is required to read the managed node receipt: %s\n' "$path" >&2
     return 1
   fi
   jq -e '
@@ -90,25 +164,48 @@ tsv_receipt_validate() {
 }
 
 receipt_validate() {
-  local path kind
-  path="$(receipt_path)"
-  if [[ -z "$path" ]]; then
-    printf 'COMPUTERS unavailable: no managed receipt found (checked ~/intercom/models/deck.json, ~/intercom/computers/receipt.tsv, and project fallbacks).\n' >&2
-    return 1
-  fi
-  if [[ ! -r "$path" ]]; then
-    printf 'COMPUTERS unavailable: receipt is not readable: %s\n' "$path" >&2
-    return 1
-  fi
-  kind="$(receipt_kind "$path")"
-  if [[ "$kind" == json ]]; then
-    json_receipt_validate "$path" || {
-      printf 'COMPUTERS unavailable: managed Deck receipt is invalid or incomplete: %s\n' "$path" >&2
-      return 1
-    }
+  local candidates=() path tsv any_valid=0
+  COMPUTERS_VALID_RECEIPTS=()
+  COMPUTERS_RECEIPT_MODE=''
+
+  if mapfile -t candidates < <(receipt_json_candidates 2>/dev/null); then
+    :
   else
-    tsv_receipt_validate "$path" || return 1
+    candidates=()
   fi
+
+  if ((${#candidates[@]} > 0)); then
+    for path in "${candidates[@]}"; do
+      if [[ ! -r "$path" ]]; then
+        printf 'COMPUTERS unavailable: receipt is not readable: %s\n' "$path" >&2
+        continue
+      fi
+      if json_receipt_validate "$path"; then
+        COMPUTERS_VALID_RECEIPTS+=("$path")
+        any_valid=1
+      else
+        printf 'COMPUTERS unavailable: managed node receipt is invalid or incomplete: %s\n' "$path" >&2
+      fi
+    done
+    if ((any_valid)); then
+      COMPUTERS_RECEIPT_MODE=json
+      return 0
+    fi
+    return 1
+  fi
+
+  tsv="$(receipt_tsv_source || true)"
+  if [[ -z "$tsv" ]]; then
+    printf 'COMPUTERS unavailable: no managed receipt found (checked ~/intercom/models/*.json, ~/intercom/computers/receipt.tsv, and project fallbacks).\n' >&2
+    return 1
+  fi
+  if [[ ! -r "$tsv" ]]; then
+    printf 'COMPUTERS unavailable: receipt is not readable: %s\n' "$tsv" >&2
+    return 1
+  fi
+  tsv_receipt_validate "$tsv" || return 1
+  COMPUTERS_VALID_RECEIPTS=("$tsv")
+  COMPUTERS_RECEIPT_MODE=tsv
 }
 
 tsv_body_lines() {
@@ -156,12 +253,22 @@ receipt_roster_lines() {
   fi
 }
 
-receipt_device_count() {
-  local path=$1
-  if [[ "$(receipt_kind "$path")" == json ]]; then
-    printf '1\n'
+receipt_roster_all_lines() {
+  local path
+  if [[ "${COMPUTERS_RECEIPT_MODE:-}" == json ]]; then
+    for path in "${COMPUTERS_VALID_RECEIPTS[@]}"; do
+      json_roster_lines "$path"
+    done
   else
-    tsv_body_lines "$path" | sed '/^$/d' | wc -l | tr -d ' '
+    receipt_roster_lines "${COMPUTERS_VALID_RECEIPTS[0]}"
+  fi
+}
+
+receipt_device_count() {
+  if [[ "${COMPUTERS_RECEIPT_MODE:-}" == json ]]; then
+    printf '%s\n' "${#COMPUTERS_VALID_RECEIPTS[@]}"
+  else
+    tsv_body_lines "${COMPUTERS_VALID_RECEIPTS[0]}" | sed '/^$/d' | wc -l | tr -d ' '
   fi
 }
 
@@ -204,6 +311,17 @@ receipt_models_lines() {
   fi
 }
 
+receipt_models_all_lines() {
+  local path
+  if [[ "${COMPUTERS_RECEIPT_MODE:-}" == json ]]; then
+    for path in "${COMPUTERS_VALID_RECEIPTS[@]}"; do
+      json_models_lines "$path"
+    done
+  else
+    receipt_models_lines "${COMPUTERS_VALID_RECEIPTS[0]}"
+  fi
+}
+
 case "${1:-}" in
   path)
     receipt_source || exit 1
@@ -214,19 +332,17 @@ case "${1:-}" in
       exit 1
     fi
     printf 'status=ok\n'
-    printf 'device_count=%s\n' "$(receipt_device_count "$(receipt_path)")"
+    printf 'device_count=%s\n' "$(receipt_device_count)"
     exit 0
     ;;
   roster)
-    path="$(receipt_path)"
     receipt_validate || exit 1
-    receipt_roster_lines "$path"
+    receipt_roster_all_lines
     exit 0
     ;;
   models)
-    path="$(receipt_path)"
     receipt_validate || exit 1
-    receipt_models_lines "$path"
+    receipt_models_all_lines
     exit 0
     ;;
 esac
@@ -254,50 +370,52 @@ clear_screen() {
 }
 
 header() {
-  local path
-  path="$(receipt_path)"
+  local label
+  label="$(receipt_display_label)"
   if [[ "$view" == models ]]; then
     printf '%sCOMPUTERS%s  %sMODELS%s  %s%s%s\n\n' \
       "$(cockpit_theme_heading)" "$(cockpit_theme_reset)" \
       "$(cockpit_theme_style accent '' 1)" "$(cockpit_theme_reset)" \
-      "$(cockpit_theme_muted)" "${path:-managed intercom receipt}" "$(cockpit_theme_reset)"
-    printf 'Read-only model catalog from receipt  ·  press r for roster\n\n'
+      "$(cockpit_theme_muted)" "$label" "$(cockpit_theme_reset)"
+    printf 'Read-only model catalog from receipts  ·  press r for roster\n\n'
   else
     printf '%sCOMPUTERS%s  %s%s%s\n\n' \
       "$(cockpit_theme_heading)" "$(cockpit_theme_reset)" \
-      "$(cockpit_theme_muted)" "${path:-managed intercom receipt}" "$(cockpit_theme_reset)"
+      "$(cockpit_theme_muted)" "$label" "$(cockpit_theme_reset)"
     printf 'Read-only device roster  ·  press m for MODELS\n\n'
   fi
 }
 
 render_roster() {
-  local path id name kind status models
-  path="$(receipt_path)"
+  local id name kind status models
   printf '%-14s %-18s %-8s %-8s %s\n' 'DEVICE' 'NAME' 'KIND' 'STATUS' 'MODELS'
   printf '%s\n' '────────────────────────────────────────────────────────────────'
   while IFS=$'\t' read -r id name kind status models || [[ -n "$id" ]]; do
     [[ -z "$id" ]] && continue
     printf '%-14s %-18s %-8s %-8s %s\n' "$id" "$name" "$kind" "$status" "${models:-}"
-  done < <(receipt_roster_lines "$path")
+  done < <(receipt_roster_all_lines)
 }
 
 render_models() {
-  local path device model
-  path="$(receipt_path)"
+  local device model
   printf '%-14s %s\n' 'DEVICE' 'MODEL'
   printf '%s\n' '──────────────────────────────'
   while IFS=$'\t' read -r device model || [[ -n "$device" ]]; do
     [[ -z "$device" ]] && continue
     printf '%-14s %s\n' "$device" "$model"
-  done < <(receipt_models_lines "$path")
+  done < <(receipt_models_all_lines)
 }
 
 render() {
+  local validation_ok=1
   clear_screen
-  header
   if ! receipt_validate >/dev/null 2>&1; then
+    validation_ok=0
+  fi
+  header
+  if ((validation_ok == 0)); then
     printf 'COMPUTERS unavailable: the managed receipt is missing or incomplete.\n'
-    printf 'Sync intercom or provide models/deck.json or computers/receipt.tsv under the active project.\n'
+    printf 'Sync intercom or provide models/*.json or computers/receipt.tsv under the active project.\n'
     return 0
   fi
   if [[ "$view" == models ]]; then
@@ -392,9 +510,11 @@ else
   printf 'Open the COMPUTERS page to render the managed receipt roster.\n'
 fi
 
-source_path="$(receipt_path)"
-if [[ -n "$source_path" ]]; then
-  watch_dir="$(dirname -- "$source_path")"
+receipt_validate >/dev/null 2>&1 || true
+if [[ "${COMPUTERS_RECEIPT_MODE:-}" == json ]]; then
+  watch_dir="$(receipt_json_directory || true)"
+elif ((${#COMPUTERS_VALID_RECEIPTS[@]} > 0)); then
+  watch_dir="$(dirname -- "${COMPUTERS_VALID_RECEIPTS[0]}")"
 elif [[ -d "${COCKPIT_INTERCOM_HOME:-$HOME/intercom}/models" ]]; then
   watch_dir="${COCKPIT_INTERCOM_HOME:-$HOME/intercom}/models"
 elif [[ -d "${COCKPIT_INTERCOM_HOME:-$HOME/intercom}/computers" ]]; then

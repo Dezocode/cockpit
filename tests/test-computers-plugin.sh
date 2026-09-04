@@ -62,6 +62,7 @@ chmod +x "$fakebin/tmux"
 computers="$repo_root/bin/cockpit-computers"
 fixture="$repo_root/tests/fixtures/computers-receipt.tsv"
 json_fixture="$repo_root/tests/fixtures/deck.json"
+json_sol_fixture="$repo_root/tests/fixtures/deck-sol.json"
 
 missing_output="$("$computers" check 2>&1 || true)"
 grep -Eqi 'missing|no managed receipt' <<<"$missing_output"
@@ -85,6 +86,14 @@ fi
 
 models_output="$("$computers" models)"
 grep -q $'dezodeck\tlocal/Qwen3.5-4B' <<<"$models_output"
+
+install -m 0644 "$json_sol_fixture" "$intercom_home/models/deck-sol.json"
+dual_check="$("$computers" check)"
+grep -q '^device_count=2$' <<<"$dual_check"
+dual_roster="$("$computers" roster)"
+grep -q $'dezodeck\tdeck-sol\tnode\tonline' <<<"$dual_roster"
+rm -f "$intercom_home/models/deck-sol.json"
+grep -q '^device_count=1$' <<<"$("$computers" check)"
 
 printf '%s\n' '{"schema":1,"node":"deck"}' >"$intercom_home/models/deck.json"
 if "$computers" check >/dev/null 2>&1; then

@@ -12,17 +12,21 @@ entrypoint=computers
 
 ## Source contract (fail-closed)
 
-Receipt order (the JSON receipt is the live node contract):
+Receipt order (JSON node receipts are the live contract):
 
-1. `$COCKPIT_INTERCOM_HOME/models/deck.json` (default `~/intercom/models/deck.json`)
+1. `$COCKPIT_INTERCOM_HOME/models/*.json` (default `~/intercom/models/*.json`)
+   — one logical node per file
 2. `$COCKPIT_INTERCOM_HOME/computers/receipt.tsv` (legacy compatibility)
-3. `$COCKPIT_PROJECT/models/deck.json` (cwd-relative project fallback)
+3. `$COCKPIT_PROJECT/models/*.json` (cwd-relative project fallback)
 4. `$COCKPIT_PROJECT/computers/receipt.tsv` (cwd-relative project fallback)
 
-If the preferred JSON receipt exists but is invalid or unreadable, COMPUTERS
-shows an explicit error and does not fall through to another source. Cockpit
-does not attach to remote hosts, spawn cross-device daemons, scrape workspace
-aspects, dispatch commands, or synthesize roster rows.
+Each readable `models/<node>.json` is validated independently. Valid receipts
+each produce one roster row; invalid files are omitted with a visible
+fail-closed message and do not invent rows. If every JSON file in the active
+models directory is invalid or unreadable, COMPUTERS exits closed and does not
+fall through to TSV. Cockpit does not attach to remote hosts, spawn
+cross-device daemons, scrape workspace aspects, dispatch commands, or synthesize
+roster rows.
 
 ## Legacy TSV format
 
@@ -38,7 +42,7 @@ local	This host	local	online	codex
 
 ## Node JSON format
 
-The node-local `models/deck.json` receipt is schema 1:
+Each node-local `models/<node>.json` receipt is schema 1:
 
 ```json
 {
@@ -57,15 +61,16 @@ The node-local `models/deck.json` receipt is schema 1:
 }
 ```
 
-`node` and the first non-empty `tailscale_hostname=` note identify the one
-receipt-backed roster node. Runtime/model rows are read-only projections; no
-Surface-to-node SSH or command bus is opened by COMPUTERS.
+`node` is the logical id (one roster row per receipt file). The first non-empty
+`tailscale_hostname=` note supplies the device/host column when present; multiple
+logical nodes may share one Tailscale hostname. Runtime/model rows are read-only
+projections; no Surface-to-node SSH or command bus is opened by COMPUTERS.
 
 ## CLI entry points
 
 | Command | Output |
 |---------|--------|
-| `computers path` | Resolved receipt path (stdout) |
+| `computers path` | Resolved receipt path(s) (stdout; one per valid JSON node file) |
 | `computers check` | `status=ok`, `device_count=N` or non-zero exit + message |
 | `computers roster` | Body lines (no header) for the default roster subview |
 | `computers models` | Aggregated model lines for the `m` subview inside COMPUTERS |

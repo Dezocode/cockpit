@@ -8,6 +8,7 @@ trap 'rm -rf -- "$test_root"' EXIT
 runtime_path="$repo_root/bin:$HOME/.local/bin:$PATH"
 fixture="$repo_root/tests/fixtures/computers-receipt.tsv"
 json_fixture="$repo_root/tests/fixtures/deck.json"
+json_sol_fixture="$repo_root/tests/fixtures/deck-sol.json"
 
 command -v jq >/dev/null 2>&1 || {
   printf 'jq is required for the managed node receipt test\n' >&2
@@ -49,6 +50,79 @@ json_models_output="$(
     PATH="$runtime_path" "$repo_root/bin/cockpit-computers" models
 )"
 grep -Fxq $'dezodeck\tlocal/Qwen3.5-4B' <<<"$json_models_output"
+
+install -m 0644 "$json_sol_fixture" "$test_root/home/intercom/models/deck-sol.json"
+dual_path_output="$(
+  cd -- "$repo_root"
+  HOME="$test_root/home" COCKPIT_INTERCOM_HOME="$test_root/home/intercom" \
+    PATH="$runtime_path" "$repo_root/bin/cockpit-computers" path
+)"
+grep -Fxq "$test_root/home/intercom/models/deck.json" <<<"$dual_path_output"
+grep -Fxq "$test_root/home/intercom/models/deck-sol.json" <<<"$dual_path_output"
+
+dual_check_output="$(
+  cd -- "$repo_root"
+  HOME="$test_root/home" COCKPIT_INTERCOM_HOME="$test_root/home/intercom" \
+    PATH="$runtime_path" "$repo_root/bin/cockpit-computers" check
+)"
+grep -Fxq 'status=ok' <<<"$dual_check_output"
+grep -Fxq 'device_count=2' <<<"$dual_check_output"
+
+dual_roster_output="$(
+  cd -- "$repo_root"
+  HOME="$test_root/home" COCKPIT_INTERCOM_HOME="$test_root/home/intercom" \
+    PATH="$runtime_path" "$repo_root/bin/cockpit-computers" roster
+)"
+grep -Fxq $'dezodeck\tdeck\tnode\tonline\tlocal/Qwen3.5-4B' <<<"$dual_roster_output"
+grep -Fxq $'dezodeck\tdeck-sol\tnode\tonline\tlocal/Sol-8B' <<<"$dual_roster_output"
+
+dual_models_output="$(
+  cd -- "$repo_root"
+  HOME="$test_root/home" COCKPIT_INTERCOM_HOME="$test_root/home/intercom" \
+    PATH="$runtime_path" "$repo_root/bin/cockpit-computers" models
+)"
+grep -Fxq $'dezodeck\tlocal/Qwen3.5-4B' <<<"$dual_models_output"
+grep -Fxq $'dezodeck\tlocal/Sol-8B' <<<"$dual_models_output"
+
+rm -f "$test_root/home/intercom/models/deck-sol.json"
+single_check_output="$(
+  cd -- "$repo_root"
+  HOME="$test_root/home" COCKPIT_INTERCOM_HOME="$test_root/home/intercom" \
+    PATH="$runtime_path" "$repo_root/bin/cockpit-computers" check
+)"
+grep -Fxq 'device_count=1' <<<"$single_check_output"
+if grep -Fq 'deck-sol' <<<"$(
+  cd -- "$repo_root"
+  HOME="$test_root/home" COCKPIT_INTERCOM_HOME="$test_root/home/intercom" \
+    PATH="$runtime_path" "$repo_root/bin/cockpit-computers" roster
+)"; then
+  printf 'COMPUTERS invented a deck-sol row without deck-sol.json\n' >&2
+  exit 1
+fi
+
+install -m 0644 "$json_sol_fixture" "$test_root/home/intercom/models/deck-sol.json"
+printf '%s\n' '{"schema":1,"node":"deck-sol"}' >"$test_root/home/intercom/models/deck-sol.json"
+partial_log="$test_root/partial-invalid.log"
+partial_check_output="$(
+  cd -- "$repo_root"
+  HOME="$test_root/home" COCKPIT_INTERCOM_HOME="$test_root/home/intercom" \
+    PATH="$runtime_path" "$repo_root/bin/cockpit-computers" check 2>"$partial_log"
+)"
+grep -Fxq 'status=ok' <<<"$partial_check_output"
+grep -Fxq 'device_count=1' <<<"$partial_check_output"
+grep -Fq 'deck-sol.json' "$partial_log"
+grep -Fq 'invalid or incomplete' "$partial_log"
+partial_roster_output="$(
+  cd -- "$repo_root"
+  HOME="$test_root/home" COCKPIT_INTERCOM_HOME="$test_root/home/intercom" \
+    PATH="$runtime_path" "$repo_root/bin/cockpit-computers" roster
+)"
+grep -Fxq $'dezodeck\tdeck\tnode\tonline\tlocal/Qwen3.5-4B' <<<"$partial_roster_output"
+if grep -Fq 'deck-sol' <<<"$partial_roster_output"; then
+  printf 'COMPUTERS rendered an invalid deck-sol receipt row\n' >&2
+  exit 1
+fi
+rm -f "$test_root/home/intercom/models/deck-sol.json"
 
 output="$(
   cd -- "$repo_root"
