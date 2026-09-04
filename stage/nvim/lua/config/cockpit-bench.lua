@@ -380,14 +380,13 @@ function M.render_runs_col()
 end
 
 local function draw_backlink_chip_lines(kind, run_id, width)
-  local inner = math.max(1, width - 2)
+  local inner = math.max(1, width)
   local label = clip(kind or "backlink", inner)
   local rid = truncate_run_id(run_id, inner)
-  local top = "+" .. string.rep("-", inner) .. "+"
-  local mid1 = "|" .. center_text(label, inner) .. "|"
-  local mid2 = "|" .. center_text(rid, inner) .. "|"
-  local bot = "+" .. string.rep("-", inner) .. "+"
-  return { top, mid1, mid2, bot }
+  return {
+    center_text(label, inner),
+    center_text(rid, inner),
+  }
 end
 
 function M.render_detail_col()
@@ -462,20 +461,14 @@ function M.render_detail_col()
   end
   for _, chip in ipairs(state.chip_rows) do
     local label_group = chip.selected and "CockpitBenchChipSel" or "CockpitBenchChip"
-    for r = chip.start, chip.start + 3 do
+    for r = chip.start, chip.start + 1 do
       local line = lines[r + 1] or ""
       local line_end = math.max(0, #line)
       vim.api.nvim_buf_add_highlight(buf, NS, "CockpitBenchChipFill", r, 0, line_end)
-      if r == chip.start or r == chip.start + 3 then
-        vim.api.nvim_buf_add_highlight(buf, NS, "CockpitBenchChipBorder", r, 0, line_end)
-      elseif r == chip.start + 1 then
-        vim.api.nvim_buf_add_highlight(buf, NS, "CockpitBenchChipBorder", r, 0, 1)
-        vim.api.nvim_buf_add_highlight(buf, NS, label_group, r, 1, math.max(1, line_end - 1))
-        vim.api.nvim_buf_add_highlight(buf, NS, "CockpitBenchChipBorder", r, math.max(0, line_end - 1), line_end)
-      elseif r == chip.start + 2 then
-        vim.api.nvim_buf_add_highlight(buf, NS, "CockpitBenchChipBorder", r, 0, 1)
-        vim.api.nvim_buf_add_highlight(buf, NS, "CockpitBenchChipId", r, 1, math.max(1, line_end - 1))
-        vim.api.nvim_buf_add_highlight(buf, NS, "CockpitBenchChipBorder", r, math.max(0, line_end - 1), line_end)
+      if r == chip.start then
+        vim.api.nvim_buf_add_highlight(buf, NS, label_group, r, 0, line_end)
+      else
+        vim.api.nvim_buf_add_highlight(buf, NS, "CockpitBenchChipId", r, 0, line_end)
       end
     end
   end
@@ -669,7 +662,7 @@ end
 
 local function chip_at_line(line0)
   for _, chip in ipairs(state.chip_rows) do
-    if line0 >= chip.start and line0 <= chip.start + 3 then
+    if line0 >= chip.start and line0 <= chip.start + 1 then
       return chip.bl_idx
     end
   end
