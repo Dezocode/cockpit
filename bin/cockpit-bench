@@ -285,404 +285,100 @@ bench_render_absent() {
   printf 'Cockpit does not write scores; Proctor is the sole writer.\n'
 }
 
-bench_drill_once() {
-  if ! bench_validate >/dev/null 2>&1; then
-    bench_render_absent
-    return 1
+bench_nvim_listen=''
+bench_nvim_theme_init=''
+bench_nvim_layout_init=''
+
+bench_resolve_nvim_paths() {
+  local config_home script_root
+  script_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+  config_home="$(cockpit_config_home)"
+  bench_nvim_theme_init="${COCKPIT_NVIM_THEME_INIT:-$config_home/nvim/cockpit-diff.lua}"
+  if [[ ! -f "$bench_nvim_theme_init" ]]; then
+    bench_nvim_theme_init="$script_root/../stage/nvim/lua/config/cockpit-diff.lua"
   fi
-  local display_root="$BENCH_ROOT"
-  # Keep stdin attached to the pane so curses can receive keys; fd 3 carries
-  # the embedded UI source separately.
-  python3 /dev/fd/3 "$BENCH_ROOT" "$(bench_db)" "$display_root" 3<<'PY'
-import curses
-import os
-import sqlite3
-import sys
+  bench_nvim_layout_init="${COCKPIT_NVIM_BENCH_LAYOUT_INIT:-$config_home/nvim/cockpit-bench.lua}"
+  if [[ ! -f "$bench_nvim_layout_init" ]]; then
+    bench_nvim_layout_init="$script_root/../stage/nvim/lua/config/cockpit-bench.lua"
+  fi
+}
 
-ROOT, DB, DISPLAY_ROOT = sys.argv[1], sys.argv[2], sys.argv[3]
+bench_refresh_nvim() {
+  [[ -n "$bench_nvim_listen" && -S "$bench_nvim_listen" ]] || return 0
+  nvim --server "$bench_nvim_listen" --remote-send \
+    '<Cmd>lua dofile(vim.env.COCKPIT_NVIM_BENCH_LAYOUT_INIT).refresh()<CR>' \
+    >/dev/null 2>&1 || true
+}
 
-NAV_LEFT = "cockpit · MEMORY  COMPUTERS  MODELS  BENCH  FILES  PRS"
-NAV_RIGHT = "BENCH  ghui  read-only"
+bench_follow_proctor() {
+  local watch_dir=${1:-}
+  [[ -n "$watch_dir" ]] || return 0
+  cockpit_event_watch "$watch_dir" \
+    -e close_write,moved_to,create,delete \
+    --exclude "$cockpit_noise_exclude"
+  while cockpit_event_read; do
+    case "$COCKPIT_EVENT" in
+      QUIT) exit 0 ;;
+      WAKE)
+        if cockpit_view_visible; then
+          bench_refresh_nvim
+        fi
+        continue
+        ;;
+    esac
+    sleep "$COCKPIT_DEBOUNCE"
+    cockpit_event_drain >/dev/null
+    if cockpit_view_visible; then
+      bench_refresh_nvim
+    fi
+  done
+}
 
+bench_launch_nvim() {
+  local absent=0 db display_root
+  bench_resolve_nvim_paths
+  bench_nvim_listen="$(cockpit_runtime_home)/nvim.bench.$$.sock"
+  mkdir -p "$(cockpit_runtime_home)"
+  if ! bench_validate >/dev/null 2>&1; then
+    absent=1
+    db=''
+    display_root=''
+  else
+    db="$(bench_db)"
+    display_root="$BENCH_ROOT"
+  fi
+  export COCKPIT_BENCH_DB="$db"
+  export COCKPIT_BENCH_ROOT="$display_root"
+  export COCKPIT_BENCH_ABSENT="$absent"
+  export COCKPIT_NVIM_BENCH_LAYOUT_INIT="$bench_nvim_layout_init"
+  if ((once)); then
+    export COCKPIT_BENCH_ONCE=1
+  else
+    unset COCKPIT_BENCH_ONCE
+  fi
 
-def connect():
-    conn = sqlite3.connect(f"file:{DB}?mode=ro", uri=True)
-    conn.row_factory = sqlite3.Row
-    return conn
+  local nvim_args=(--listen "$bench_nvim_listen")
+  if [[ -f "$bench_nvim_theme_init" ]]; then
+    export COCKPIT_NVIM_THEME_INIT="$bench_nvim_theme_init"
+    nvim_args+=(-c 'lua dofile(vim.env.COCKPIT_NVIM_THEME_INIT).setup()')
+  fi
+  if [[ -f "$bench_nvim_layout_init" ]]; then
+    nvim_args+=(-c 'lua dofile(vim.env.COCKPIT_NVIM_BENCH_LAYOUT_INIT).setup()')
+  fi
+  nvim_args+=(-c 'set errorbells visualbell belloff=all shortmess+=I nonumber norelativenumber signcolumn=no foldcolumn=0')
 
+  if ((once)); then
+  exec nvim "${nvim_args[@]}"
+  fi
 
-def display_data_path(path):
-    home = os.path.expanduser("~")
-    if path.startswith(home):
-        return "~" + path[len(home) :]
-    return path
-
-
-def fetch_models(conn):
-    cur = conn.execute(
-        "SELECT model_id, model_id AS name, agent_class FROM models ORDER BY model_id"
-    )
-    return [(r["model_id"], r["name"], r["agent_class"]) for r in cur.fetchall()]
-
-
-def fetch_runs(conn, model_id):
-    cur = conn.execute(
-        """SELECT run_id, model_id,
-                  COALESCE(role, '') AS role,
-                  COALESCE(campaign, '') AS campaign,
-                  COALESCE(disposition, 'ABSENT') AS status,
-                  COALESCE(scored_at, '') AS scored_at
-           FROM runs WHERE model_id = ? ORDER BY scored_at DESC, run_id""",
-        (model_id,),
-    )
-    return [dict(r) for r in cur.fetchall()]
-
-
-def fetch_run(conn, run_id):
-    cur = conn.execute(
-        """SELECT r.run_id, r.model_id, m.agent_class,
-                  COALESCE(role, '') AS role,
-                  COALESCE(campaign, '') AS campaign,
-                  COALESCE(disposition, 'ABSENT') AS status,
-                  COALESCE(scored_at, '') AS scored_at
-           FROM runs r JOIN models m ON m.model_id = r.model_id
-           WHERE r.run_id = ? LIMIT 1""",
-        (run_id,),
-    )
-    row = cur.fetchone()
-    return dict(row) if row else None
-
-
-def fetch_backlinks(conn, run_id):
-    cur = conn.execute(
-        """SELECT rl.to_run_id, rl.link_kind, r.model_id
-           FROM run_links rl JOIN runs r ON r.run_id = rl.to_run_id
-           WHERE rl.from_run_id = ? ORDER BY rl.link_kind, rl.to_run_id""",
-        (run_id,),
-    )
-    return [dict(r) for r in cur.fetchall()]
-
-
-def model_site(conn, model_id):
-    row = conn.execute(
-        "SELECT agent_class FROM models WHERE model_id = ? LIMIT 1", (model_id,)
-    ).fetchone()
-    if not row or not row[0]:
-        return "ABSENT"
-    agent_class = str(row[0])
-    if agent_class == "local":
-        return "local"
-    if "frontier" in agent_class:
-        return "frontier"
-    return agent_class
-
-
-def truncate_run_id(run_id, width=12):
-    if len(run_id) <= width:
-        return run_id
-    return run_id[:8] + "..."
-
-
-def init_colors():
-    if not curses.has_colors():
-        return None
-    curses.start_color()
-    curses.use_default_colors()
-    curses.init_pair(1, curses.COLOR_CYAN, -1)      # selection cursor
-    curses.init_pair(2, curses.COLOR_YELLOW, -1)    # backlink header / chips
-    curses.init_pair(3, curses.COLOR_WHITE, -1)     # default text
-    curses.init_pair(4, 8, -1)                      # dim / muted (bright black)
-    return {
-        "sel": curses.color_pair(1),
-        "yellow": curses.color_pair(2),
-        "dim": curses.color_pair(4),
-        "bold": curses.A_BOLD,
-    }
-
-
-def clip(text, width):
-    if width <= 0:
-        return ""
-    return text[: max(0, width - 1)]
-
-
-def draw_top_chrome(stdscr, width, colors):
-    left = clip(NAV_LEFT, max(1, width - len(NAV_RIGHT) - 2))
-    stdscr.addstr(0, 0, left, colors["dim"] if colors else 0)
-    stdscr.addstr(0, max(0, width - len(NAV_RIGHT)), NAV_RIGHT, colors["bold"] if colors else curses.A_BOLD)
-
-
-def draw_footer(stdscr, height, width, colors):
-    line = (
-        f"t524u ghui  ·  Esc=pop  Enter=drill/backlink  ·  "
-        f"data: {display_data_path(DISPLAY_ROOT)}/  ·  writer: Proctor"
-    )
-    stdscr.addstr(height - 1, 0, clip(line, width), colors["dim"] if colors else 0)
-
-
-def column_bounds(width):
-    c1 = width // 3
-    c2 = (width * 2) // 3
-    return c1, c2
-
-
-def draw_vrules(stdscr, top, bottom, c1, c2, colors):
-    attr = colors["dim"] if colors else 0
-    for row in range(top, bottom):
-        stdscr.addch(row, c1, "|", attr)
-        stdscr.addch(row, c2, "|", attr)
-
-
-def draw_models_col(stdscr, conn, models, model_idx, focus_col, x0, x1, y0, y1, colors):
-    stdscr.addstr(y0, x0 + 1, "Models", colors["bold"] if colors else curses.A_BOLD)
-    row = y0 + 2
-    for i, item in enumerate(models):
-        if row >= y1 - 1:
-            break
-        mid = item[0]
-        agent_class = item[2] if len(item) > 2 else ""
-        if "frontier" in str(agent_class):
-            site = "frontier"
-        elif str(agent_class) == "local":
-            site = "local"
-        else:
-            site = model_site(conn, mid)
-        cursor = ">" if focus_col == 0 and i == model_idx else " "
-        site_attr = colors["dim"] if site == "ABSENT" and colors else 0
-        if focus_col == 0 and i == model_idx and colors:
-            stdscr.addstr(row, x0 + 1, cursor, colors["sel"] | curses.A_BOLD)
-        else:
-            stdscr.addstr(row, x0 + 1, cursor)
-        name_w = max(8, (x1 - x0) - len(site) - 4)
-        stdscr.addstr(row, x0 + 3, clip(mid, name_w))
-        stdscr.addstr(row, x1 - len(site) - 1, site, site_attr)
-        row += 1
-
-
-def draw_runs_col(stdscr, runs, model_id, run_idx, focus_col, x0, x1, y0, y1, colors):
-    title = f"Runs — {model_id}" if model_id else "Runs"
-    stdscr.addstr(y0, x0 + 1, clip(title, x1 - x0 - 2), colors["bold"] if colors else curses.A_BOLD)
-    row = y0 + 2
-    if not model_id:
-        stdscr.addstr(row, x0 + 1, "ABSENT", colors["dim"] if colors else 0)
-        return
-    if not runs:
-        stdscr.addstr(row, x0 + 1, "ABSENT", colors["dim"] if colors else 0)
-        return
-    for i, run in enumerate(runs):
-        if row >= y1 - 2:
-            break
-        cursor = ">" if focus_col == 1 and i == run_idx else " "
-        if focus_col == 1 and i == run_idx and colors:
-            stdscr.addstr(row, x0 + 1, cursor, colors["sel"] | curses.A_BOLD)
-        else:
-            stdscr.addstr(row, x0 + 1, cursor)
-        stdscr.addstr(row, x0 + 3, clip(run["run_id"], x1 - x0 - 4))
-        row += 1
-        status = run.get("status") or "ABSENT"
-        stdscr.addstr(row, x0 + 3, clip(status, x1 - x0 - 4), colors["dim"] if colors else 0)
-        row += 1
-
-
-def draw_backlink_chip(stdscr, y, x, w, kind, run_id, selected, colors):
-    label = clip(kind or "backlink", w - 4)
-    rid = truncate_run_id(run_id, max(8, w - 6))
-    attr = colors["yellow"] if colors else 0
-    if selected and colors:
-        attr |= curses.A_BOLD
-    top = "┌" + "-" * (w - 2) + "┐"
-    mid1 = "|" + label.center(max(1, w - 2))[: w - 2].ljust(w - 2) + "|"
-    mid2 = "|" + rid.center(max(1, w - 2))[: w - 2].ljust(w - 2) + "|"
-    bot = "└" + "-" * (w - 2) + "┘"
-    for i, line in enumerate((top, mid1, mid2, bot)):
-        stdscr.addstr(y + i, x, clip(line, w), attr)
-
-
-def draw_detail_col(stdscr, run, backlinks, bl_idx, focus_col, x0, x1, y0, y1, colors):
-    stdscr.addstr(y0, x0 + 1, "Run + backlinks", colors["bold"] if colors else curses.A_BOLD)
-    row = y0 + 2
-    if not run:
-        stdscr.addstr(row, x0 + 1, "ABSENT", colors["dim"] if colors else 0)
-        return
-    stdscr.addstr(row, x0 + 1, "run_id (selected)", colors["dim"] if colors else 0)
-    row += 1
-    stdscr.addstr(row, x0 + 1, clip(run["run_id"], x1 - x0 - 2))
-    row += 1
-    metadata = " · ".join(
-        value
-        for value in (
-            run.get("model_id"),
-            run.get("agent_class"),
-            run.get("role"),
-            run.get("campaign"),
-            run.get("status"),
-        )
-        if value
-    )
-    if metadata:
-        stdscr.addstr(row, x0 + 1, clip(metadata, x1 - x0 - 2), colors["dim"] if colors else 0)
-        row += 1
-    row += 1
-    stdscr.addstr(row, x0 + 1, "Backlinks (Enter → jump)", colors["yellow"] if colors else 0)
-    row += 2
-    if not backlinks:
-        stdscr.addstr(row, x0 + 1, "ABSENT", colors["dim"] if colors else 0)
-        return
-    chip_w = min(22, max(14, x1 - x0 - 4))
-    for i, link in enumerate(backlinks):
-        if row + 4 >= y1:
-            break
-        selected = focus_col == 2 and i == bl_idx
-        draw_backlink_chip(
-            stdscr,
-            row,
-            x0 + 1,
-            chip_w,
-            link.get("link_kind") or "backlink",
-            link["to_run_id"],
-            selected,
-            colors,
-        )
-        row += 5
-
-
-def main(stdscr):
-    curses.curs_set(0)
-    stdscr.keypad(True)
-    colors = init_colors()
-    conn = connect()
-    models = fetch_models(conn)
-    model_idx = 0
-    run_idx = 0
-    bl_idx = 0
-    focus_col = 0
-    jump_stack = []
-
-    def current_model():
-        return models[model_idx][0] if models else None
-
-    def current_runs():
-        mid = current_model()
-        return fetch_runs(conn, mid) if mid else []
-
-    def current_run_id():
-        runs = current_runs()
-        if not runs or run_idx >= len(runs):
-            return None
-        return runs[run_idx]["run_id"]
-
-    def sync_run_bounds():
-        nonlocal run_idx
-        runs = current_runs()
-        if not runs:
-            run_idx = 0
-            return
-        if run_idx >= len(runs):
-            run_idx = max(0, len(runs) - 1)
-
-    def select_run_by_id(run_id):
-        nonlocal model_idx, run_idx, focus_col
-        runs = current_runs()
-        for i, run in enumerate(runs):
-            if run["run_id"] == run_id:
-                run_idx = i
-                focus_col = 1
-                return True
-        run = fetch_run(conn, run_id)
-        if not run:
-            return False
-        for i, row in enumerate(models):
-            mid = row[0]
-            if mid == run["model_id"]:
-                model_idx = i
-                break
-        runs = current_runs()
-        for i, r in enumerate(runs):
-            if r["run_id"] == run_id:
-                run_idx = i
-                focus_col = 1
-                return True
-        return False
-
-    while True:
-        height, width = stdscr.getmaxyx()
-        body_top = 2
-        body_bottom = height - 2
-        c1, c2 = column_bounds(width)
-        stdscr.erase()
-        draw_top_chrome(stdscr, width, colors)
-        stdscr.hline(1, 0, "-", width)
-        draw_vrules(stdscr, body_top, body_bottom, c1, c2, colors)
-
-        model_id = current_model()
-        runs = current_runs()
-        sync_run_bounds()
-        run_id = current_run_id()
-        run = fetch_run(conn, run_id) if run_id else None
-        backlinks = fetch_backlinks(conn, run_id) if run_id else []
-
-        draw_models_col(stdscr, conn, models, model_idx, focus_col, 0, c1, body_top, body_bottom, colors)
-        draw_runs_col(stdscr, runs, model_id, run_idx, focus_col, c1 + 1, c2, body_top, body_bottom, colors)
-        draw_detail_col(stdscr, run, backlinks, bl_idx, focus_col, c2 + 1, width, body_top, body_bottom, colors)
-        draw_footer(stdscr, height, width, colors)
-        stdscr.refresh()
-
-        key = stdscr.getch()
-        if key in (ord("q"), ord("Q")):
-            return 0
-        if key == 27:  # Esc
-            if jump_stack:
-                prev = jump_stack.pop()
-                select_run_by_id(prev)
-            elif focus_col > 0:
-                focus_col -= 1
-            continue
-        if key in (curses.KEY_RIGHT, ord("\t"), 9):
-            focus_col = min(2, focus_col + 1)
-            continue
-        if key == curses.KEY_LEFT:
-            focus_col = max(0, focus_col - 1)
-            continue
-        if key in (curses.KEY_UP, ord("k")):
-            if focus_col == 0 and model_idx > 0:
-                model_idx -= 1
-                run_idx = 0
-                bl_idx = 0
-            elif focus_col == 1 and run_idx > 0:
-                run_idx -= 1
-                bl_idx = 0
-            elif focus_col == 2 and bl_idx > 0:
-                bl_idx -= 1
-            continue
-        if key in (curses.KEY_DOWN, ord("j")):
-            if focus_col == 0 and model_idx < len(models) - 1:
-                model_idx += 1
-                run_idx = 0
-                bl_idx = 0
-            elif focus_col == 1 and run_idx < len(runs) - 1:
-                run_idx += 1
-                bl_idx = 0
-            elif focus_col == 2 and bl_idx < len(backlinks) - 1:
-                bl_idx += 1
-            continue
-        if key in (10, 13, curses.KEY_ENTER):
-            if focus_col == 0:
-                focus_col = 1
-            elif focus_col == 1:
-                focus_col = 2
-            elif focus_col == 2 and backlinks and bl_idx < len(backlinks):
-                peer = backlinks[bl_idx]["to_run_id"]
-                if run_id:
-                    jump_stack.append(run_id)
-                select_run_by_id(peer)
-                bl_idx = 0
-            continue
-    return 0
-
-
-if __name__ == "__main__":
-    raise SystemExit(curses.wrapper(main))
-PY
+  local watch_dir="${BENCH_ROOT:-}"
+  if [[ -z "$watch_dir" ]]; then
+    watch_dir="${COCKPIT_PROCTOR_HOME:-${COCKPIT_INTERCOM_HOME:-$HOME/intercom}/proctor}"
+  fi
+  bench_follow_proctor "$watch_dir" &
+  local watcher_pid=$!
+  trap 'cockpit_event_close; kill "$watcher_pid" 2>/dev/null || true; rm -f "$bench_nvim_listen"; rm -f "$(cockpit_wake_dir "$session")/BENCH.pid"' EXIT
+  exec nvim "${nvim_args[@]}"
 }
 
 clear_screen() {
@@ -694,18 +390,11 @@ if ((once)); then
     bench_render_absent
     exit 1
   fi
-  bench_drill_once
-  exit 0
+  bench_launch_nvim
 fi
 
 session="$(tmux display-message -p '#{session_name}' 2>/dev/null || echo unknown)"
 COCKPIT_DEBOUNCE=0.25
-
-maybe_render() {
-  if cockpit_view_visible; then
-    bench_interactive_session
-  fi
-}
 
 if [[ "$session" == unknown ]]; then
   printf 'BENCH idle: open the Cockpit BENCH page from the managed session.\n'
@@ -722,35 +411,12 @@ bench_idle_message() {
   printf 'Open the BENCH page or press a wake to render the Proctor bench drill.\n'
 }
 
-bench_interactive_session() {
-  if ! bench_validate >/dev/null 2>&1; then
-    bench_render_absent
-    return 0
-  fi
-  bench_drill_once || true
-}
-
-if cockpit_view_visible; then
-  bench_interactive_session
-else
+if ! cockpit_view_visible; then
   bench_idle_message
+  while cockpit_event_read; do
+    [[ "$COCKPIT_EVENT" == "WAKE" ]] && break
+    cockpit_view_visible && break
+  done
 fi
 
-bench_validate >/dev/null 2>&1 || true
-watch_dir="${BENCH_ROOT:-}"
-if [[ -z "$watch_dir" ]]; then
-  watch_dir="${COCKPIT_PROCTOR_HOME:-${COCKPIT_INTERCOM_HOME:-$HOME/intercom}/proctor}"
-fi
-
-cockpit_event_watch "$watch_dir" \
-  -e close_write,moved_to,create,delete \
-  --exclude "$cockpit_noise_exclude"
-
-while cockpit_event_read; do
-  case "$COCKPIT_EVENT" in
-    QUIT) exit 0 ;;
-    WAKE) maybe_render; continue ;;
-  esac
-  sleep "$COCKPIT_DEBOUNCE"
-  maybe_render
-done
+bench_launch_nvim

@@ -37,7 +37,8 @@ tmux_test() {
 
 bench() {
   env HOME="$test_root/home" XDG_RUNTIME_DIR="$runtime_dir" \
-    PATH="$repo_root/bin:/usr/bin:/bin" "$repo_root/bin/cockpit-bench" "$@"
+    PATH="$repo_root/.local/bin:$repo_root/bin:/usr/bin:/bin" \
+    "$repo_root/bin/cockpit-bench" "$@"
 }
 
 mkdir -p "$mirror/db" "$missing" "$box/db" "$project" "$runtime_dir" \
@@ -179,16 +180,27 @@ if rg -n -i '/workspace/bench|COCKPIT_BENCH_HOME|(^|[[:space:]])ssh([[:space:]]|
   "$repo_root/bin/cockpit-bench" "$repo_root/plugins/cockpit-bench/bench"; then
   fail 'BENCH surface contains a Box, remote-session, or write path'
 fi
-grep -Fq 'cockpit · MEMORY  COMPUTERS  MODELS  BENCH  FILES  PRS' "$repo_root/bin/cockpit-bench" ||
+grep -Fq 'COCKPIT_NVIM_BENCH_LAYOUT_INIT' "$repo_root/bin/cockpit-bench" ||
+  fail 'BENCH does not use the canonized nvim layout path'
+grep -Fq 'exec nvim' "$repo_root/bin/cockpit-bench" ||
+  fail 'BENCH does not exec nvim like the FILES surface family'
+layout="$repo_root/stage/nvim/lua/config/cockpit-bench.lua"
+grep -Fq 'cockpit · MEMORY  COMPUTERS  MODELS  BENCH  FILES  PRS' "$layout" ||
   fail 'approved top-left ghui chrome is missing'
-grep -Fq 'BENCH  ghui  read-only' "$repo_root/bin/cockpit-bench" ||
+grep -Fq 'BENCH  ghui  read-only' "$layout" ||
   fail 'approved top-right ghui chrome is missing'
-grep -Fq 'Run + backlinks' "$repo_root/bin/cockpit-bench" || fail 'L3 column renderer is missing'
-pass 'source contract, plugin registry, and ghui shape'
+grep -Fq 'Run + backlinks' "$layout" || fail 'L3 column renderer is missing'
+grep -Fq 'COCKPIT_NVIM_FILES_LAYOUT_INIT' "$repo_root/bin/cockpit-files" ||
+  fail 'FILES nvim layout path regressed'
+grep -Fq 'exec nvim' "$repo_root/bin/cockpit-files" ||
+  fail 'FILES nvim surface regressed'
+grep -Fq 'wanted_width' "$repo_root/stage/nvim/lua/config/cockpit-files.lua" ||
+  fail 'FILES neo-tree sizing polish regressed'
+pass 'source contract, plugin registry, ghui shape, and FILES surface'
 
 source_hash="$(sha256sum "$mirror/db/runs.sqlite" "$mirror/MODELS_INDEX.csv" "$mirror/CROSSREF_LINKS.csv")"
-tmux_test -f /dev/null new-session -d -s "$session" -n BENCH -c "$repo_root" \
-  "export PATH=$(printf '%q' "$repo_root/bin:/usr/bin:/bin"); \
+tmux_test -f /dev/null new-session -d -s "$session" -x 220 -y 40 -n BENCH -c "$repo_root" \
+  "export PATH=$(printf '%q' "$repo_root/.local/bin:$repo_root/bin:/usr/bin:/bin"); \
 export HOME=$(printf '%q' "$test_root/home"); \
 export COCKPIT_PROCTOR_HOME=$(printf '%q' "$mirror"); \
 export XDG_RUNTIME_DIR=$(printf '%q' "$runtime_dir"); \
@@ -220,18 +232,23 @@ wait_for() {
 
 wait_for 'Models' >/dev/null || fail 'isolated BENCH pane did not render L1'
 tmux_test send-keys -t "$session:BENCH" j
+sleep 0.1
 tmux_test send-keys -t "$session:BENCH" Enter
+sleep 0.1
 wait_for 'Runs — local/Qwen3.5-4B' >/dev/null || fail 'Enter did not open L2 runs'
 tmux_test send-keys -t "$session:BENCH" Enter
+sleep 0.1
 detail="$(wait_for 'Run + backlinks')" || fail 'Enter did not open L3 run detail'
 grep -Fq 'run-local-001' <<<"$detail" || fail 'L3 detail did not show the selected run'
 grep -Fq 'sol_session_ref' <<<"$detail" || fail 'L3 detail did not show the backlink chip'
 
 tmux_test send-keys -t "$session:BENCH" Enter
+sleep 0.1
 followed="$(wait_for 'run-sol-001')" || fail 'Enter on backlink did not jump to the peer run'
 grep -Fq 'gpt-5.6-sol' <<<"$followed" || fail 'backlink jump did not select the peer model'
 
 tmux_test send-keys -t "$session:BENCH" Escape
+sleep 0.1
 popped="$(wait_for 'run-local-001')" || fail 'Esc did not pop backlink history'
 grep -Fq 'sol_session_ref' <<<"$popped" || fail 'Esc did not restore the original backlink detail'
 

@@ -1,8 +1,9 @@
 # cockpit.bench
 
 `cockpit.bench` is the read-only BENCH page. It follows the resident terminal
-page family used by FILES and provides a small ghui-style Miller drill; it
-does not launch VisiData.
+page family used by FILES and renders a ghui-style Miller drill in Neovim via
+`stage/nvim/lua/config/cockpit-bench.lua`; it does not launch VisiData or the
+embedded curses renderer.
 
 The visual contract is recorded in `aspects/bench-ghui-approved-style-t533u.md`.
 

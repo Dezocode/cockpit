@@ -167,6 +167,10 @@ if [[ ! -f "$config_home/nvim/cockpit-files.lua" ]]; then
   install -m 0644 "$root/stage/nvim/lua/config/cockpit-files.lua" \
     "$config_home/nvim/cockpit-files.lua"
 fi
+if [[ ! -f "$config_home/nvim/cockpit-bench.lua" ]]; then
+  install -m 0644 "$root/stage/nvim/lua/config/cockpit-bench.lua" \
+    "$config_home/nvim/cockpit-bench.lua"
+fi
 if [[ ! -f "$config_home/profile.conf" ]]; then
   install -m 0644 "$root/stage/profile/profile.conf" "$config_home/profile.conf"
 fi
