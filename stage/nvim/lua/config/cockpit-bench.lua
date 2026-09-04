@@ -11,8 +11,9 @@ local NS = vim.api.nvim_create_namespace("CockpitBench")
 local PUNCH_CYAN = "#5ccfe6"
 local PUNCH_GOLD = "#e6c07b"
 local PUNCH_GOLD_LABEL = "#ffcc66"
+local PUNCH_YELLOW_CHIP = "#ffcc66"
 local GOLD_LABEL_BG = "#252018"
-local CHIP_BG = "#2a2418"
+local CHIP_BG = "#4a3f18"
 
 local state = {
   focus_col = 0,
@@ -188,6 +189,7 @@ local function setup_highlights()
     cyan = PUNCH_CYAN,
     gold = PUNCH_GOLD,
     gold_label = PUNCH_GOLD_LABEL,
+    yellow_chip = PUNCH_YELLOW_CHIP,
     dim = "#6c7086",
     chrome = "#cdd6f4",
     chip_bg = CHIP_BG,
@@ -221,9 +223,16 @@ local function setup_highlights()
   vim.api.nvim_set_hl(0, "CockpitBenchNavLeft", { fg = colors.dim })
   vim.api.nvim_set_hl(0, "CockpitBenchNavRight", { fg = colors.cyan })
   vim.api.nvim_set_hl(0, "CockpitBenchNavRest", { fg = colors.dim })
-  vim.api.nvim_set_hl(0, "CockpitBenchChip", { fg = colors.gold, bg = colors.chip_bg, bold = true })
-  vim.api.nvim_set_hl(0, "CockpitBenchChipSel", { fg = colors.gold, bg = colors.chip_bg, bold = true, underline = true })
-  vim.api.nvim_set_hl(0, "CockpitBenchChipBorder", { fg = colors.gold })
+  vim.api.nvim_set_hl(0, "CockpitBenchChipFill", { bg = colors.chip_bg })
+  vim.api.nvim_set_hl(0, "CockpitBenchChip", { fg = colors.yellow_chip, bg = colors.chip_bg, bold = true })
+  vim.api.nvim_set_hl(0, "CockpitBenchChipId", { fg = colors.dim, bg = colors.chip_bg })
+  vim.api.nvim_set_hl(0, "CockpitBenchChipSel", {
+    fg = colors.yellow_chip,
+    bg = colors.chip_bg,
+    bold = true,
+    underline = true,
+  })
+  vim.api.nvim_set_hl(0, "CockpitBenchChipBorder", { fg = colors.yellow_chip, bg = colors.chip_bg, bold = true })
 end
 
 local function strwidth(text)
@@ -452,16 +461,21 @@ function M.render_detail_col()
     vim.api.nvim_buf_add_highlight(buf, NS, "CockpitBenchGoldLabel", bl_header, 0, -1)
   end
   for _, chip in ipairs(state.chip_rows) do
-    local border_group = "CockpitBenchChipBorder"
-    local inner_group = chip.selected and "CockpitBenchChipSel" or "CockpitBenchChip"
+    local label_group = chip.selected and "CockpitBenchChipSel" or "CockpitBenchChip"
     for r = chip.start, chip.start + 3 do
       local line = lines[r + 1] or ""
-      if line:sub(1, 1) == "+" or line:sub(1, 1) == "|" then
-        vim.api.nvim_buf_add_highlight(buf, NS, border_group, r, 0, 1)
-        vim.api.nvim_buf_add_highlight(buf, NS, border_group, r, #line, #line + 1)
-      end
-      if r == chip.start + 1 or r == chip.start + 2 then
-        vim.api.nvim_buf_add_highlight(buf, NS, inner_group, r, 1, #line)
+      local line_end = math.max(0, #line)
+      vim.api.nvim_buf_add_highlight(buf, NS, "CockpitBenchChipFill", r, 0, line_end)
+      if r == chip.start or r == chip.start + 3 then
+        vim.api.nvim_buf_add_highlight(buf, NS, "CockpitBenchChipBorder", r, 0, line_end)
+      elseif r == chip.start + 1 then
+        vim.api.nvim_buf_add_highlight(buf, NS, "CockpitBenchChipBorder", r, 0, 1)
+        vim.api.nvim_buf_add_highlight(buf, NS, label_group, r, 1, math.max(1, line_end - 1))
+        vim.api.nvim_buf_add_highlight(buf, NS, "CockpitBenchChipBorder", r, math.max(0, line_end - 1), line_end)
+      elseif r == chip.start + 2 then
+        vim.api.nvim_buf_add_highlight(buf, NS, "CockpitBenchChipBorder", r, 0, 1)
+        vim.api.nvim_buf_add_highlight(buf, NS, "CockpitBenchChipId", r, 1, math.max(1, line_end - 1))
+        vim.api.nvim_buf_add_highlight(buf, NS, "CockpitBenchChipBorder", r, math.max(0, line_end - 1), line_end)
       end
     end
   end

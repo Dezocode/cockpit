@@ -34,8 +34,10 @@ grep -Fq 'PUNCH_GOLD_LABEL' "$layout" ||
   fail 'missing approved gold label chroma constant'
 grep -Fq 'CockpitBenchNavRest' "$layout" ||
   fail 'missing flat nav tabline rest highlight'
-grep -Fq 'GOLD_LABEL_BG' "$layout" ||
-  fail 'missing gold label background punch'
+grep -Fq 'PUNCH_YELLOW_CHIP' "$layout" ||
+  fail 'missing approved bright yellow chip chroma constant'
+grep -Fq 'CockpitBenchChipId' "$layout" ||
+  fail 'missing gray run_id chip highlight group'
 grep -Fq 'Run + backlinks' "$layout" ||
   fail 'missing Miller column header Run + backlinks'
 grep -Fq 'render_models_col' "$layout" ||
