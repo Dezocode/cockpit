@@ -10,14 +10,18 @@ type=cockpit
 entrypoint=bench
 ```
 
-## ghui interaction (FILES-grammar)
+## ghui interaction (FILES-grammar / t533u Miller)
 
-| Level | View | Keys |
-|-------|------|------|
-| L1 | Models index | Enter → L2 for selected model |
-| L2 | Runs for model | Enter → L3 for selected run |
-| L3 | Run detail + backlinks | Enter on backlink → jump peer run at L3 |
-| any | Stack | Esc pops one level; q quits drill |
+Three **Miller columns** always visible: `Models` | `Runs — <model>` | `Run + backlinks`.
+Approved chrome and colors: `aspects/bench-ghui-approved-style-t533u.md`.
+
+| Key | Action |
+|-----|--------|
+| ↑↓ | Move within focused column |
+| ←→ / Tab | Focus adjacent column |
+| Enter | Drill selection / jump backlink peer run |
+| Esc | Pop backlink jump stack |
+| q | Quit drill |
 
 - Read-only. No Proctor pane keys. No VisiData/sc-im/Excel product path.
 - `frontier` hosts show a `≠local` badge; local hosts show `local`.

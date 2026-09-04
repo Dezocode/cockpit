@@ -235,12 +235,20 @@ bench_drill_once() {
     bench_render_absent
     return 1
   fi
-  python3 - "$BENCH_ROOT" "$(bench_db)" <<'PY'
+  local display_root="$BENCH_ROOT"
+  case "$BENCH_SOURCE" in
+    intercom) display_root="${COCKPIT_INTERCOM_HOME:-$HOME/intercom}/proctor" ;;
+  esac
+  python3 - "$BENCH_ROOT" "$(bench_db)" "$display_root" <<'PY'
 import curses
+import os
 import sqlite3
 import sys
 
-ROOT, DB = sys.argv[1], sys.argv[2]
+ROOT, DB, DISPLAY_ROOT = sys.argv[1], sys.argv[2], sys.argv[3]
+
+NAV_LEFT = "cockpit · MEMORY  COMPUTERS  MODELS  BENCH  FILES  PRS"
+NAV_RIGHT = "BENCH  ghui  read-only"
 
 
 def connect():
@@ -249,8 +257,11 @@ def connect():
     return conn
 
 
-def badge(is_frontier):
-    return "frontier" if int(is_frontier or 0) else "local"
+def display_data_path(path):
+    home = os.path.expanduser("~")
+    if path.startswith(home):
+        return "~" + path[len(home) :]
+    return path
 
 
 def fetch_models(conn):
@@ -291,159 +302,294 @@ def fetch_backlinks(conn, run_id):
     return [dict(r) for r in cur.fetchall()]
 
 
-class Frame:
-    def __init__(self, level, model_id=None, run_id=None):
-        self.level = level
-        self.model_id = model_id
-        self.run_id = run_id
-        self.index = 0
+def model_site(conn, model_id):
+    runs = fetch_runs(conn, model_id)
+    if not runs:
+        return "ABSENT"
+    scores = [r.get("score_status") or "ABSENT" for r in runs]
+    if all(s == "ABSENT" for s in scores):
+        return "ABSENT"
+    if model_id.startswith("local/"):
+        return "local"
+    if any(int(r.get("is_frontier") or 0) for r in runs):
+        return "frontier"
+    return "local"
 
 
-def draw_header(stdscr, stack, source):
-    stdscr.addstr(0, 0, f"BENCH  {ROOT} ({source})  ·  read-only  ·  ↑↓ move  Enter drill  Esc back  q quit")
-    crumbs = []
-    for fr in stack:
-        if fr.level == 1:
-            crumbs.append("models")
-        elif fr.level == 2:
-            crumbs.append(fr.model_id or "?")
-        elif fr.level == 3:
-            crumbs.append(fr.run_id or "?")
-    stdscr.addstr(1, 0, " › ".join(crumbs))
+def truncate_run_id(run_id, width=12):
+    if len(run_id) <= width:
+        return run_id
+    return run_id[:8] + "..."
 
 
-def render_models(stdscr, conn, frame):
-    items = fetch_models(conn)
-    if not items:
-        stdscr.addstr(3, 0, "ABSENT: no models in receipt")
-        return items, False
-    stdscr.addstr(3, 0, "MODEL")
-    stdscr.addstr(4, 0, "─" * 40)
-    row = 5
-    for i, (mid, name) in enumerate(items):
-        prefix = "▸ " if i == frame.index else "  "
-        line = f"{prefix}{mid:<18} {name}"
-        if i == frame.index:
-            stdscr.addstr(row, 0, line, curses.A_REVERSE)
+def init_colors():
+    if not curses.has_colors():
+        return None
+    curses.start_color()
+    curses.use_default_colors()
+    curses.init_pair(1, curses.COLOR_CYAN, -1)      # selection cursor
+    curses.init_pair(2, curses.COLOR_YELLOW, -1)    # backlink header / chips
+    curses.init_pair(3, curses.COLOR_WHITE, -1)     # default text
+    curses.init_pair(4, 8, -1)                      # dim / muted (bright black)
+    return {
+        "sel": curses.color_pair(1),
+        "yellow": curses.color_pair(2),
+        "dim": curses.color_pair(4),
+        "bold": curses.A_BOLD,
+    }
+
+
+def clip(text, width):
+    if width <= 0:
+        return ""
+    return text[: max(0, width - 1)]
+
+
+def draw_top_chrome(stdscr, width, colors):
+    left = clip(NAV_LEFT, max(1, width - len(NAV_RIGHT) - 2))
+    stdscr.addstr(0, 0, left, colors["dim"] if colors else 0)
+    stdscr.addstr(0, max(0, width - len(NAV_RIGHT)), NAV_RIGHT, colors["bold"] if colors else curses.A_BOLD)
+
+
+def draw_footer(stdscr, height, width, colors):
+    line = (
+        f"t524u ghui  ·  Esc=pop  Enter=drill/backlink  ·  "
+        f"data: {display_data_path(DISPLAY_ROOT)}/  ·  writer: Proctor"
+    )
+    stdscr.addstr(height - 1, 0, clip(line, width), colors["dim"] if colors else 0)
+
+
+def column_bounds(width):
+    c1 = width // 3
+    c2 = (width * 2) // 3
+    return c1, c2
+
+
+def draw_vrules(stdscr, top, bottom, c1, c2, colors):
+    attr = colors["dim"] if colors else 0
+    for row in range(top, bottom):
+        stdscr.addch(row, c1, "│", attr)
+        stdscr.addch(row, c2, "│", attr)
+
+
+def draw_models_col(stdscr, conn, models, model_idx, focus_col, x0, x1, y0, y1, colors):
+    stdscr.addstr(y0, x0 + 1, "Models", colors["bold"] if colors else curses.A_BOLD)
+    row = y0 + 2
+    for i, (mid, _name) in enumerate(models):
+        if row >= y1 - 1:
+            break
+        site = model_site(conn, mid)
+        cursor = ">" if focus_col == 0 and i == model_idx else " "
+        site_attr = colors["dim"] if site == "ABSENT" and colors else 0
+        if focus_col == 0 and i == model_idx and colors:
+            stdscr.addstr(row, x0 + 1, cursor, colors["sel"] | curses.A_BOLD)
         else:
-            stdscr.addstr(row, 0, line)
+            stdscr.addstr(row, x0 + 1, cursor)
+        name_w = max(8, (x1 - x0) - len(site) - 4)
+        stdscr.addstr(row, x0 + 3, clip(mid, name_w))
+        stdscr.addstr(row, x1 - len(site) - 1, site, site_attr)
         row += 1
-    return items, True
 
 
-def render_runs(stdscr, conn, frame):
-    items = fetch_runs(conn, frame.model_id)
-    if not items:
-        stdscr.addstr(3, 0, f"ABSENT: no runs for {frame.model_id}")
-        return items, False
-    stdscr.addstr(3, 0, f"RUNS  {frame.model_id}")
-    stdscr.addstr(4, 0, "─" * 72)
-    stdscr.addstr(5, 0, f"{'RUN':<14} {'HOST':<16} {'SITE':<10} {'STATUS':<10} SCORE")
-    row = 6
-    for i, run in enumerate(items):
-        site = badge(run["is_frontier"])
-        if site == "frontier":
-            site_label = "≠local"
+def draw_runs_col(stdscr, runs, model_id, run_idx, focus_col, x0, x1, y0, y1, colors):
+    title = f"Runs — {model_id}" if model_id else "Runs"
+    stdscr.addstr(y0, x0 + 1, clip(title, x1 - x0 - 2), colors["bold"] if colors else curses.A_BOLD)
+    row = y0 + 2
+    if not model_id:
+        stdscr.addstr(row, x0 + 1, "ABSENT", colors["dim"] if colors else 0)
+        return
+    if not runs:
+        stdscr.addstr(row, x0 + 1, "ABSENT", colors["dim"] if colors else 0)
+        return
+    for i, run in enumerate(runs):
+        if row >= y1 - 2:
+            break
+        cursor = ">" if focus_col == 1 and i == run_idx else " "
+        if focus_col == 1 and i == run_idx and colors:
+            stdscr.addstr(row, x0 + 1, cursor, colors["sel"] | curses.A_BOLD)
         else:
-            site_label = site
-        score = run["score_status"] or "ABSENT"
-        prefix = "▸ " if i == frame.index else "  "
-        line = f"{prefix}{run['run_id']:<12} {run['host']:<16} {site_label:<10} {run['status']:<10} {score}"
-        if i == frame.index:
-            stdscr.addstr(row, 0, line[: stdscr.getmaxyx()[1] - 1], curses.A_REVERSE)
-        else:
-            stdscr.addstr(row, 0, line[: stdscr.getmaxyx()[1] - 1])
+            stdscr.addstr(row, x0 + 1, cursor)
+        stdscr.addstr(row, x0 + 3, clip(run["run_id"], x1 - x0 - 4))
         row += 1
-    return items, True
+        status = run.get("status") or "ABSENT"
+        stdscr.addstr(row, x0 + 3, clip(status, x1 - x0 - 4), colors["dim"] if colors else 0)
+        row += 1
 
 
-def render_run(stdscr, conn, frame):
-    run = fetch_run(conn, frame.run_id)
+def draw_backlink_chip(stdscr, y, x, w, kind, run_id, selected, colors):
+    label = clip(kind or "backlink", w - 4)
+    rid = truncate_run_id(run_id, max(8, w - 6))
+    attr = colors["yellow"] if colors else 0
+    if selected and colors:
+        attr |= curses.A_BOLD
+    top = "┌" + "─" * (w - 2) + "┐"
+    mid1 = "│" + label.center(max(1, w - 2))[: w - 2].ljust(w - 2) + "│"
+    mid2 = "│" + rid.center(max(1, w - 2))[: w - 2].ljust(w - 2) + "│"
+    bot = "└" + "─" * (w - 2) + "┘"
+    for i, line in enumerate((top, mid1, mid2, bot)):
+        stdscr.addstr(y + i, x, clip(line, w), attr)
+
+
+def draw_detail_col(stdscr, run, backlinks, bl_idx, focus_col, x0, x1, y0, y1, colors):
+    stdscr.addstr(y0, x0 + 1, "Run + backlinks", colors["bold"] if colors else curses.A_BOLD)
+    row = y0 + 2
     if not run:
-        stdscr.addstr(3, 0, f"ABSENT: run {frame.run_id}")
-        return [], False
-    site = badge(run["is_frontier"])
-    site_label = "≠local" if site == "frontier" else site
-    stdscr.addstr(3, 0, f"RUN  {run['run_id']}")
-    stdscr.addstr(4, 0, "─" * 72)
-    stdscr.addstr(5, 0, f"model:  {run['model_id']}")
-    stdscr.addstr(6, 0, f"host:   {run['host']}  ({site_label})")
-    stdscr.addstr(7, 0, f"status: {run['status']}")
-    stdscr.addstr(8, 0, f"score:  {run['score_status'] or 'ABSENT'}")
-    if run["started_at"]:
-        stdscr.addstr(9, 0, f"started:{run['started_at']}")
-    stdscr.addstr(11, 0, "BACKLINKS  (Enter jumps peer run)")
-    stdscr.addstr(12, 0, "─" * 72)
-    links = fetch_backlinks(conn, frame.run_id)
-    if not links:
-        stdscr.addstr(13, 0, "ABSENT: no backlinks")
-        return [], True
-    row = 13
-    selectable = []
-    for i, link in enumerate(links):
-        site = badge(link["is_frontier"])
-        site_label = "≠local" if site == "frontier" else site
-        prefix = "▸ " if i == frame.index else "  "
-        line = f"{prefix}{link['to_run_id']:<14} {link['model_id']:<16} {link['host']:<14} {site_label:<8} {link['link_kind']}"
-        if i == frame.index:
-            stdscr.addstr(row, 0, line[: stdscr.getmaxyx()[1] - 1], curses.A_REVERSE)
-        else:
-            stdscr.addstr(row, 0, line[: stdscr.getmaxyx()[1] - 1])
-        selectable.append(link)
-        row += 1
-    return selectable, True
+        stdscr.addstr(row, x0 + 1, "ABSENT", colors["dim"] if colors else 0)
+        return
+    stdscr.addstr(row, x0 + 1, "run_id (selected)", colors["dim"] if colors else 0)
+    row += 1
+    stdscr.addstr(row, x0 + 1, clip(run["run_id"], x1 - x0 - 2))
+    row += 2
+    stdscr.addstr(row, x0 + 1, "Backlinks (Enter → jump)", colors["yellow"] if colors else 0)
+    row += 2
+    if not backlinks:
+        stdscr.addstr(row, x0 + 1, "ABSENT", colors["dim"] if colors else 0)
+        return
+    chip_w = min(22, max(14, x1 - x0 - 4))
+    for i, link in enumerate(backlinks):
+        if row + 4 >= y1:
+            break
+        selected = focus_col == 2 and i == bl_idx
+        draw_backlink_chip(
+            stdscr,
+            row,
+            x0 + 1,
+            chip_w,
+            link.get("link_kind") or "backlink",
+            link["to_run_id"],
+            selected,
+            colors,
+        )
+        row += 5
 
 
 def main(stdscr):
     curses.curs_set(0)
     stdscr.keypad(True)
+    colors = init_colors()
     conn = connect()
-    stack = [Frame(1)]
-    source = "intercom" if "/intercom/" in ROOT or ROOT.endswith("/proctor") else "box"
+    models = fetch_models(conn)
+    model_idx = 0
+    run_idx = 0
+    bl_idx = 0
+    focus_col = 0
+    jump_stack = []
+
+    def current_model():
+        return models[model_idx][0] if models else None
+
+    def current_runs():
+        mid = current_model()
+        return fetch_runs(conn, mid) if mid else []
+
+    def current_run_id():
+        runs = current_runs()
+        if not runs or run_idx >= len(runs):
+            return None
+        return runs[run_idx]["run_id"]
+
+    def sync_run_bounds():
+        nonlocal run_idx
+        runs = current_runs()
+        if not runs:
+            run_idx = 0
+            return
+        if run_idx >= len(runs):
+            run_idx = max(0, len(runs) - 1)
+
+    def select_run_by_id(run_id):
+        nonlocal model_idx, run_idx, focus_col
+        runs = current_runs()
+        for i, run in enumerate(runs):
+            if run["run_id"] == run_id:
+                run_idx = i
+                focus_col = 1
+                return True
+        run = fetch_run(conn, run_id)
+        if not run:
+            return False
+        for i, (mid, _) in enumerate(models):
+            if mid == run["model_id"]:
+                model_idx = i
+                break
+        runs = current_runs()
+        for i, r in enumerate(runs):
+            if r["run_id"] == run_id:
+                run_idx = i
+                focus_col = 1
+                return True
+        return False
+
     while True:
-        stdscr.clear()
-        draw_header(stdscr, stack, source)
-        frame = stack[-1]
-        items = []
-        ok = True
-        if frame.level == 1:
-            items, ok = render_models(stdscr, conn, frame)
-        elif frame.level == 2:
-            items, ok = render_runs(stdscr, conn, frame)
-        elif frame.level == 3:
-            items, ok = render_run(stdscr, conn, frame)
+        height, width = stdscr.getmaxyx()
+        body_top = 2
+        body_bottom = height - 2
+        c1, c2 = column_bounds(width)
+        stdscr.erase()
+        draw_top_chrome(stdscr, width, colors)
+        stdscr.hline(1, 0, "─", width)
+        draw_vrules(stdscr, body_top, body_bottom, c1, c2, colors)
+
+        model_id = current_model()
+        runs = current_runs()
+        sync_run_bounds()
+        run_id = current_run_id()
+        run = fetch_run(conn, run_id) if run_id else None
+        backlinks = fetch_backlinks(conn, run_id) if run_id else []
+
+        draw_models_col(stdscr, conn, models, model_idx, focus_col, 0, c1, body_top, body_bottom, colors)
+        draw_runs_col(stdscr, runs, model_id, run_idx, focus_col, c1 + 1, c2, body_top, body_bottom, colors)
+        draw_detail_col(stdscr, run, backlinks, bl_idx, focus_col, c2 + 1, width, body_top, body_bottom, colors)
+        draw_footer(stdscr, height, width, colors)
         stdscr.refresh()
+
         key = stdscr.getch()
-        if key in (ord("q"), ord("Q"), 27):
-            if frame.level > 1 and key == 27:
-                stack.pop()
-                continue
-            if key == 27 and frame.level == 1:
-                return 0
-            if key in (ord("q"), ord("Q")):
-                return 0
-        if key == 27 and frame.level > 1:
-            stack.pop()
+        if key in (ord("q"), ord("Q")):
+            return 0
+        if key == 27:  # Esc
+            if jump_stack:
+                prev = jump_stack.pop()
+                select_run_by_id(prev)
+            continue
+        if key in (curses.KEY_RIGHT, ord("\t"), 9):
+            focus_col = min(2, focus_col + 1)
+            continue
+        if key == curses.KEY_LEFT:
+            focus_col = max(0, focus_col - 1)
             continue
         if key in (curses.KEY_UP, ord("k")):
-            if frame.index > 0:
-                frame.index -= 1
+            if focus_col == 0 and model_idx > 0:
+                model_idx -= 1
+                run_idx = 0
+                bl_idx = 0
+            elif focus_col == 1 and run_idx > 0:
+                run_idx -= 1
+                bl_idx = 0
+            elif focus_col == 2 and bl_idx > 0:
+                bl_idx -= 1
             continue
         if key in (curses.KEY_DOWN, ord("j")):
-            max_idx = max(0, len(items) - 1)
-            if frame.index < max_idx:
-                frame.index += 1
+            if focus_col == 0 and model_idx < len(models) - 1:
+                model_idx += 1
+                run_idx = 0
+                bl_idx = 0
+            elif focus_col == 1 and run_idx < len(runs) - 1:
+                run_idx += 1
+                bl_idx = 0
+            elif focus_col == 2 and bl_idx < len(backlinks) - 1:
+                bl_idx += 1
             continue
         if key in (10, 13, curses.KEY_ENTER):
-            if frame.level == 1 and items:
-                mid, _ = items[frame.index]
-                stack.append(Frame(2, model_id=mid))
-            elif frame.level == 2 and items:
-                rid = items[frame.index]["run_id"]
-                stack.append(Frame(3, model_id=frame.model_id, run_id=rid))
-            elif frame.level == 3 and items:
-                peer = items[frame.index]["to_run_id"]
-                stack.append(Frame(3, run_id=peer))
+            if focus_col == 0:
+                focus_col = 1
+            elif focus_col == 1:
+                focus_col = 2
+            elif focus_col == 2 and backlinks and bl_idx < len(backlinks):
+                peer = backlinks[bl_idx]["to_run_id"]
+                if run_id:
+                    jump_stack.append(run_id)
+                select_run_by_id(peer)
+                bl_idx = 0
             continue
     return 0
 
