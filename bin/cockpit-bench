@@ -288,9 +288,10 @@ bench_render_absent() {
 bench_nvim_listen=''
 bench_nvim_theme_init=''
 bench_nvim_layout_init=''
+bench_nvim_bare_init=''
 
 bench_resolve_nvim_paths() {
-  local config_home script_root
+  local config_home script_root bare_config_dir
   script_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
   config_home="$(cockpit_config_home)"
   bench_nvim_theme_init="${COCKPIT_NVIM_THEME_INIT:-$config_home/nvim/cockpit-diff.lua}"
@@ -300,6 +301,18 @@ bench_resolve_nvim_paths() {
   bench_nvim_layout_init="${COCKPIT_NVIM_BENCH_LAYOUT_INIT:-$config_home/nvim/cockpit-bench.lua}"
   if [[ ! -f "$bench_nvim_layout_init" ]]; then
     bench_nvim_layout_init="$script_root/../stage/nvim/lua/config/cockpit-bench.lua"
+  fi
+  bench_nvim_bare_init="${COCKPIT_NVIM_BENCH_BARE_INIT:-$config_home/nvim-cockpit-bench-bare/init.lua}"
+  if [[ ! -f "$bench_nvim_bare_init" ]]; then
+    bench_nvim_bare_init="$script_root/../stage/nvim-cockpit-bench-bare/init.lua"
+  fi
+  bare_config_dir="$config_home/nvim-cockpit-bench-bare"
+  mkdir -p "$bare_config_dir"
+  if [[ -f "$bench_nvim_bare_init" ]]; then
+    if [[ ! -f "$bare_config_dir/init.lua" ]]; then
+      install -m 0644 "$bench_nvim_bare_init" "$bare_config_dir/init.lua"
+    fi
+    bench_nvim_bare_init="$bare_config_dir/init.lua"
   fi
 }
 
@@ -351,6 +364,7 @@ bench_launch_nvim() {
   export COCKPIT_BENCH_ROOT="$display_root"
   export COCKPIT_BENCH_ABSENT="$absent"
   export COCKPIT_NVIM_BENCH_LAYOUT_INIT="$bench_nvim_layout_init"
+  export NVIM_APPNAME=cockpit-bench-bare
   if ((once)); then
     export COCKPIT_BENCH_ONCE=1
   else
@@ -358,6 +372,9 @@ bench_launch_nvim() {
   fi
 
   local nvim_args=(--listen "$bench_nvim_listen")
+  if [[ -f "$bench_nvim_bare_init" ]]; then
+    nvim_args+=(-u "$bench_nvim_bare_init")
+  fi
   if [[ -f "$bench_nvim_theme_init" ]]; then
     export COCKPIT_NVIM_THEME_INIT="$bench_nvim_theme_init"
     nvim_args+=(-c 'lua dofile(vim.env.COCKPIT_NVIM_THEME_INIT).setup()')

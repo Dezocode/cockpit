@@ -6,6 +6,10 @@ local NAV_LEFT = "cockpit · MEMORY  COMPUTERS  MODELS  BENCH  FILES  PRS"
 local NAV_RIGHT = "BENCH  ghui  read-only"
 local NS = vim.api.nvim_create_namespace("CockpitBench")
 
+local PUNCH_CYAN = "#5ccfe6"
+local PUNCH_GOLD = "#e6c07b"
+local CHIP_BG = "#2a2418"
+
 local state = {
   focus_col = 0,
   model_idx = 0,
@@ -19,6 +23,7 @@ local state = {
   absent = false,
   wins = {},
   bufs = {},
+  chip_rows = {},
 }
 
 local function db_path()
@@ -176,11 +181,11 @@ end
 
 local function setup_highlights()
   local colors = {
-    cyan = "#5ccfe6",
-    yellow = "#e6c07b",
+    cyan = PUNCH_CYAN,
+    gold = PUNCH_GOLD,
     dim = "#6c7086",
     chrome = "#cdd6f4",
-    chip_bg = "#2a2418",
+    chip_bg = CHIP_BG,
   }
   local path = vim.env.COCKPIT_THEME_COLORS_FILE
     or vim.fn.expand("~/.local/state/omarchy/current/theme/colors.toml")
@@ -188,11 +193,7 @@ local function setup_highlights()
     for _, line in ipairs(vim.fn.readfile(path)) do
       local key, value = line:match("^%s*([%w_]+)%s*=%s*[\"']?(#[%x]+)")
       if key and value and value:match("^#%x%x%x%x%x%x$") then
-        if key == "accent" or key == "blue" then
-          colors.cyan = value
-        elseif key == "yellow" then
-          colors.yellow = value
-        elseif key == "muted" or key == "bright_foreground" then
+        if key == "muted" or key == "bright_foreground" then
           colors.dim = value
         elseif key == "foreground" then
           colors.chrome = value
@@ -201,38 +202,54 @@ local function setup_highlights()
     end
   end
   vim.api.nvim_set_hl(0, "CockpitBenchSel", { fg = colors.cyan, bold = true })
-  vim.api.nvim_set_hl(0, "CockpitBenchYellow", { fg = colors.yellow, bold = true })
+  vim.api.nvim_set_hl(0, "CockpitBenchYellow", { fg = colors.gold, bold = true })
   vim.api.nvim_set_hl(0, "CockpitBenchDim", { fg = colors.dim })
   vim.api.nvim_set_hl(0, "CockpitBenchChrome", { fg = colors.chrome, bold = true })
   vim.api.nvim_set_hl(0, "CockpitBenchNavRight", { fg = colors.cyan, bold = true })
-  vim.api.nvim_set_hl(0, "CockpitBenchChip", { fg = colors.yellow, bg = colors.chip_bg, bold = true })
-  vim.api.nvim_set_hl(0, "CockpitBenchChipSel", { fg = colors.yellow, bg = colors.chip_bg, bold = true, underline = true })
+  vim.api.nvim_set_hl(0, "CockpitBenchChip", { fg = colors.gold, bg = colors.chip_bg, bold = true })
+  vim.api.nvim_set_hl(0, "CockpitBenchChipSel", { fg = colors.gold, bg = colors.chip_bg, bold = true, underline = true })
+  vim.api.nvim_set_hl(0, "CockpitBenchChipBorder", { fg = colors.gold })
+end
+
+local function strwidth(text)
+  return vim.fn.strdisplaywidth(text)
 end
 
 local function clip(text, width)
   if width <= 0 then
     return ""
   end
-  if #text <= width then
+  if strwidth(text) <= width then
     return text
   end
-  return text:sub(1, math.max(0, width - 1))
+  local out = ""
+  local w = 0
+  for i = 1, #text do
+    local ch = vim.fn.strcharpart(text, i - 1, 1)
+    local cw = vim.fn.strdisplaywidth(ch)
+    if w + cw > width then
+      break
+    end
+    out = out .. ch
+    w = w + cw
+  end
+  return out
 end
 
 local function center_text(text, width)
-  if #text >= width then
-    return text:sub(1, width)
+  if strwidth(text) >= width then
+    return clip(text, width)
   end
-  local left = math.floor((width - #text) / 2)
-  return string.rep(" ", left) .. text .. string.rep(" ", width - #text - left)
+  local left = math.floor((width - strwidth(text)) / 2)
+  return string.rep(" ", left) .. text .. string.rep(" ", width - strwidth(text) - left)
 end
 
 local function truncate_run_id(run_id, width)
   width = width or 12
-  if #run_id <= width then
+  if strwidth(run_id) <= width then
     return run_id
   end
-  return run_id:sub(1, 8) .. "..."
+  return clip(run_id, 8) .. "..."
 end
 
 local function set_buffer_lines(buf, lines)
@@ -264,10 +281,11 @@ function M.render_models_col()
     local mid = item[1]
     local agent_class = item[3] or ""
     local site = model_site(agent_class)
-    local cursor = (state.focus_col == 0 and i - 1 == state.model_idx) and ">" or " "
-    local name_w = math.max(8, width - #site - 4)
+    local selected = state.focus_col == 0 and i - 1 == state.model_idx
+    local cursor = selected and ">" or " "
+    local name_w = math.max(8, width - strwidth(site) - 4)
     local name_part = clip(mid, name_w)
-    local pad = math.max(1, width - #cursor - 1 - #name_part - #site)
+    local pad = math.max(1, width - strwidth(cursor .. " " .. name_part) - strwidth(site))
     local row = cursor .. " " .. name_part .. string.rep(" ", pad) .. site
     table.insert(lines, row)
   end
@@ -281,10 +299,13 @@ function M.render_models_col()
     local site = model_site(item[3] or "")
     local line = lines[row + 1] or ""
     local site_start = math.max(0, #line - #site)
-    if state.focus_col == 0 and i - 1 == state.model_idx then
-      vim.api.nvim_buf_add_highlight(buf, NS, "CockpitBenchSel", row, 0, 2)
+    local selected = state.focus_col == 0 and i - 1 == state.model_idx
+    if selected then
+      vim.api.nvim_buf_add_highlight(buf, NS, "CockpitBenchSel", row, 0, -1)
     end
     if site == "ABSENT" then
+      vim.api.nvim_buf_add_highlight(buf, NS, "CockpitBenchDim", row, site_start, #line)
+    elseif selected then
       vim.api.nvim_buf_add_highlight(buf, NS, "CockpitBenchDim", row, site_start, #line)
     end
     row = row + 1
@@ -311,7 +332,8 @@ function M.render_runs_col()
     table.insert(lines, "ABSENT")
   else
     for i, run in ipairs(state.runs) do
-      local cursor = (state.focus_col == 1 and i - 1 == state.run_idx) and ">" or " "
+      local selected = state.focus_col == 1 and i - 1 == state.run_idx
+      local cursor = selected and ">" or " "
       table.insert(lines, string.format("%s %s", cursor, clip(run.run_id, width - 3)))
       table.insert(lines, clip(run.status or "ABSENT", width - 2))
     end
@@ -326,7 +348,7 @@ function M.render_runs_col()
   local row = 2
   for i in ipairs(state.runs) do
     if state.focus_col == 1 and i - 1 == state.run_idx then
-      vim.api.nvim_buf_add_highlight(buf, NS, "CockpitBenchSel", row, 0, 2)
+      vim.api.nvim_buf_add_highlight(buf, NS, "CockpitBenchSel", row, 0, -1)
     end
     vim.api.nvim_buf_add_highlight(buf, NS, "CockpitBenchDim", row + 1, 0, -1)
     row = row + 2
@@ -334,13 +356,13 @@ function M.render_runs_col()
 end
 
 local function draw_backlink_chip_lines(kind, run_id, width)
-  local label = clip(kind or "backlink", width - 4)
-  local rid = truncate_run_id(run_id, math.max(8, width - 6))
   local inner = math.max(1, width - 2)
-  local top = "┌" .. string.rep("─", inner) .. "┐"
-  local mid1 = "│" .. center_text(label:sub(1, inner), inner) .. "│"
-  local mid2 = "│" .. center_text(rid:sub(1, inner), inner) .. "│"
-  local bot = "└" .. string.rep("─", inner) .. "┘"
+  local label = clip(kind or "backlink", inner)
+  local rid = truncate_run_id(run_id, inner)
+  local top = "+" .. string.rep("-", inner) .. "+"
+  local mid1 = "|" .. center_text(label, inner) .. "|"
+  local mid2 = "|" .. center_text(rid, inner) .. "|"
+  local bot = "+" .. string.rep("-", inner) .. "+"
   return { top, mid1, mid2, bot }
 end
 
@@ -352,7 +374,7 @@ function M.render_detail_col()
   end
   local width = column_width(win)
   local lines = { "Run + backlinks", "" }
-  local hl_rows = {}
+  state.chip_rows = {}
   if not state.run then
     table.insert(lines, "ABSENT")
   else
@@ -385,10 +407,11 @@ function M.render_detail_col()
         local chip_lines = draw_backlink_chip_lines(link.link_kind, link.to_run_id, chip_w)
         local chip_row = #lines
         for _, cl in ipairs(chip_lines) do
-          table.insert(lines, clip(cl, width))
+          table.insert(lines, cl)
         end
-        table.insert(hl_rows, {
+        table.insert(state.chip_rows, {
           start = chip_row,
+          bl_idx = i - 1,
           selected = state.focus_col == 2 and i - 1 == state.bl_idx,
         })
         table.insert(lines, "")
@@ -413,16 +436,29 @@ function M.render_detail_col()
   if bl_header > 0 then
     vim.api.nvim_buf_add_highlight(buf, NS, "CockpitBenchYellow", bl_header, 0, -1)
   end
-  for _, chip in ipairs(hl_rows) do
-    local group = chip.selected and "CockpitBenchChipSel" or "CockpitBenchChip"
+  for _, chip in ipairs(state.chip_rows) do
+    local border_group = "CockpitBenchChipBorder"
+    local inner_group = chip.selected and "CockpitBenchChipSel" or "CockpitBenchChip"
     for r = chip.start, chip.start + 3 do
-      vim.api.nvim_buf_add_highlight(buf, NS, group, r, 0, -1)
+      local line = lines[r + 1] or ""
+      if line:sub(1, 1) == "+" or line:sub(1, 1) == "|" then
+        vim.api.nvim_buf_add_highlight(buf, NS, border_group, r, 0, 1)
+        vim.api.nvim_buf_add_highlight(buf, NS, border_group, r, #line, #line + 1)
+      end
+      if r == chip.start + 1 or r == chip.start + 2 then
+        vim.api.nvim_buf_add_highlight(buf, NS, inner_group, r, 1, #line)
+      end
     end
   end
 end
 
 function M.draw_vrules()
-  -- Vertical separators are implied by adjacent window borders in the nvim layout.
+  for _, win in ipairs(state.wins) do
+    if vim.api.nvim_win_is_valid(win) then
+      vim.wo[win].signcolumn = "no"
+      vim.wo[win].statusline = ""
+    end
+  end
 end
 
 local function current_model_id()
@@ -593,6 +629,83 @@ local function move_down()
   M.render_all()
 end
 
+local function col_for_buf(buf)
+  for i, b in ipairs(state.bufs) do
+    if b == buf then
+      return i - 1
+    end
+  end
+  return nil
+end
+
+local function chip_at_line(line0)
+  for _, chip in ipairs(state.chip_rows) do
+    if line0 >= chip.start and line0 <= chip.start + 3 then
+      return chip.bl_idx
+    end
+  end
+  return nil
+end
+
+local function on_mouse(line0, col)
+  if state.absent then
+    return
+  end
+  line0 = math.max(0, line0)
+  local prev_col = state.focus_col
+  local prev_idx
+  if col == 0 then
+    prev_idx = state.model_idx
+    if line0 < 2 or line0 - 2 >= #state.models then
+      state.focus_col = 0
+      focus_window()
+      return
+    end
+    state.focus_col = 0
+    state.model_idx = line0 - 2
+    state.run_idx = 0
+    state.bl_idx = 0
+    M.render_all()
+    if prev_col == 0 and prev_idx == state.model_idx then
+      on_enter()
+    else
+      focus_window()
+    end
+  elseif col == 1 then
+    prev_idx = state.run_idx
+    if line0 < 2 then
+      state.focus_col = 1
+      focus_window()
+      return
+    end
+    local idx = math.floor((line0 - 2) / 2)
+    if idx >= #state.runs then
+      state.focus_col = 1
+      focus_window()
+      return
+    end
+    state.focus_col = 1
+    state.run_idx = idx
+    state.bl_idx = 0
+    M.render_all()
+    if prev_col == 1 and prev_idx == state.run_idx then
+      on_enter()
+    else
+      focus_window()
+    end
+  elseif col == 2 then
+    state.focus_col = 2
+    local bl = chip_at_line(line0)
+    if bl ~= nil then
+      state.bl_idx = bl
+      M.render_all()
+      on_enter()
+      return
+    end
+    focus_window()
+  end
+end
+
 local function setup_keymaps()
   local opts = { silent = true, nowait = true }
   local function map(lhs, rhs)
@@ -627,16 +740,50 @@ local function setup_keymaps()
   end)
 end
 
+local function setup_mouse()
+  vim.o.mouse = "a"
+  local group = vim.api.nvim_create_augroup("CodexCockpitBenchMouse", { clear = true })
+  for _, buf in ipairs(state.bufs) do
+    vim.keymap.set("n", "<LeftMouse>", function()
+      local line0 = vim.api.nvim_win_get_cursor(0)[1] - 1
+      local col = col_for_buf(vim.api.nvim_get_current_buf())
+      if col ~= nil then
+        on_mouse(line0, col)
+      end
+    end, { buffer = buf, silent = true, nowait = true })
+  end
+  vim.api.nvim_create_autocmd("WinEnter", {
+    group = group,
+    callback = function()
+      local buf = vim.api.nvim_get_current_buf()
+      if col_for_buf(buf) == nil then
+        return
+      end
+      if vim.b[buf].cockpit_bench_mouse then
+        return
+      end
+      vim.b[buf].cockpit_bench_mouse = true
+      vim.keymap.set("n", "<LeftMouse>", function()
+        local line0 = vim.api.nvim_win_get_cursor(0)[1] - 1
+        local col = col_for_buf(vim.api.nvim_get_current_buf())
+        if col ~= nil then
+          on_mouse(line0, col)
+        end
+      end, { buffer = buf, silent = true, nowait = true })
+    end,
+  })
+end
+
 function M.tabline()
   local width = vim.o.columns
-  local left = clip(NAV_LEFT, math.max(1, width - #NAV_RIGHT - 2))
-  local pad = math.max(0, width - #left - #NAV_RIGHT)
+  local left = clip(NAV_LEFT, math.max(1, width - strwidth(NAV_RIGHT) - 2))
+  local pad = math.max(0, width - strwidth(left) - strwidth(NAV_RIGHT))
   return "%#CockpitBenchChrome#" .. left .. string.rep(" ", pad) .. "%#CockpitBenchNavRight#" .. NAV_RIGHT
 end
 
 function M.statusline()
   local footer = string.format(
-    "t524u ghui  ·  Esc=pop  Enter=drill/backlink  ·  data: %s/  ·  writer: Proctor",
+    "t524u ghui · Esc=pop Enter=drill/backlink · data: %s/ · writer: Proctor",
     display_data_path(display_root())
   )
   return "%#CockpitBenchDim#" .. clip(footer, vim.o.columns)
@@ -663,7 +810,7 @@ local function create_layout()
     vim.wo[win].signcolumn = "no"
     vim.wo[win].foldcolumn = "0"
     vim.wo[win].wrap = false
-    vim.wo[win].statusline = "%!v:lua.vim.g.CockpitBenchStatusline()"
+    vim.wo[win].statusline = ""
     state.bufs[i] = buf
   end
   resize_columns()
@@ -678,10 +825,11 @@ function M.setup()
   state.absent = vim.env.COCKPIT_BENCH_ABSENT == "1" or db_path() == ""
   setup_highlights()
   vim.o.showtabline = 2
-  vim.o.laststatus = 2
+  vim.o.laststatus = 3
   vim.o.ruler = false
   vim.o.showmode = false
   vim.o.cmdheight = 0
+  vim.o.mouse = "a"
   vim.g.CockpitBenchTabline = function()
     return M.tabline()
   end
@@ -689,12 +837,14 @@ function M.setup()
     return M.statusline()
   end
   vim.opt.tabline = "%!v:lua.vim.g.CockpitBenchTabline()"
+  vim.opt.statusline = "%!v:lua.vim.g.CockpitBenchStatusline()"
   setup_keymaps()
   if state.absent then
     M.render_absent()
     return
   end
   create_layout()
+  setup_mouse()
   M.render_all()
   local group = vim.api.nvim_create_augroup("CodexCockpitBenchLayout", { clear = true })
   vim.api.nvim_create_autocmd("VimResized", {
