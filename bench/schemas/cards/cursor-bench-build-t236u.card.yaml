@@ -1,0 +1,45 @@
+# Filled validation-first card — Cursor frontier BENCH/build (t236u)
+# DO NOT kick on 1.7.1 / Qwen / local. Mint only after Thesis/Canon peer-ack.
+task_id: cursor-bench-build-t236u
+schema_class: sequenced
+schema_ids:
+  - runtime/frontier-vs-local-envelope
+  - process/done-line-screenshot
+  - harness/keep-what-benches-per-model
+  - intercom/peer-ack-before-kick
+  - ui/bench-bar-cyan-selection
+  - ui/bench-bar-gold-labels
+  - ui/bench-bar-yellow-backlink-chips
+  - ui/bench-bar-one-clean-footer
+  - ui/bench-no-files-regress
+receiver:
+  agent: cursor_cloud
+  model_id: MISSING
+  agent_class: frontier_subscription
+fixture:
+  paths:
+    - /workspace/bench/db/runs.sqlite
+    - /workspace/bench/spreadsheets/
+    - /workspace/bench/schemas/
+  approved_ref: /workspace/proofs/approved-style/bench-ghui-approved-t533u.png
+  live_command: "CPR live BENCH + FILES on dezohost; proof hash MUST differ from approved PNG if claiming live"
+expected_evidence:
+  pass_all_schemas: true
+  notes: independent live screenshot path under /workspace/proofs/ dated; FILES regress shot; touch+keyboard note; Proctor upsert same-turn
+score:
+  follow:
+  intended_result:
+  author_verdict:
+proctor:
+  on_fail: harness_change
+  on_success: buildout
+  score_home: bench/cursor
+deny_kick:
+  - sol-v1.7.1
+  - local/*
+  - Qwen
+  - hermes-local-envelope
+peer_ack:
+  agent: Thesis
+  verdict: GO
+  card: t238u

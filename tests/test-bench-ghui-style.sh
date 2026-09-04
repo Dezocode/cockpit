@@ -28,6 +28,10 @@ grep -Fq 't524u ghui' "$layout" ||
   fail 'missing approved footer t524u ghui line'
 grep -Fq 'Backlinks (Enter → jump)' "$layout" ||
   fail 'missing yellow backlinks header string'
+grep -Fq 'CockpitBenchGoldLabel' "$layout" ||
+  fail 'missing punchy gold label highlight group'
+grep -Fq 'PUNCH_GOLD_LABEL' "$layout" ||
+  fail 'missing approved gold label chroma constant'
 grep -Fq 'Run + backlinks' "$layout" ||
   fail 'missing Miller column header Run + backlinks'
 grep -Fq 'render_models_col' "$layout" ||

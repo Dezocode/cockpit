@@ -8,6 +8,7 @@ local NS = vim.api.nvim_create_namespace("CockpitBench")
 
 local PUNCH_CYAN = "#5ccfe6"
 local PUNCH_GOLD = "#e6c07b"
+local PUNCH_GOLD_LABEL = "#f5c962"
 local CHIP_BG = "#2a2418"
 
 local state = {
@@ -183,6 +184,7 @@ local function setup_highlights()
   local colors = {
     cyan = PUNCH_CYAN,
     gold = PUNCH_GOLD,
+    gold_label = PUNCH_GOLD_LABEL,
     dim = "#6c7086",
     chrome = "#cdd6f4",
     chip_bg = CHIP_BG,
@@ -197,14 +199,21 @@ local function setup_highlights()
           colors.dim = value
         elseif key == "foreground" then
           colors.chrome = value
+        elseif key == "yellow" then
+          colors.gold_label = value
         end
       end
     end
   end
+  vim.api.nvim_set_hl(0, "TabLine", { bg = "NONE", fg = colors.dim })
+  vim.api.nvim_set_hl(0, "TabLineFill", { bg = "NONE" })
   vim.api.nvim_set_hl(0, "CockpitBenchSel", { fg = colors.cyan, bold = true })
+  vim.api.nvim_set_hl(0, "CockpitBenchGoldLabel", { fg = colors.gold_label, bold = true })
   vim.api.nvim_set_hl(0, "CockpitBenchYellow", { fg = colors.gold, bold = true })
   vim.api.nvim_set_hl(0, "CockpitBenchDim", { fg = colors.dim })
-  vim.api.nvim_set_hl(0, "CockpitBenchChrome", { fg = colors.chrome, bold = true })
+  vim.api.nvim_set_hl(0, "CockpitBenchChrome", { fg = colors.chrome })
+  vim.api.nvim_set_hl(0, "CockpitBenchNavLeft", { fg = colors.chrome })
+  vim.api.nvim_set_hl(0, "CockpitBenchNavBench", { fg = colors.cyan, bold = true })
   vim.api.nvim_set_hl(0, "CockpitBenchNavRight", { fg = colors.cyan, bold = true })
   vim.api.nvim_set_hl(0, "CockpitBenchChip", { fg = colors.gold, bg = colors.chip_bg, bold = true })
   vim.api.nvim_set_hl(0, "CockpitBenchChipSel", { fg = colors.gold, bg = colors.chip_bg, bold = true, underline = true })
@@ -425,7 +434,7 @@ function M.render_detail_col()
     vim.api.nvim_buf_add_highlight(buf, NS, "CockpitBenchDim", 2, 0, -1)
     return
   end
-  vim.api.nvim_buf_add_highlight(buf, NS, "CockpitBenchYellow", 2, 0, -1)
+  vim.api.nvim_buf_add_highlight(buf, NS, "CockpitBenchGoldLabel", 2, 0, -1)
   local bl_header = 0
   for i, line in ipairs(lines) do
     if line == "Backlinks (Enter → jump)" then
@@ -434,7 +443,7 @@ function M.render_detail_col()
     end
   end
   if bl_header > 0 then
-    vim.api.nvim_buf_add_highlight(buf, NS, "CockpitBenchYellow", bl_header, 0, -1)
+    vim.api.nvim_buf_add_highlight(buf, NS, "CockpitBenchGoldLabel", bl_header, 0, -1)
   end
   for _, chip in ipairs(state.chip_rows) do
     local border_group = "CockpitBenchChipBorder"
@@ -778,7 +787,23 @@ function M.tabline()
   local width = vim.o.columns
   local left = clip(NAV_LEFT, math.max(1, width - strwidth(NAV_RIGHT) - 2))
   local pad = math.max(0, width - strwidth(left) - strwidth(NAV_RIGHT))
-  return "%#CockpitBenchChrome#" .. left .. string.rep(" ", pad) .. "%#CockpitBenchNavRight#" .. NAV_RIGHT
+  local bench_pos = left:find("BENCH", 1, true)
+  if bench_pos then
+    local before = left:sub(1, bench_pos - 1)
+    local after = left:sub(bench_pos + 5)
+    return table.concat({
+      "%#CockpitBenchNavLeft#",
+      before,
+      "%#CockpitBenchNavBench#",
+      "BENCH",
+      "%#CockpitBenchNavLeft#",
+      after,
+      string.rep(" ", pad),
+      "%#CockpitBenchNavRight#",
+      NAV_RIGHT,
+    })
+  end
+  return "%#CockpitBenchNavLeft#" .. left .. string.rep(" ", pad) .. "%#CockpitBenchNavRight#" .. NAV_RIGHT
 end
 
 function M.statusline()
