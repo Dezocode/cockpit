@@ -342,6 +342,11 @@ tmux new-window -d -t "$session:" -n COMPUTERS -c "$root" \
 tag "$session:COMPUTERS" COMPUTERS computers
 tmux set-option -p -t "$session:COMPUTERS" remain-on-exit on
 
+tmux new-window -d -t "$session:" -n BENCH -c "$root" \
+  "cd -- $root_q && exec cockpit-bench"
+tag "$session:BENCH" BENCH bench
+tmux set-option -p -t "$session:BENCH" remain-on-exit on
+
 tmux select-window -t "$session:1"
 tmux select-pane -t "$session:1.1"
 tmux set-option -t "$session" @cockpit 1

@@ -10,9 +10,9 @@ tmuxdir="$confdir/tmux"
 
 mkdir -p "$bindir" "$tmuxdir" \
   "$config_home/providers.d" "$config_home/nvim" \
-  "$config_home/plugins/cockpit-cpr" "$config_home/plugins/cockpit-memory" "$config_home/plugins/cockpit-computers" "$config_home/plugins/cockpit-intercom" "$config_home/skills.d" \
+  "$config_home/plugins/cockpit-cpr" "$config_home/plugins/cockpit-memory" "$config_home/plugins/cockpit-computers" "$config_home/plugins/cockpit-bench" "$config_home/plugins/cockpit-intercom" "$config_home/skills.d" \
   "$legacy_config_home/providers.d" "$legacy_config_home/nvim" \
-  "$legacy_config_home/plugins/cockpit-cpr" "$legacy_config_home/plugins/cockpit-memory" "$legacy_config_home/plugins/cockpit-computers" "$legacy_config_home/plugins/cockpit-intercom" "$legacy_config_home/skills.d"
+  "$legacy_config_home/plugins/cockpit-cpr" "$legacy_config_home/plugins/cockpit-memory" "$legacy_config_home/plugins/cockpit-computers" "$legacy_config_home/plugins/cockpit-bench" "$legacy_config_home/plugins/cockpit-intercom" "$legacy_config_home/skills.d"
 
 # The public command and every helper use the cockpit namespace. The old
 # codex-cockpit-* files are installed alongside them as compatibility shims.
@@ -26,6 +26,7 @@ install -m 0755 "$root/bin/cpr" "$bindir/cpr"
 install -m 0755 "$root/bin/intercom" "$bindir/intercom"
 install -m 0755 "$root/bin/memory" "$bindir/memory"
 install -m 0755 "$root/bin/computers" "$bindir/computers"
+install -m 0755 "$root/bin/bench" "$bindir/bench"
 
 seed_legacy_file() {
   local relative=$1 mode=$2
@@ -95,6 +96,10 @@ install -m 0644 "$root/plugins/cockpit-computers/plugin.conf" "$root/plugins/coc
   "$config_home/plugins/cockpit-computers/"
 install -m 0755 "$root/plugins/cockpit-computers/computers" \
   "$config_home/plugins/cockpit-computers/computers"
+install -m 0644 "$root/plugins/cockpit-bench/plugin.conf" "$root/plugins/cockpit-bench/README.md" \
+  "$config_home/plugins/cockpit-bench/"
+install -m 0755 "$root/plugins/cockpit-bench/bench" \
+  "$config_home/plugins/cockpit-bench/bench"
 install -m 0644 "$root/plugins/cockpit-intercom/plugin.conf" "$root/plugins/cockpit-intercom/README.md" \
   "$config_home/plugins/cockpit-intercom/"
 install -m 0755 "$root/plugins/cockpit-intercom/intercom" \
@@ -125,6 +130,15 @@ if [[ ! -f "$legacy_config_home/plugins/cockpit-computers/README.md" ]]; then
 fi
 if [[ ! -f "$legacy_config_home/plugins/cockpit-computers/computers" ]]; then
   install -m 0755 "$root/plugins/cockpit-computers/computers" "$legacy_config_home/plugins/cockpit-computers/computers"
+fi
+if [[ ! -f "$legacy_config_home/plugins/cockpit-bench/plugin.conf" ]]; then
+  install -m 0644 "$root/plugins/cockpit-bench/plugin.conf" "$legacy_config_home/plugins/cockpit-bench/plugin.conf"
+fi
+if [[ ! -f "$legacy_config_home/plugins/cockpit-bench/README.md" ]]; then
+  install -m 0644 "$root/plugins/cockpit-bench/README.md" "$legacy_config_home/plugins/cockpit-bench/README.md"
+fi
+if [[ ! -f "$legacy_config_home/plugins/cockpit-bench/bench" ]]; then
+  install -m 0755 "$root/plugins/cockpit-bench/bench" "$legacy_config_home/plugins/cockpit-bench/bench"
 fi
 if [[ ! -f "$legacy_config_home/plugins/cockpit-intercom/plugin.conf" ]]; then
   install -m 0644 "$root/plugins/cockpit-intercom/plugin.conf" "$legacy_config_home/plugins/cockpit-intercom/plugin.conf"

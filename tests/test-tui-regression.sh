@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Fail-closed TUI regression pack (COMPUTERS / 8-window topology).
+# Fail-closed TUI regression pack (BENCH / 9-window topology).
 #
 # Isolation contract (cockpit-tmux-product-socket-kill / t359u excellence):
 # - session name MUST NOT be "cockpit" (uses cockpit-tui-regression)
 # - ALL tmux calls go through tmux_test with TMUX_TMPDIR under mktemp
 # - kill-server must never touch /tmp/tmux-${UID}/default product socket
 # - assert_socket_path_documented enforces non-cockpit session + isolated socket
-# Pack that can kill the product socket = incomplete (COMPUTERS done-bar).
+# Pack that can kill the product socket = incomplete (BENCH done-bar).
 set -euo pipefail
 
 repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -59,26 +59,34 @@ chmod +x "$paste_stub"
 assert_source_contract() {
   local main="$repo_root/bin/cockpit-main"
   grep -q 'new-session.*-n AGENT' "$main" || fail 'cockpit-main missing AGENT window bootstrap'
-  for name in FILES DIFF MAP MEMORY SETUP PRS COMPUTERS; do
+  for name in FILES DIFF MAP MEMORY SETUP PRS COMPUTERS BENCH; do
     grep -q "new-window.*-n ${name}" "$main" || fail "cockpit-main missing ${name} window bootstrap"
   done
   grep -q 'exec cockpit-memory' "$main" || fail 'cockpit-main missing MEMORY bootstrap command'
   grep -q 'tag "$session:MEMORY" MEMORY memory' "$main" || fail 'cockpit-main missing MEMORY role tag'
   grep -q 'tag "$session:COMPUTERS" COMPUTERS computers' "$main" || fail 'cockpit-main missing COMPUTERS role tag'
   grep -q 'exec cockpit-computers' "$main" || fail 'cockpit-main missing COMPUTERS bootstrap command'
+  grep -q 'tag "$session:BENCH" BENCH bench' "$main" || fail 'cockpit-main missing BENCH role tag'
+  grep -q 'exec cockpit-bench' "$main" || fail 'cockpit-main missing BENCH bootstrap command'
   grep -q 'memory|MEMORY' "$repo_root/bin/cockpit-touch" ||
     fail 'cockpit-touch missing MEMORY routing'
   grep -q 'computers|COMPUTERS' "$repo_root/bin/cockpit-touch" ||
     fail 'cockpit-touch missing COMPUTERS routing'
+  grep -q 'bench|BENCH' "$repo_root/bin/cockpit-touch" ||
+    fail 'cockpit-touch missing BENCH routing'
   grep -q 'MEMORY|memory' "$repo_root/bin/cockpit-wake" ||
     fail 'cockpit-wake missing MEMORY wake routing'
   grep -q 'COMPUTERS|computers' "$repo_root/bin/cockpit-wake" ||
     fail 'cockpit-wake missing COMPUTERS wake routing'
+  grep -q 'BENCH|bench' "$repo_root/bin/cockpit-wake" ||
+    fail 'cockpit-wake missing BENCH wake routing'
   grep -q 'ensure_memory' "$repo_root/bin/cockpit-reload-views" ||
     fail 'cockpit-reload-views missing MEMORY derived view'
   grep -q 'ensure_computers' "$repo_root/bin/cockpit-reload-views" ||
     fail 'cockpit-reload-views missing COMPUTERS derived view'
-  pass 'source contract: eight-window bootstrap with MEMORY and COMPUTERS named pages'
+  grep -q 'ensure_bench' "$repo_root/bin/cockpit-reload-views" ||
+    fail 'cockpit-reload-views missing BENCH derived view'
+  pass 'source contract: nine-window bootstrap with MEMORY, COMPUTERS, and BENCH named pages'
 }
 
 assert_memory_bind_contract() {
@@ -106,7 +114,7 @@ exec bash --norc $(printf '%q' "$paste_stub")"
   tmux_test set-option -t "$session" @cockpit_runtime test
   tmux_test set-option -t "$session" @cockpit 1
 
-  for spec in "FILES:files" "DIFF:diff" "MAP:map" "MEMORY:memory" "SETUP:setup" "PRS:prs" "COMPUTERS:computers"; do
+  for spec in "FILES:files" "DIFF:diff" "MAP:map" "MEMORY:memory" "SETUP:setup" "PRS:prs" "COMPUTERS:computers" "BENCH:bench"; do
     local name=${spec%%:*} role=${spec##*:}
     tmux_test new-window -d -t "$session:" -n "$name" -c "$root" 'exec sleep 600'
     local pane
@@ -118,14 +126,14 @@ exec bash --norc $(printf '%q' "$paste_stub")"
 assert_window_topology() {
   local -a names=()
   local count name agent_win map_win pane role window nested=0 agent_panes memory_in_map=0
-  local expect_count=${1:-8}
+  local expect_count=${1:-9}
 
   mapfile -t names < <(tmux_test list-windows -t "$session" -F '#{window_name}' | sort)
   count="${#names[@]}"
   [[ "$count" -eq "$expect_count" ]] ||
     fail "expected ${expect_count} windows, got ${count}: ${names[*]}"
 
-  for expected in AGENT DIFF FILES MAP MEMORY PRS SETUP COMPUTERS; do
+  for expected in AGENT DIFF FILES MAP MEMORY PRS SETUP COMPUTERS BENCH; do
     printf '%s\n' "${names[@]}" | grep -Fxq "$expected" || fail "missing window ${expected}"
   done
 
@@ -137,7 +145,7 @@ assert_window_topology() {
       files|diff|map|setup|prs)
         [[ "$window" != "$agent_win" ]] || nested=1
         ;;
-      memory|computers)
+      memory|computers|bench)
         [[ "$window" != "$agent_win" ]] || nested=1
         [[ "$window" != "$map_win" ]] || memory_in_map=1
         ;;
@@ -150,16 +158,18 @@ assert_window_topology() {
   agent_panes="$(tmux_test list-panes -t "$session:AGENT" | wc -l | tr -d ' ')"
   [[ "$agent_panes" -le 2 ]] || fail "AGENT window has ${agent_panes} panes (not 5-up stack)"
 
-  if ((expect_count == 8)); then
+  if ((expect_count == 9)); then
     printf '%s\n' "${names[@]}" | grep -Fxq MEMORY ||
       fail 'canonical session must include MEMORY named window'
     printf '%s\n' "${names[@]}" | grep -Fxq COMPUTERS ||
       fail 'canonical session must include COMPUTERS named window'
+    printf '%s\n' "${names[@]}" | grep -Fxq BENCH ||
+      fail 'canonical session must include BENCH named window'
   elif printf '%s\n' "${names[@]}" | grep -Fxq MEMORY; then
     fail 'baseline session must stay windows==7 without MEMORY chrome'
   fi
 
-  pass "topology: windows==${expect_count}, pages not nested, AGENT not 5-up, MEMORY/COMPUTERS not in MAP"
+  pass "topology: windows==${expect_count}, pages not nested, AGENT not 5-up, MEMORY/COMPUTERS/BENCH not in MAP"
 }
 
 assert_no_extra_client() {
@@ -257,8 +267,21 @@ exec bash --norc $(printf '%q' "$paste_stub")"
   bar_cap="$(tmux_test capture-pane -t "$bar" -p -S -50)"
   grep -q SUBMITTED <<<"$bar_cap" && fail 'submit output appeared in BAR pane'
 
-  assert_window_topology 8
-  pass 'inject+submit: paste-buffer %0, wait chip, Enter; BAR untouched; windows stay 8'
+  assert_window_topology 9
+  pass 'inject+submit: paste-buffer %0, wait chip, Enter; BAR untouched; windows stay 9'
+}
+
+assert_bench_route() {
+  local bench_pane bench_win map_win
+  map_win="$(tmux_test display-message -p -t "$session:MAP" '#{window_id}')"
+  cockpit-touch "$session" bench >/dev/null 2>&1 || true
+  bench_pane="$(tmux_test display-message -p -t "$session:BENCH" '#{pane_id}')"
+  bench_win="$(tmux_test display-message -p -t "$bench_pane" '#{window_id}')"
+  [[ "$bench_win" != "$map_win" ]] ||
+    fail 'BENCH must not be nested inside MAP'
+  [[ "$(tmux_test display-message -p -t "$bench_pane" '#{@cockpit_role}')" == bench ]] ||
+    fail 'BENCH pane is not tagged bench'
+  pass 'BENCH route: named page via cockpit-touch, not nested in MAP'
 }
 
 assert_computers_route() {
@@ -307,9 +330,9 @@ assert_display_reload_pids() {
     fail 'display-only cockpit-adapt resized respawned FILES pane'
   bar_text="$(tmux_test capture-pane -p -t "$bar" -S -3)"
   grep -Fq '2:FILES' <<<"$bar_text"
-  [[ "$(tmux_test list-windows -t "$session" | wc -l | tr -d ' ')" == 8 ]] ||
+  [[ "$(tmux_test list-windows -t "$session" | wc -l | tr -d ' ')" == 9 ]] ||
     fail 'display-only reload changed window count'
-  pass 'display-only reload: runtime/FILES PIDs unchanged, lower bar six chips, eight windows'
+  pass 'display-only reload: runtime/FILES PIDs unchanged, lower bar six chips, nine windows'
 }
 
 assert_memory_not_nested() {
@@ -354,7 +377,7 @@ main() {
   assert_memory_bind_contract
   bootstrap_canonical_session "$project"
   assert_socket_path_documented
-  assert_window_topology 8
+  assert_window_topology 9
   assert_no_extra_client
 
   tmux_test set-option -t "$session" @cockpit_profile termius-ios
@@ -365,6 +388,7 @@ main() {
   assert_inject_submit "$project"
   assert_memory_not_nested
   assert_computers_route
+  assert_bench_route
   assert_display_reload_pids
   assert_platform_layout_classes
   assert_termius_toolbar_touch

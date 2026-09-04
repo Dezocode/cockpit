@@ -1,0 +1,526 @@
+#!/usr/bin/env bash
+# Cockpit BENCH: ghui/FILES-grammar drill over Proctor bench receipts (read-only).
+# L1 models → L2 runs → L3 run+backlinks. Enter on backlink jumps peer run; Esc pops stack.
+set -euo pipefail
+
+script_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=cockpit-lib
+source "$script_root/cockpit-lib"
+export PATH="$script_root:$HOME/.local/bin:$PATH"
+
+BENCH_ROOT=''
+BENCH_SOURCE=''
+
+bench_box_root() {
+  local candidate="${COCKPIT_BENCH_HOME:-/workspace/bench}"
+  [[ -d "$candidate" ]] && printf '%s\n' "$candidate"
+}
+
+bench_intercom_root() {
+  local candidate="${COCKPIT_INTERCOM_HOME:-$HOME/intercom}/proctor"
+  [[ -d "$candidate" ]] && printf '%s\n' "$candidate"
+}
+
+bench_resolve_root() {
+  local intercom box
+  intercom="$(bench_intercom_root || true)"
+  box="$(bench_box_root || true)"
+  if [[ -n "$intercom" && -f "$intercom/db/runs.sqlite" ]]; then
+    BENCH_ROOT="$intercom"
+    BENCH_SOURCE=intercom
+    return 0
+  fi
+  if [[ -n "$box" && -f "$box/db/runs.sqlite" ]]; then
+    BENCH_ROOT="$box"
+    BENCH_SOURCE=box
+    return 0
+  fi
+  BENCH_ROOT=''
+  BENCH_SOURCE=''
+  return 1
+}
+
+bench_db() {
+  [[ -n "$BENCH_ROOT" ]] || bench_resolve_root || return 1
+  printf '%s/db/runs.sqlite\n' "$BENCH_ROOT"
+}
+
+bench_models_index() {
+  [[ -n "$BENCH_ROOT" ]] || bench_resolve_root || return 1
+  local path="$BENCH_ROOT/MODELS_INDEX.csv"
+  [[ -f "$path" ]] && printf '%s\n' "$path"
+}
+
+bench_crossref() {
+  [[ -n "$BENCH_ROOT" ]] || bench_resolve_root || return 1
+  local path="$BENCH_ROOT/CROSSREF_LINKS.csv"
+  [[ -f "$path" ]] && printf '%s\n' "$path"
+}
+
+bench_sqlite() {
+  command -v sqlite3 >/dev/null 2>&1 || {
+    printf 'BENCH unavailable: sqlite3 is required to read bench receipts.\n' >&2
+    return 1
+  }
+  local db
+  db="$(bench_db)" || return 1
+  sqlite3 -readonly -noheader -separator $'\t' "$db" "$@"
+}
+
+bench_schema_ok() {
+  local db tables
+  db="$(bench_db)" || return 1
+  tables="$(sqlite3 -readonly "$db" \
+    "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('models','runs','run_links') ORDER BY name;" \
+    | tr '\n' ' ')"
+  [[ "$tables" == *models* && "$tables" == *runs* && "$tables" == *run_links* ]]
+}
+
+bench_validate() {
+  local db
+  if ! bench_resolve_root; then
+    printf 'BENCH unavailable: no bench receipt found (checked ~/intercom/proctor and /workspace/bench).\n' >&2
+    return 1
+  fi
+  db="$(bench_db)"
+  if [[ ! -r "$db" ]]; then
+    printf 'BENCH unavailable: runs.sqlite is not readable: %s\n' "$db" >&2
+    return 1
+  fi
+  if ! bench_schema_ok; then
+    printf 'BENCH unavailable: runs.sqlite is missing models/runs/run_links tables: %s\n' "$db" >&2
+    return 1
+  fi
+  if ! bench_models_index >/dev/null 2>&1; then
+    printf 'BENCH unavailable: MODELS_INDEX.csv is missing under %s\n' "$BENCH_ROOT" >&2
+    return 1
+  fi
+  return 0
+}
+
+bench_display_label() {
+  if [[ -z "$BENCH_ROOT" ]]; then
+    bench_resolve_root >/dev/null 2>&1 || true
+  fi
+  if [[ -n "$BENCH_ROOT" ]]; then
+    printf '%s (%s)' "$BENCH_ROOT" "${BENCH_SOURCE:-unknown}"
+  else
+    printf 'managed proctor receipt'
+  fi
+}
+
+bench_models_lines() {
+  bench_validate >/dev/null 2>&1 || return 1
+  bench_sqlite "SELECT model_id, COALESCE(display_name, model_id) FROM models ORDER BY model_id;"
+}
+
+bench_runs_lines() {
+  local model_id=$1
+  bench_validate >/dev/null 2>&1 || return 1
+  bench_sqlite "SELECT run_id, host, is_frontier, status, COALESCE(score_status, 'ABSENT')
+    FROM runs WHERE model_id = '$(printf '%s' "$model_id" | sed "s/'/''/g")'
+    ORDER BY started_at DESC, run_id;"
+}
+
+bench_run_detail() {
+  local run_id=$1
+  bench_validate >/dev/null 2>&1 || return 1
+  bench_sqlite "SELECT run_id, model_id, host, is_frontier, status, COALESCE(started_at, ''), COALESCE(score_status, 'ABSENT')
+    FROM runs WHERE run_id = '$(printf '%s' "$run_id" | sed "s/'/''/g")' LIMIT 1;"
+}
+
+bench_backlink_lines() {
+  local run_id=$1
+  bench_validate >/dev/null 2>&1 || return 1
+  bench_sqlite "SELECT rl.to_run_id, r.model_id, r.host, r.is_frontier, rl.link_kind
+    FROM run_links rl
+    JOIN runs r ON r.run_id = rl.to_run_id
+    WHERE rl.from_run_id = '$(printf '%s' "$run_id" | sed "s/'/''/g")'
+    ORDER BY rl.link_kind, rl.to_run_id;"
+}
+
+bench_host_badge() {
+  local is_frontier=$1
+  if [[ "$is_frontier" == 1 ]]; then
+    printf 'frontier'
+  else
+    printf 'local'
+  fi
+}
+
+case "${1:-}" in
+  path)
+    bench_validate || exit 1
+    printf 'root=%s\n' "$BENCH_ROOT"
+    printf 'source=%s\n' "$BENCH_SOURCE"
+    printf 'db=%s\n' "$(bench_db)"
+    bench_models_index && printf 'models_index=%s\n' "$(bench_models_index)"
+    bench_crossref && printf 'crossref=%s\n' "$(bench_crossref)" || true
+    exit 0
+    ;;
+  check)
+    if ! bench_validate; then
+      exit 1
+    fi
+    printf 'status=ok\n'
+    printf 'source=%s\n' "$BENCH_SOURCE"
+    printf 'model_count=%s\n' "$(bench_sqlite 'SELECT COUNT(*) FROM models;')"
+    printf 'run_count=%s\n' "$(bench_sqlite 'SELECT COUNT(*) FROM runs;')"
+    exit 0
+    ;;
+  models)
+    bench_validate || exit 1
+    bench_models_lines
+    exit 0
+    ;;
+  runs)
+    [[ -n "${2:-}" ]] || {
+      printf 'Usage: cockpit-bench runs MODEL_ID\n' >&2
+      exit 2
+    }
+    bench_validate || exit 1
+    bench_runs_lines "$2"
+    exit 0
+    ;;
+  show-run)
+    [[ -n "${2:-}" ]] || {
+      printf 'Usage: cockpit-bench show-run RUN_ID\n' >&2
+      exit 2
+    }
+    bench_validate || exit 1
+    bench_run_detail "$2"
+    bench_backlink_lines "$2" | while IFS='|' read -r to_run model host frontier kind; do
+      [[ -n "$to_run" ]] || continue
+      printf 'backlink\t%s\t%s\t%s\t%s\t%s\n' "$to_run" "$model" "$host" "$frontier" "$kind"
+    done
+    exit 0
+    ;;
+esac
+
+once=0
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --once) once=1 ;;
+    -h|--help)
+      cat <<'EOF'
+Usage: cockpit-bench [path|check|models|runs MODEL_ID|show-run RUN_ID] [--once]
+
+Interactive ghui drill (default in Cockpit BENCH pane):
+  L1 models → L2 runs → L3 run+backlinks
+  Enter drills down; Enter on backlink jumps peer run; Esc pops stack.
+Read-only. Proctor is the sole writer. Never invents scores (ABSENT fail-closed).
+EOF
+      exit 0
+      ;;
+    *)
+      printf 'Usage: cockpit-bench [path|check|models|runs MODEL_ID|show-run RUN_ID] [--once]\n' >&2
+      exit 2
+      ;;
+  esac
+  shift
+done
+
+bench_render_absent() {
+  clear_screen
+  printf '%sBENCH%s  %sABSENT%s\n\n' \
+    "$(cockpit_theme_heading)" "$(cockpit_theme_reset)" \
+    "$(cockpit_theme_style accent '' 1)" "$(cockpit_theme_reset)"
+  printf 'BENCH unavailable: Proctor bench receipt is missing or incomplete.\n'
+  printf 'Expected ~/intercom/proctor/ mirror or box truth /workspace/bench/db/runs.sqlite.\n'
+  printf 'Cockpit does not write scores; Proctor is the sole writer.\n'
+}
+
+bench_drill_once() {
+  if ! bench_validate >/dev/null 2>&1; then
+    bench_render_absent
+    return 1
+  fi
+  python3 - "$BENCH_ROOT" "$(bench_db)" <<'PY'
+import curses
+import sqlite3
+import sys
+
+ROOT, DB = sys.argv[1], sys.argv[2]
+
+
+def connect():
+    conn = sqlite3.connect(f"file:{DB}?mode=ro", uri=True)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+def badge(is_frontier):
+    return "frontier" if int(is_frontier or 0) else "local"
+
+
+def fetch_models(conn):
+    cur = conn.execute(
+        "SELECT model_id, COALESCE(display_name, model_id) AS name FROM models ORDER BY model_id"
+    )
+    return [(r["model_id"], r["name"]) for r in cur.fetchall()]
+
+
+def fetch_runs(conn, model_id):
+    cur = conn.execute(
+        """SELECT run_id, host, is_frontier, status, COALESCE(score_status, 'ABSENT') AS score_status
+           FROM runs WHERE model_id = ? ORDER BY started_at DESC, run_id""",
+        (model_id,),
+    )
+    return [dict(r) for r in cur.fetchall()]
+
+
+def fetch_run(conn, run_id):
+    cur = conn.execute(
+        """SELECT run_id, model_id, host, is_frontier, status,
+                  COALESCE(started_at, '') AS started_at,
+                  COALESCE(score_status, 'ABSENT') AS score_status
+           FROM runs WHERE run_id = ? LIMIT 1""",
+        (run_id,),
+    )
+    row = cur.fetchone()
+    return dict(row) if row else None
+
+
+def fetch_backlinks(conn, run_id):
+    cur = conn.execute(
+        """SELECT rl.to_run_id, r.model_id, r.host, r.is_frontier, rl.link_kind
+           FROM run_links rl JOIN runs r ON r.run_id = rl.to_run_id
+           WHERE rl.from_run_id = ? ORDER BY rl.link_kind, rl.to_run_id""",
+        (run_id,),
+    )
+    return [dict(r) for r in cur.fetchall()]
+
+
+class Frame:
+    def __init__(self, level, model_id=None, run_id=None):
+        self.level = level
+        self.model_id = model_id
+        self.run_id = run_id
+        self.index = 0
+
+
+def draw_header(stdscr, stack, source):
+    stdscr.addstr(0, 0, f"BENCH  {ROOT} ({source})  ·  read-only  ·  ↑↓ move  Enter drill  Esc back  q quit")
+    crumbs = []
+    for fr in stack:
+        if fr.level == 1:
+            crumbs.append("models")
+        elif fr.level == 2:
+            crumbs.append(fr.model_id or "?")
+        elif fr.level == 3:
+            crumbs.append(fr.run_id or "?")
+    stdscr.addstr(1, 0, " › ".join(crumbs))
+
+
+def render_models(stdscr, conn, frame):
+    items = fetch_models(conn)
+    if not items:
+        stdscr.addstr(3, 0, "ABSENT: no models in receipt")
+        return items, False
+    stdscr.addstr(3, 0, "MODEL")
+    stdscr.addstr(4, 0, "─" * 40)
+    row = 5
+    for i, (mid, name) in enumerate(items):
+        prefix = "▸ " if i == frame.index else "  "
+        line = f"{prefix}{mid:<18} {name}"
+        if i == frame.index:
+            stdscr.addstr(row, 0, line, curses.A_REVERSE)
+        else:
+            stdscr.addstr(row, 0, line)
+        row += 1
+    return items, True
+
+
+def render_runs(stdscr, conn, frame):
+    items = fetch_runs(conn, frame.model_id)
+    if not items:
+        stdscr.addstr(3, 0, f"ABSENT: no runs for {frame.model_id}")
+        return items, False
+    stdscr.addstr(3, 0, f"RUNS  {frame.model_id}")
+    stdscr.addstr(4, 0, "─" * 72)
+    stdscr.addstr(5, 0, f"{'RUN':<14} {'HOST':<16} {'SITE':<10} {'STATUS':<10} SCORE")
+    row = 6
+    for i, run in enumerate(items):
+        site = badge(run["is_frontier"])
+        if site == "frontier":
+            site_label = "≠local"
+        else:
+            site_label = site
+        score = run["score_status"] or "ABSENT"
+        prefix = "▸ " if i == frame.index else "  "
+        line = f"{prefix}{run['run_id']:<12} {run['host']:<16} {site_label:<10} {run['status']:<10} {score}"
+        if i == frame.index:
+            stdscr.addstr(row, 0, line[: stdscr.getmaxyx()[1] - 1], curses.A_REVERSE)
+        else:
+            stdscr.addstr(row, 0, line[: stdscr.getmaxyx()[1] - 1])
+        row += 1
+    return items, True
+
+
+def render_run(stdscr, conn, frame):
+    run = fetch_run(conn, frame.run_id)
+    if not run:
+        stdscr.addstr(3, 0, f"ABSENT: run {frame.run_id}")
+        return [], False
+    site = badge(run["is_frontier"])
+    site_label = "≠local" if site == "frontier" else site
+    stdscr.addstr(3, 0, f"RUN  {run['run_id']}")
+    stdscr.addstr(4, 0, "─" * 72)
+    stdscr.addstr(5, 0, f"model:  {run['model_id']}")
+    stdscr.addstr(6, 0, f"host:   {run['host']}  ({site_label})")
+    stdscr.addstr(7, 0, f"status: {run['status']}")
+    stdscr.addstr(8, 0, f"score:  {run['score_status'] or 'ABSENT'}")
+    if run["started_at"]:
+        stdscr.addstr(9, 0, f"started:{run['started_at']}")
+    stdscr.addstr(11, 0, "BACKLINKS  (Enter jumps peer run)")
+    stdscr.addstr(12, 0, "─" * 72)
+    links = fetch_backlinks(conn, frame.run_id)
+    if not links:
+        stdscr.addstr(13, 0, "ABSENT: no backlinks")
+        return [], True
+    row = 13
+    selectable = []
+    for i, link in enumerate(links):
+        site = badge(link["is_frontier"])
+        site_label = "≠local" if site == "frontier" else site
+        prefix = "▸ " if i == frame.index else "  "
+        line = f"{prefix}{link['to_run_id']:<14} {link['model_id']:<16} {link['host']:<14} {site_label:<8} {link['link_kind']}"
+        if i == frame.index:
+            stdscr.addstr(row, 0, line[: stdscr.getmaxyx()[1] - 1], curses.A_REVERSE)
+        else:
+            stdscr.addstr(row, 0, line[: stdscr.getmaxyx()[1] - 1])
+        selectable.append(link)
+        row += 1
+    return selectable, True
+
+
+def main(stdscr):
+    curses.curs_set(0)
+    stdscr.keypad(True)
+    conn = connect()
+    stack = [Frame(1)]
+    source = "intercom" if "/intercom/" in ROOT or ROOT.endswith("/proctor") else "box"
+    while True:
+        stdscr.clear()
+        draw_header(stdscr, stack, source)
+        frame = stack[-1]
+        items = []
+        ok = True
+        if frame.level == 1:
+            items, ok = render_models(stdscr, conn, frame)
+        elif frame.level == 2:
+            items, ok = render_runs(stdscr, conn, frame)
+        elif frame.level == 3:
+            items, ok = render_run(stdscr, conn, frame)
+        stdscr.refresh()
+        key = stdscr.getch()
+        if key in (ord("q"), ord("Q"), 27):
+            if frame.level > 1 and key == 27:
+                stack.pop()
+                continue
+            if key == 27 and frame.level == 1:
+                return 0
+            if key in (ord("q"), ord("Q")):
+                return 0
+        if key == 27 and frame.level > 1:
+            stack.pop()
+            continue
+        if key in (curses.KEY_UP, ord("k")):
+            if frame.index > 0:
+                frame.index -= 1
+            continue
+        if key in (curses.KEY_DOWN, ord("j")):
+            max_idx = max(0, len(items) - 1)
+            if frame.index < max_idx:
+                frame.index += 1
+            continue
+        if key in (10, 13, curses.KEY_ENTER):
+            if frame.level == 1 and items:
+                mid, _ = items[frame.index]
+                stack.append(Frame(2, model_id=mid))
+            elif frame.level == 2 and items:
+                rid = items[frame.index]["run_id"]
+                stack.append(Frame(3, model_id=frame.model_id, run_id=rid))
+            elif frame.level == 3 and items:
+                peer = items[frame.index]["to_run_id"]
+                stack.append(Frame(3, run_id=peer))
+            continue
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(curses.wrapper(main))
+PY
+}
+
+clear_screen() {
+  printf '\033[2J\033[H'
+}
+
+if ((once)); then
+  if ! bench_validate >/dev/null 2>&1; then
+    bench_render_absent
+    exit 1
+  fi
+  bench_drill_once
+  exit 0
+fi
+
+session="$(tmux display-message -p '#{session_name}' 2>/dev/null || echo unknown)"
+COCKPIT_DEBOUNCE=0.25
+
+maybe_render() {
+  if cockpit_view_visible; then
+    bench_interactive_session
+  fi
+}
+
+if [[ "$session" == unknown ]]; then
+  printf 'BENCH idle: open the Cockpit BENCH page from the managed session.\n'
+  while true; do sleep 3600; done
+fi
+
+cockpit_event_open "$session" BENCH
+trap 'cockpit_event_close; rm -f "$(cockpit_wake_dir "$session")/BENCH.pid"' EXIT
+
+bench_idle_message() {
+  clear_screen
+  printf '%sBENCH%s  idle\n\n' \
+    "$(cockpit_theme_heading)" "$(cockpit_theme_reset)"
+  printf 'Open the BENCH page or press a wake to render the Proctor bench drill.\n'
+}
+
+bench_interactive_session() {
+  if ! bench_validate >/dev/null 2>&1; then
+    bench_render_absent
+    return 0
+  fi
+  bench_drill_once || true
+}
+
+if cockpit_view_visible; then
+  bench_interactive_session
+else
+  bench_idle_message
+fi
+
+bench_validate >/dev/null 2>&1 || true
+watch_dir="${BENCH_ROOT:-/workspace/bench}"
+if [[ ! -d "$watch_dir" ]]; then
+  watch_dir="${COCKPIT_INTERCOM_HOME:-$HOME/intercom}/proctor"
+fi
+[[ -d "$watch_dir" ]] || watch_dir="/workspace/bench"
+[[ -d "$watch_dir" ]] || watch_dir="${COCKPIT_INTERCOM_HOME:-$HOME/intercom}"
+
+cockpit_event_watch "$watch_dir" \
+  -e close_write,moved_to,create,delete \
+  --exclude "$cockpit_noise_exclude"
+
+while cockpit_event_read; do
+  case "$COCKPIT_EVENT" in
+    QUIT) exit 0 ;;
+    WAKE) maybe_render; continue ;;
+  esac
+  sleep "$COCKPIT_DEBOUNCE"
+  maybe_render
+done
