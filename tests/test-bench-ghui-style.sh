@@ -49,4 +49,10 @@ grep -Fq 'render_detail_col' "$layout" ||
 grep -Fq 'draw_vrules' "$layout" ||
   fail 'missing Miller vertical column separators'
 
+# t649u: legacy ASCII chip drawer (+---+ / | pipes) must stay absent from source
+grep -Fq 'string.rep("-", inner) .. "+"' "$layout" &&
+  fail 'legacy ASCII chip HR (+---+ corners) still present in cockpit-bench.lua'
+grep -Eq '\|.*center_text' "$layout" &&
+  fail 'legacy ASCII chip pipe borders still present in cockpit-bench.lua'
+
 printf '%s\n' 'Bench ghui style contract: PASS'
