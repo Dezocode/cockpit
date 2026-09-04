@@ -1,5 +1,12 @@
 #!/usr/bin/env bash
-# Fail-closed TUI regression pack for v0.1/cc4f1ee layout contract (PR #1 PREP).
+# Fail-closed TUI regression pack (COMPUTERS / 8-window topology).
+#
+# Isolation contract (cockpit-tmux-product-socket-kill / t359u excellence):
+# - session name MUST NOT be "cockpit" (uses cockpit-tui-regression)
+# - ALL tmux calls go through tmux_test with TMUX_TMPDIR under mktemp
+# - kill-server must never touch /tmp/tmux-${UID}/default product socket
+# - assert_socket_path_documented enforces non-cockpit session + isolated socket
+# Pack that can kill the product socket = incomplete (COMPUTERS done-bar).
 set -euo pipefail
 
 repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
