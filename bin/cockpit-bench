@@ -247,7 +247,7 @@ import sys
 
 ROOT, DB, DISPLAY_ROOT = sys.argv[1], sys.argv[2], sys.argv[3]
 
-NAV_LEFT = "cockpit · MEMORY  COMPUTERS  MODELS  BENCH  FILES  PRS"
+NAV_LEFT = "cockpit * MEMORY  COMPUTERS  MODELS  BENCH  FILES  PRS"
 NAV_RIGHT = "BENCH  ghui  read-only"
 
 
@@ -266,15 +266,19 @@ def display_data_path(path):
 
 def fetch_models(conn):
     cur = conn.execute(
-        "SELECT model_id, model_id AS name FROM models ORDER BY model_id"
+        "SELECT model_id, model_id AS name, agent_class FROM models ORDER BY model_id"
     )
-    return [(r["model_id"], r["name"]) for r in cur.fetchall()]
+    return [(r["model_id"], r["name"], r["agent_class"]) for r in cur.fetchall()]
 
 
 def fetch_runs(conn, model_id):
     cur = conn.execute(
-        """SELECT run_id, host, is_frontier, status, COALESCE(score_status, 'ABSENT') AS score_status
-           FROM runs WHERE model_id = ? ORDER BY started_at DESC, run_id""",
+        """SELECT run_id, model_id,
+                  COALESCE(role, '') AS role,
+                  COALESCE(disposition, 'ABSENT') AS status,
+                  COALESCE(scored_at, '') AS started_at,
+                  COALESCE(disposition, 'ABSENT') AS score_status
+           FROM runs WHERE model_id = ? ORDER BY scored_at DESC, run_id""",
         (model_id,),
     )
     return [dict(r) for r in cur.fetchall()]
@@ -282,9 +286,11 @@ def fetch_runs(conn, model_id):
 
 def fetch_run(conn, run_id):
     cur = conn.execute(
-        """SELECT run_id, model_id, host, is_frontier, status,
-                  COALESCE(started_at, '') AS started_at,
-                  COALESCE(score_status, 'ABSENT') AS score_status
+        """SELECT run_id, model_id,
+                  COALESCE(role, '') AS role,
+                  COALESCE(disposition, 'ABSENT') AS status,
+                  COALESCE(scored_at, '') AS started_at,
+                  COALESCE(disposition, 'ABSENT') AS score_status
            FROM runs WHERE run_id = ? LIMIT 1""",
         (run_id,),
     )
@@ -294,8 +300,8 @@ def fetch_run(conn, run_id):
 
 def fetch_backlinks(conn, run_id):
     cur = conn.execute(
-        """SELECT rl.to_run_id, r.model_id, r.host, r.is_frontier, rl.link_kind
-           FROM run_links rl JOIN runs r ON r.run_id = rl.to_run_id
+        """SELECT rl.to_run_id, rl.link_kind, r.model_id
+           FROM run_links rl LEFT JOIN runs r ON r.run_id = rl.to_run_id
            WHERE rl.from_run_id = ? ORDER BY rl.link_kind, rl.to_run_id""",
         (run_id,),
     )
@@ -353,8 +359,8 @@ def draw_top_chrome(stdscr, width, colors):
 
 def draw_footer(stdscr, height, width, colors):
     line = (
-        f"t524u ghui  ·  Esc=pop  Enter=drill/backlink  ·  "
-        f"data: {display_data_path(DISPLAY_ROOT)}/  ·  writer: Proctor"
+        f"t524u ghui  *  Esc=pop  Enter=drill/backlink  *  "
+        f"data: {display_data_path(DISPLAY_ROOT)}/  *  writer: Proctor"
     )
     stdscr.addstr(height - 1, 0, clip(line, width), colors["dim"] if colors else 0)
 
@@ -368,17 +374,24 @@ def column_bounds(width):
 def draw_vrules(stdscr, top, bottom, c1, c2, colors):
     attr = colors["dim"] if colors else 0
     for row in range(top, bottom):
-        stdscr.addch(row, c1, "│", attr)
-        stdscr.addch(row, c2, "│", attr)
+        stdscr.addch(row, c1, "|", attr)
+        stdscr.addch(row, c2, "|", attr)
 
 
 def draw_models_col(stdscr, conn, models, model_idx, focus_col, x0, x1, y0, y1, colors):
     stdscr.addstr(y0, x0 + 1, "Models", colors["bold"] if colors else curses.A_BOLD)
     row = y0 + 2
-    for i, (mid, _name) in enumerate(models):
+    for i, item in enumerate(models):
         if row >= y1 - 1:
             break
-        site = model_site(conn, mid)
+        mid = item[0]
+        agent_class = item[2] if len(item) > 2 else ""
+        if "frontier" in str(agent_class):
+            site = "frontier"
+        elif str(agent_class) == "local":
+            site = "local"
+        else:
+            site = model_site(conn, mid)
         cursor = ">" if focus_col == 0 and i == model_idx else " "
         site_attr = colors["dim"] if site == "ABSENT" and colors else 0
         if focus_col == 0 and i == model_idx and colors:
@@ -422,10 +435,10 @@ def draw_backlink_chip(stdscr, y, x, w, kind, run_id, selected, colors):
     attr = colors["yellow"] if colors else 0
     if selected and colors:
         attr |= curses.A_BOLD
-    top = "┌" + "─" * (w - 2) + "┐"
-    mid1 = "│" + label.center(max(1, w - 2))[: w - 2].ljust(w - 2) + "│"
-    mid2 = "│" + rid.center(max(1, w - 2))[: w - 2].ljust(w - 2) + "│"
-    bot = "└" + "─" * (w - 2) + "┘"
+    top = "┌" + "-" * (w - 2) + "┐"
+    mid1 = "|" + label.center(max(1, w - 2))[: w - 2].ljust(w - 2) + "|"
+    mid2 = "|" + rid.center(max(1, w - 2))[: w - 2].ljust(w - 2) + "|"
+    bot = "└" + "-" * (w - 2) + "┘"
     for i, line in enumerate((top, mid1, mid2, bot)):
         stdscr.addstr(y + i, x, clip(line, w), attr)
 
@@ -508,7 +521,8 @@ def main(stdscr):
         run = fetch_run(conn, run_id)
         if not run:
             return False
-        for i, (mid, _) in enumerate(models):
+        for i, row in enumerate(models):
+            mid = row[0]
             if mid == run["model_id"]:
                 model_idx = i
                 break
@@ -527,7 +541,7 @@ def main(stdscr):
         c1, c2 = column_bounds(width)
         stdscr.erase()
         draw_top_chrome(stdscr, width, colors)
-        stdscr.hline(1, 0, "─", width)
+        stdscr.hline(1, 0, "-", width)
         draw_vrules(stdscr, body_top, body_bottom, c1, c2, colors)
 
         model_id = current_model()
