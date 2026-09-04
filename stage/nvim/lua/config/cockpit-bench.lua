@@ -14,7 +14,8 @@ local PUNCH_GOLD_LABEL = "#ffcc66"
 local PUNCH_YELLOW_CHIP = "#ffcc66"
 local GOLD_LABEL_BG = "#252018"
 local CHIP_BG = "#4a3f18"
-local PANE_BG = "#101315"
+local PANE_BG = "#141210"
+local TABLINE_BG = "#1a1814"
 
 local state = {
   focus_col = 0,
@@ -196,6 +197,7 @@ local function setup_highlights()
     chrome = "#cdd6f4",
     chip_bg = CHIP_BG,
     pane_bg = PANE_BG,
+    tabline_bg = TABLINE_BG,
   }
   local path = vim.env.COCKPIT_THEME_COLORS_FILE
     or vim.fn.expand("~/.local/state/omarchy/current/theme/colors.toml")
@@ -213,11 +215,17 @@ local function setup_highlights()
       end
     end
   end
-  -- Solid pane + tabline bands keep Omarchy wallpaper from fighting L3 labels.
+  -- Warm pane band harmonizes with gold labels + yellow chips; tabline reads as product nav.
   vim.api.nvim_set_hl(0, "CockpitBenchPane", { fg = colors.chrome, bg = colors.pane_bg })
+  vim.api.nvim_set_hl(0, "CockpitBenchTabBar", { fg = colors.dim, bg = colors.tabline_bg })
   vim.api.nvim_set_hl(0, "Normal", { fg = colors.chrome, bg = colors.pane_bg })
-  vim.api.nvim_set_hl(0, "TabLine", { bg = colors.pane_bg, fg = colors.dim })
-  vim.api.nvim_set_hl(0, "TabLineFill", { bg = colors.pane_bg })
+  vim.api.nvim_set_hl(0, "TabLine", { bg = colors.tabline_bg, fg = colors.dim })
+  vim.api.nvim_set_hl(0, "TabLineFill", { bg = colors.tabline_bg })
+  vim.api.nvim_set_hl(0, "StatusLine", { fg = colors.dim, bg = colors.pane_bg })
+  vim.api.nvim_set_hl(0, "StatusLineNC", { fg = colors.dim, bg = colors.pane_bg })
+  vim.api.nvim_set_hl(0, "VertSplit", { fg = colors.pane_bg, bg = colors.pane_bg })
+  vim.api.nvim_set_hl(0, "WinSeparator", { fg = colors.pane_bg, bg = colors.pane_bg })
+  vim.api.nvim_set_hl(0, "EndOfBuffer", { fg = colors.pane_bg, bg = colors.pane_bg })
   vim.api.nvim_set_hl(0, "CockpitBenchSel", { fg = colors.cyan, bold = true })
   vim.api.nvim_set_hl(0, "CockpitBenchGoldLabel", {
     fg = colors.gold_label,
@@ -248,8 +256,24 @@ local function apply_pane_chrome(win)
   if not win or not vim.api.nvim_win_is_valid(win) then
     return
   end
-  vim.wo[win].winhighlight =
-    "Normal:CockpitBenchPane,NormalNC:CockpitBenchPane,SignColumn:CockpitBenchPane,EndOfBuffer:CockpitBenchPane,CursorLine:CockpitBenchPane"
+  vim.wo[win].winhighlight = table.concat({
+    "Normal:CockpitBenchPane",
+    "NormalNC:CockpitBenchPane",
+    "SignColumn:CockpitBenchPane",
+    "EndOfBuffer:CockpitBenchPane",
+    "CursorLine:CockpitBenchPane",
+    "VertSplit:CockpitBenchPane",
+    "WinSeparator:CockpitBenchPane",
+  }, ",")
+end
+
+local function apply_visual_quiet()
+  vim.o.fillchars = "eob: "
+  vim.o.list = false
+  vim.o.winseparator = " "
+  pcall(function()
+    vim.opt.fillchars:append({ stl = " ", stlnc = " " })
+  end)
 end
 
 local function in_cockpit_tmux()
@@ -260,10 +284,14 @@ local function soften_tmux_window_strip()
   if not in_cockpit_tmux() or vim.fn.executable("tmux") ~= 1 then
     return
   end
-  -- Cockpit tmux tabs remain; product nav weight stays on the nvim tabline.
+  -- Cockpit shell tabs remain; product nav weight stays on the nvim tabline band.
   vim.fn.system(
-    [[tmux set-option -w window-status-format '#[fg=brightblack,dim] #I:#W ' 2>/dev/null;]] ..
-      [[tmux set-option -w window-status-current-format '#[fg=brightblack,dim] #I:#W ' 2>/dev/null]]
+    [[tmux set-option -w pane-border-status off 2>/dev/null;]] ..
+      [[tmux set-option -w pane-border-format '' 2>/dev/null;]] ..
+      [[tmux set-option -w window-status-format '#[fg=brightblack,dim] #I:#W ' 2>/dev/null;]] ..
+      [[tmux set-option -w window-status-current-format '#[fg=brightblack,dim] #I:#W ' 2>/dev/null;]] ..
+      [[tmux set-option status-left-length 12 2>/dev/null;]] ..
+      [[tmux set-option status-right-length 12 2>/dev/null]]
   )
 end
 
@@ -607,8 +635,10 @@ function M.draw_vrules()
       apply_pane_chrome(win)
       vim.wo[win].signcolumn = "no"
       vim.wo[win].statusline = ""
+      vim.wo[win].winseparator = " "
     end
   end
+  soften_tmux_window_strip()
 end
 
 local function current_model_id()
@@ -966,7 +996,7 @@ function M.tabline()
     local left_w = strwidth(brand) + strwidth(nav_rest)
     local pad = math.max(1, width - left_w - strwidth(right) - 2)
     return table.concat({
-      "%#CockpitBenchPane#",
+      "%#CockpitBenchTabBar#",
       "%#CockpitBenchNavBrand#",
       brand,
       "%#CockpitBenchNavLeft#",
@@ -982,7 +1012,7 @@ function M.tabline()
   local brand = "cockpit"
   local nav_rest = left:match("^cockpit(.*)$") or left
   return table.concat({
-    "%#CockpitBenchPane#",
+    "%#CockpitBenchTabBar#",
     "%#CockpitBenchNavBrand#",
     brand,
     "%#CockpitBenchNavLeft#",
@@ -1000,7 +1030,7 @@ function M.statusline()
     "t524u ghui · Esc=pop Enter=drill/backlink · data: %s/ · writer: Proctor",
     display_data_path(display_root())
   )
-  return "%#CockpitBenchDim#" .. clip(footer, vim.o.columns)
+  return "%#CockpitBenchPane#" .. "%#CockpitBenchDim#" .. clip(footer, vim.o.columns)
 end
 
 local function create_layout()
@@ -1039,6 +1069,7 @@ end
 function M.setup()
   state.absent = vim.env.COCKPIT_BENCH_ABSENT == "1" or db_path() == ""
   setup_highlights()
+  apply_visual_quiet()
   local hl_group = vim.api.nvim_create_augroup("CockpitBenchHl", { clear = true })
   vim.api.nvim_create_autocmd("ColorScheme", {
     group = hl_group,

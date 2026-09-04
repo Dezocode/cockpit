@@ -33,6 +33,14 @@ grep -Fq 'soften_tmux_window_strip' "$layout" ||
   fail 'missing tmux strip softening for product-nav weight'
 grep -Fq 'CockpitBenchPane' "$layout" ||
   fail 'missing solid pane background to quiet watermark bleed'
+grep -Fq 'CockpitBenchTabBar' "$layout" ||
+  fail 'missing product tabline band highlight (approved bar weight)'
+grep -Fq 'apply_visual_quiet' "$layout" ||
+  fail 'missing eob/ascii quiet helper (no ~ filler or box borders)'
+grep -Fq 'WinSeparator' "$layout" ||
+  fail 'missing invisible Miller column separators (no ascii vert rules)'
+grep -Fq 'fillchars' "$layout" ||
+  fail 'missing fillchars eob quieting for empty buffer tail'
 grep -Fq 'chip_run_id_label' "$layout" ||
   fail 'missing fuller backlink chip id labels'
 grep -Fq 'ghui  read-only' "$layout" ||
@@ -50,6 +58,8 @@ grep -Fq 'string.rep("-", inner) .. "+"' "$layout" &&
   fail 'legacy ASCII chip HR (+---+ corners) still present'
 grep -Eq '\|.*center_text' "$layout" &&
   fail 'legacy ASCII chip pipe borders still present'
+grep -Eq 'string\.rep\("[|+\\-]"' "$layout" &&
+  fail 'legacy ASCII box/separator drawing still present'
 grep -Fq 'CockpitBenchChipBorder' "$layout" &&
   fail 'legacy CockpitBenchChipBorder highlight group still present'
 grep -Fq 'CodexCockpitBench' "$layout" &&

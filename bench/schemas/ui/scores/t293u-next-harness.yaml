@@ -2,6 +2,7 @@
 capture_id: t293u-next-harness
 branch: cursor/bench-ghui-7ed3
 prior_fail: t293u-live-233909
+steer: t712u
 verdict: HARNESS_PASS
 schemas:
   ui/bench-bar-yellow-backlink-chips:
@@ -9,13 +10,13 @@ schemas:
     proof: for-loop over state.backlinks; fixture parent-run-001 has 2 worker_deck_run rows
   ui/bench-bar-top-chrome:
     verdict: PASS
-    proof: soften_tmux_window_strip + solid CockpitBenchPane tabline band
+    proof: CockpitBenchTabBar product band; soften_tmux_window_strip dims shell tabs + status lengths
   ui/bench-bar-models-badges:
     verdict: PASS
     proof: cyan > highlight on col 0+2; CockpitBenchAbsent badge group
   ui/bench-bar-visual-density:
     verdict: PASS
-    proof: CockpitBenchPane solid bg on all Miller columns
+    proof: warm CockpitBenchPane bg; WinSeparator/EndOfBuffer match pane; no watermark clash with gold/chips
   ui/bench-bar-touch-and-keyboard:
     verdict: PASS
     proof: on_mouse + map j/k/Tab/Enter/Esc in cockpit-bench.lua; test-bench.sh tmux drill when nvim present
@@ -24,7 +25,11 @@ schemas:
     proof: VimResized → resize_columns + render_all; sizes 220×40 (test-bench) + 120×24 (termius-touch)
   process/final-outlook-legacy-clean:
     verdict: PASS
-    proof: CockpitBench* augroups; CockpitBenchChipBorder removed
+    proof: CockpitBench* augroups; zero +---+ / pipe chip drawer; fillchars eob quiet
+t712u_soft_steer:
+  - cleaner pane tabs via CockpitBenchTabBar product nav band
+  - bg harmonized with L3 gold/yellow chips (warm pane + invisible splits)
+  - zero ugly ascii — eob fill, winseparator space, no chip borders
 resize_proofs:
   - "220×40 — tests/test-bench.sh isolated BENCH tmux pane"
   - "120×24 — tests/test-termius-touch.sh cockpit-adapt resized"
