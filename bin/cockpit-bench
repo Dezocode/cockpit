@@ -111,7 +111,7 @@ bench_display_label() {
 
 bench_models_lines() {
   bench_validate >/dev/null 2>&1 || return 1
-  bench_sqlite "SELECT model_id, COALESCE(display_name, model_id) FROM models ORDER BY model_id;"
+  bench_sqlite "SELECT model_id, model_id FROM models ORDER BY model_id;"
 }
 
 bench_runs_lines() {
@@ -266,7 +266,7 @@ def display_data_path(path):
 
 def fetch_models(conn):
     cur = conn.execute(
-        "SELECT model_id, COALESCE(display_name, model_id) AS name FROM models ORDER BY model_id"
+        "SELECT model_id, model_id AS name FROM models ORDER BY model_id"
     )
     return [(r["model_id"], r["name"]) for r in cur.fetchall()]
 
