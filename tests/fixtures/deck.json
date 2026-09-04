@@ -1,0 +1,22 @@
+{
+  "schema": 1,
+  "node": "deck",
+  "written_at": "2026-09-03T00:00:00Z",
+  "runtimes": [
+    {
+      "runtime": "hermes+llama.cpp",
+      "endpoint": "127.0.0.1:8080",
+      "reachable": true,
+      "models": [
+        {
+          "id": "local/Qwen3.5-4B",
+          "state": "served"
+        }
+      ],
+      "gateway_state": "running"
+    }
+  ],
+  "notes": [
+    "tailscale_hostname=dezodeck"
+  ]
+}

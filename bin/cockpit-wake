@@ -17,6 +17,7 @@ case "$which" in
   FILES|files) name=FILES ;;
   MAP|map|MERMAID|mermaid) name=MAP ;;
   MEMORY|memory) name=MEMORY ;;
+  COMPUTERS|computers) name=COMPUTERS ;;
   *) exit 0 ;;
 esac
 

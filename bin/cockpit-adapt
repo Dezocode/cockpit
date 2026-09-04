@@ -270,7 +270,7 @@ apply_touch_chrome() {
 
 layout_tabs() {
   local runtime=$1
-  for spec in "files:FILES" "diff:DIFF" "map:MAP" "setup:SETUP" "prs:PRS" "memory:MEMORY"; do
+  for spec in "files:FILES" "diff:DIFF" "map:MAP" "setup:SETUP" "prs:PRS" "memory:MEMORY" "computers:COMPUTERS"; do
     local role=${spec%%:*} name=${spec##*:} pane parent
     pane="$(pane_for "$role")"
     [[ -n "$pane" ]] || continue
@@ -308,7 +308,7 @@ hide_auxiliary_tabs() {
         tmux set-option -w -t "$window" automatic-rename off 2>/dev/null || true
         tmux set-option -w -t "$window" allow-rename off 2>/dev/null || true
         ;;
-      files|diff|map|setup|prs|memory|runtime)
+      files|diff|map|setup|prs|memory|computers|runtime)
         if [[ "$modality" == "touch" ]]; then
           tmux set-option -w -t "$window" window-status-format '#[fg=brightblack,bg=default]      #I:#W      ' 2>/dev/null || true
           tmux set-option -w -t "$window" window-status-current-format "#[fg=black,bg=blue,bold]      #{?window_zoomed_flag,${agent_label},#I:#W}      " 2>/dev/null || true
@@ -330,12 +330,12 @@ hide_auxiliary_tabs() {
   done < <(tmux list-windows -t "$session" -F '#{window_id} #{window_name}' 2>/dev/null || true)
 }
 
-# Keep the restored page order stable in the bar. The seven allowed pages are
-# AGENT, FILES, DIFF, MAP, SETUP, PRS, and MEMORY.
+# Keep the restored page order stable in the bar. The eight allowed pages are
+# AGENT, FILES, DIFF, MAP, SETUP, PRS, MEMORY, and COMPUTERS.
 normalize_primary_tabs() {
   local runtime_win pane role window current target spec
   runtime_win="$(window_for "$runtime")"
-  for spec in "files:2" "diff:3" "map:4" "setup:5" "prs:6" "memory:7"; do
+  for spec in "files:2" "diff:3" "map:4" "setup:5" "prs:6" "memory:7" "computers:8"; do
     role=${spec%%:*}
     target=${spec##*:}
     pane="$(pane_for "$role")"
@@ -362,6 +362,7 @@ map="$(pane_for map)"
 setup="$(pane_for setup)"
 prs="$(pane_for prs)"
 memory="$(pane_for memory)"
+computers="$(pane_for computers)"
 [[ -n "$runtime" ]] || exit 0
 tmux set-option -t "$session" @cockpit_runtime_pane "$runtime"
 update_git_chrome

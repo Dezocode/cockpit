@@ -1,0 +1,22 @@
+{
+  "schema": 1,
+  "node": "deck-sol",
+  "written_at": "2026-09-03T00:00:00Z",
+  "runtimes": [
+    {
+      "runtime": "sol",
+      "endpoint": "127.0.0.1:11434",
+      "reachable": true,
+      "models": [
+        {
+          "id": "local/Sol-8B",
+          "state": "served"
+        }
+      ],
+      "gateway_state": "running"
+    }
+  ],
+  "notes": [
+    "tailscale_hostname=dezodeck"
+  ]
+}

@@ -55,9 +55,10 @@ Views (same in both profiles):
 - **SETUP** — persistent terminal flow for auth, Agent switching, Git targets, plugins, intercom sync, and audit
 - **PRS** — GitHub PRs
 - **MEMORY** — intercom-managed memory projection
+- **COMPUTERS** — intercom-managed node roster with in-pane MODELS (`m`)
 
-The seven canonical tmux windows remain **AGENT**, **FILES**, **DIFF**, **MAP**,
-**SETUP**, **PRS**, and **MEMORY**. They are separate named pages in the bar;
+The eight canonical tmux windows are **AGENT**, **FILES**, **DIFF**, **MAP**,
+**SETUP**, **PRS**, **MEMORY**, and **COMPUTERS**. They are separate named pages in the bar;
 MEMORY never splits or replaces MAP. F10 is not a Cockpit page binding.
 
 The AGENT pane launches the native Codex CLI with inherited no-color/CI
