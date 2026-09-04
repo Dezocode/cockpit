@@ -14,6 +14,7 @@ local PUNCH_GOLD_LABEL = "#ffcc66"
 local PUNCH_YELLOW_CHIP = "#ffcc66"
 local GOLD_LABEL_BG = "#252018"
 local CHIP_BG = "#4a3f18"
+local PANE_BG = "#101315"
 
 local state = {
   focus_col = 0,
@@ -194,6 +195,7 @@ local function setup_highlights()
     dim = "#6c7086",
     chrome = "#cdd6f4",
     chip_bg = CHIP_BG,
+    pane_bg = PANE_BG,
   }
   local path = vim.env.COCKPIT_THEME_COLORS_FILE
     or vim.fn.expand("~/.local/state/omarchy/current/theme/colors.toml")
@@ -205,13 +207,17 @@ local function setup_highlights()
           colors.dim = value
         elseif key == "foreground" then
           colors.chrome = value
+        elseif key == "background" then
+          colors.pane_bg = value
         end
       end
     end
   end
-  -- gold_label stays on PUNCH_GOLD_LABEL — theme yellow washes approved punch
-  vim.api.nvim_set_hl(0, "TabLine", { bg = "NONE", fg = colors.dim })
-  vim.api.nvim_set_hl(0, "TabLineFill", { bg = "NONE" })
+  -- Solid pane + tabline bands keep Omarchy wallpaper from fighting L3 labels.
+  vim.api.nvim_set_hl(0, "CockpitBenchPane", { fg = colors.chrome, bg = colors.pane_bg })
+  vim.api.nvim_set_hl(0, "Normal", { fg = colors.chrome, bg = colors.pane_bg })
+  vim.api.nvim_set_hl(0, "TabLine", { bg = colors.pane_bg, fg = colors.dim })
+  vim.api.nvim_set_hl(0, "TabLineFill", { bg = colors.pane_bg })
   vim.api.nvim_set_hl(0, "CockpitBenchSel", { fg = colors.cyan, bold = true })
   vim.api.nvim_set_hl(0, "CockpitBenchGoldLabel", {
     fg = colors.gold_label,
@@ -226,6 +232,7 @@ local function setup_highlights()
   vim.api.nvim_set_hl(0, "CockpitBenchNavRight", { fg = colors.cyan })
   vim.api.nvim_set_hl(0, "CockpitBenchNavRest", { fg = colors.dim })
   vim.api.nvim_set_hl(0, "CockpitBenchBadgeDim", { fg = colors.dim })
+  vim.api.nvim_set_hl(0, "CockpitBenchAbsent", { fg = "#c45c5c", bold = true })
   vim.api.nvim_set_hl(0, "CockpitBenchChipFill", { bg = colors.chip_bg })
   vim.api.nvim_set_hl(0, "CockpitBenchChip", { fg = colors.yellow_chip, bg = colors.chip_bg, bold = true })
   vim.api.nvim_set_hl(0, "CockpitBenchChipId", { fg = colors.dim, bg = colors.chip_bg })
@@ -235,7 +242,29 @@ local function setup_highlights()
     bold = true,
     underline = true,
   })
-  vim.api.nvim_set_hl(0, "CockpitBenchChipBorder", { fg = colors.yellow_chip, bg = colors.chip_bg, bold = true })
+end
+
+local function apply_pane_chrome(win)
+  if not win or not vim.api.nvim_win_is_valid(win) then
+    return
+  end
+  vim.wo[win].winhighlight =
+    "Normal:CockpitBenchPane,NormalNC:CockpitBenchPane,SignColumn:CockpitBenchPane,EndOfBuffer:CockpitBenchPane,CursorLine:CockpitBenchPane"
+end
+
+local function in_cockpit_tmux()
+  return vim.env.TMUX ~= nil and vim.env.TMUX ~= "" and vim.env.COCKPIT_BENCH_ONCE ~= "1"
+end
+
+local function soften_tmux_window_strip()
+  if not in_cockpit_tmux() or vim.fn.executable("tmux") ~= 1 then
+    return
+  end
+  -- Cockpit tmux tabs remain; product nav weight stays on the nvim tabline.
+  vim.fn.system(
+    [[tmux set-option -w window-status-format '#[fg=brightblack,dim] #I:#W ' 2>/dev/null;]] ..
+      [[tmux set-option -w window-status-current-format '#[fg=brightblack,dim] #I:#W ' 2>/dev/null]]
+  )
 end
 
 local function strwidth(text)
@@ -355,10 +384,6 @@ local function chip_run_id_label(run_id, width)
   return truncate_run_id(run_id, width)
 end
 
-local function in_cockpit_tmux()
-  return vim.env.TMUX ~= nil and vim.env.TMUX ~= "" and vim.env.COCKPIT_BENCH_ONCE ~= "1"
-end
-
 local function set_buffer_lines(buf, lines)
   vim.bo[buf].modifiable = true
   vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
@@ -403,16 +428,20 @@ function M.render_models_col()
   clear_ns(buf)
   local row = 2
   for i, item in ipairs(state.models) do
+    local mid = item[1]
     local site = model_site(item[3] or "")
     local line = lines[row + 1] or ""
     local site_start = math.max(0, #line - #site)
     local selected = state.focus_col == 0 and i - 1 == state.model_idx
+    local name_w = math.max(8, width - strwidth(site) - 4)
+    local name_part = clip(mid, name_w)
     if selected then
-      vim.api.nvim_buf_add_highlight(buf, NS, "CockpitBenchSel", row, 0, 2 + #name_part)
+      vim.api.nvim_buf_add_highlight(buf, NS, "CockpitBenchSel", row, 0, 1)
+      vim.api.nvim_buf_add_highlight(buf, NS, "CockpitBenchSel", row, 2, 2 + #name_part)
     end
     local badge_group = "CockpitBenchBadgeDim"
     if site == "ABSENT" then
-      badge_group = "CockpitBenchDim"
+      badge_group = "CockpitBenchAbsent"
     end
     vim.api.nvim_buf_add_highlight(buf, NS, badge_group, row, site_start, #line)
     row = row + 1
@@ -523,6 +552,7 @@ function M.render_detail_col()
           start = chip_row,
           bl_idx = i - 1,
           selected = state.focus_col == 2 and i - 1 == state.bl_idx,
+          width = chip_w,
         })
         if i < #state.backlinks then
           table.insert(lines, "")
@@ -549,9 +579,10 @@ function M.render_detail_col()
     end
     for _, chip in ipairs(state.chip_rows) do
       local label_group = chip.selected and "CockpitBenchChipSel" or "CockpitBenchChip"
+      local fill_end = math.max(chip.width or 0, 1)
       for r = chip.start, chip.start + 1 do
         local line = lines[r + 1] or ""
-        local line_end = math.max(0, #line)
+        local line_end = math.max(#line, fill_end)
         vim.api.nvim_buf_add_highlight(buf, NS, "CockpitBenchChipFill", r, 0, line_end)
         if r == chip.start then
           vim.api.nvim_buf_add_highlight(buf, NS, label_group, r, 0, line_end)
@@ -573,6 +604,7 @@ end
 function M.draw_vrules()
   for _, win in ipairs(state.wins) do
     if vim.api.nvim_win_is_valid(win) then
+      apply_pane_chrome(win)
       vim.wo[win].signcolumn = "no"
       vim.wo[win].statusline = ""
     end
@@ -893,7 +925,7 @@ end
 
 local function setup_mouse()
   vim.o.mouse = "a"
-  local group = vim.api.nvim_create_augroup("CodexCockpitBenchMouse", { clear = true })
+  local group = vim.api.nvim_create_augroup("CockpitBenchMouse", { clear = true })
   for _, buf in ipairs(state.bufs) do
     vim.keymap.set("n", "<LeftMouse>", function()
       local line0 = vim.api.nvim_win_get_cursor(0)[1] - 1
@@ -934,6 +966,7 @@ function M.tabline()
     local left_w = strwidth(brand) + strwidth(nav_rest)
     local pad = math.max(1, width - left_w - strwidth(right) - 2)
     return table.concat({
+      "%#CockpitBenchPane#",
       "%#CockpitBenchNavBrand#",
       brand,
       "%#CockpitBenchNavLeft#",
@@ -949,6 +982,7 @@ function M.tabline()
   local brand = "cockpit"
   local nav_rest = left:match("^cockpit(.*)$") or left
   return table.concat({
+    "%#CockpitBenchPane#",
     "%#CockpitBenchNavBrand#",
     brand,
     "%#CockpitBenchNavLeft#",
@@ -991,6 +1025,7 @@ local function create_layout()
     vim.wo[win].foldcolumn = "0"
     vim.wo[win].wrap = false
     vim.wo[win].statusline = ""
+    apply_pane_chrome(win)
     state.bufs[i] = buf
   end
   resize_columns()
@@ -1004,7 +1039,7 @@ end
 function M.setup()
   state.absent = vim.env.COCKPIT_BENCH_ABSENT == "1" or db_path() == ""
   setup_highlights()
-  local hl_group = vim.api.nvim_create_augroup("CodexCockpitBenchHl", { clear = true })
+  local hl_group = vim.api.nvim_create_augroup("CockpitBenchHl", { clear = true })
   vim.api.nvim_create_autocmd("ColorScheme", {
     group = hl_group,
     callback = setup_highlights,
@@ -1023,6 +1058,7 @@ function M.setup()
   end
   vim.opt.tabline = "%!v:lua.vim.g.CockpitBenchTabline()"
   vim.opt.statusline = "%!v:lua.vim.g.CockpitBenchStatusline()"
+  soften_tmux_window_strip()
   setup_keymaps()
   if state.absent then
     M.render_absent()
@@ -1031,7 +1067,7 @@ function M.setup()
   create_layout()
   setup_mouse()
   M.render_all()
-  local group = vim.api.nvim_create_augroup("CodexCockpitBenchLayout", { clear = true })
+  local group = vim.api.nvim_create_augroup("CockpitBenchLayout", { clear = true })
   vim.api.nvim_create_autocmd("VimResized", {
     group = group,
     callback = function()

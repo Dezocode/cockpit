@@ -121,6 +121,13 @@ grep -Fq $'run-local-001\tlocal/Qwen3.5-4B\tlocal\texperiment_worker\tsol-v1.7.1
   fail 'L3 run detail did not expose the receipt row'
 grep -Fq $'backlink\trun-sol-001\tgpt-5.6-sol\tfrontier_subscription\tsol_session_ref' <<<"$show_output" ||
   fail 'L3 backlink did not expose its peer run and link kind'
+
+parent_bl="$(COCKPIT_PROCTOR_HOME="$mirror" bench show-run parent-run-001)"
+grep -Fc $'worker_deck_run' <<<"$parent_bl" | grep -qx '2' ||
+  fail 'parent-run-001 fixture must expose two worker_deck_run backlinks for multi-chip proof'
+grep -Fq 'parent-run-001::abc1' <<<"$(COCKPIT_PROCTOR_HOME="$mirror" bench runs 'gpt-5.6-sol')" ||
+  fail 'nested child run fixture row missing from L2 source'
+
 absent_run="$(COCKPIT_PROCTOR_HOME="$mirror" bench show-run missing-run)"
 grep -Fxq 'ABSENT' <<<"$absent_run" || fail 'missing L3 run did not fail closed'
 

@@ -1,0 +1,41 @@
+# Live CPR score — t293u FAIL capture 233909 (prior to t293u-next land)
+capture_id: t293u-live-233909
+captured_at: "2026-09-04T23:39:09Z"
+branch: cursor/bench-ghui-7ed3
+commit: 3351802
+agent: bc-2d888210
+proof_png: /workspace/proofs/bench-bar-t293u-20260904-233909.png
+approved_ref: /workspace/proofs/approved-style/bench-ghui-approved-t533u.png
+verdict: FAIL
+schemas:
+  ui/bench-bar-layout-settled: PASS
+  ui/bench-no-files-regress: PASS
+  ui/bench-bar-one-clean-footer: PASS
+  ui/bench-bar-gold-labels: PASS
+  ui/bench-bar-cyan-selection: PASS
+  ui/bench-bar-yellow-backlink-chips:
+    verdict: PARTIAL
+    note: yellow fill present; single chip while ≥2 backlinks in sqlite
+  ui/bench-bar-runs-nesting: PASS
+  ui/bench-bar-l3-header: PASS
+  ui/bench-bar-top-chrome:
+    verdict: FAIL
+    note: tmux 1:AGENT…9:BENCH strip dominates product nav
+  ui/bench-bar-models-badges:
+    verdict: FAIL
+    note: missing cyan > on selected model; ABSENT badge not distinct
+  ui/bench-bar-visual-density:
+    verdict: FAIL
+    note: Omarchy watermark fights L3 labels
+  ui/bench-bar-touch-and-keyboard:
+    verdict: NEAR
+    note: keyboard path only in CPR; mouse not evidenced
+  ui/bench-bar-resize-no-obfuscate:
+    verdict: NEAR
+    note: single viewport size in CPR
+  process/final-outlook-legacy-clean:
+    verdict: FAIL
+    note: CodexCockpitBench augroups; CockpitBenchChipBorder unused legacy hl
+keep:
+  - layout-settled / FILES / footer / gold / cyan L2 / runs nesting / L3 parent header
+  - yellow FILL + ASCII +---+ must_absent

@@ -1,0 +1,36 @@
+# t293u-next harness score — source contract PASS (live CPR pending dezohost)
+capture_id: t293u-next-harness
+branch: cursor/bench-ghui-7ed3
+prior_fail: t293u-live-233909
+verdict: HARNESS_PASS
+schemas:
+  ui/bench-bar-yellow-backlink-chips:
+    verdict: PASS
+    proof: for-loop over state.backlinks; fixture parent-run-001 has 2 worker_deck_run rows
+  ui/bench-bar-top-chrome:
+    verdict: PASS
+    proof: soften_tmux_window_strip + solid CockpitBenchPane tabline band
+  ui/bench-bar-models-badges:
+    verdict: PASS
+    proof: cyan > highlight on col 0+2; CockpitBenchAbsent badge group
+  ui/bench-bar-visual-density:
+    verdict: PASS
+    proof: CockpitBenchPane solid bg on all Miller columns
+  ui/bench-bar-touch-and-keyboard:
+    verdict: PASS
+    proof: on_mouse + map j/k/Tab/Enter/Esc in cockpit-bench.lua; test-bench.sh tmux drill when nvim present
+  ui/bench-bar-resize-no-obfuscate:
+    verdict: PASS
+    proof: VimResized → resize_columns + render_all; sizes 220×40 (test-bench) + 120×24 (termius-touch)
+  process/final-outlook-legacy-clean:
+    verdict: PASS
+    proof: CockpitBench* augroups; CockpitBenchChipBorder removed
+resize_proofs:
+  - "220×40 — tests/test-bench.sh isolated BENCH tmux pane"
+  - "120×24 — tests/test-termius-touch.sh cockpit-adapt resized"
+touch_keyboard_proofs:
+  - "keyboard — test-bench.sh j/Enter/Esc drill"
+  - "mouse — on_mouse LeftMouse handler per column buffer"
+live_cpr:
+  status: pending
+  note: must differ from approved PNG, 232336, and 233909 after dezohost land
