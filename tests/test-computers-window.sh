@@ -41,4 +41,4 @@ agent_pid_after="$(tmux display-message -p -t "$session:AGENT" '#{pane_pid}')"
 check_output="$(COCKPIT_INTERCOM_HOME="$intercom_home" computers check)"
 grep -q '^status=ok$' <<<"$check_output"
 
-printf '%s\n' 'Computers window prep regression: PASS'
+printf '%s\n' 'Computers window regression: PASS'

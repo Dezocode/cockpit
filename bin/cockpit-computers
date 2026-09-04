@@ -332,9 +332,23 @@ fi
 
 cockpit_event_open "$session" COMPUTERS
 computers_key_pid=''
+computers_key_fd=''
+computers_key_pane="${TMUX_PANE:-}"
+if [[ -z "$computers_key_pane" ]]; then
+  computers_key_pane="$(tmux display-message -p '#{pane_id}' 2>/dev/null || true)"
+fi
+if [[ -n "$computers_key_pane" ]]; then
+  computers_key_tty="$(tmux display-message -p -t "$computers_key_pane" '#{pane_tty}' 2>/dev/null || true)"
+  if [[ -n "$computers_key_tty" && -r "$computers_key_tty" ]]; then
+    exec {computers_key_fd}<"$computers_key_tty"
+  fi
+fi
+if [[ -z "$computers_key_fd" && -t 0 ]]; then
+  computers_key_fd=0
+fi
 computers_key_reader() {
   local key
-  while IFS= read -r -s -n 1 key; do
+  while IFS= read -r -s -n 1 -u "$computers_key_fd" key; do
     case "$key" in
       m|M)
         printf 'KEY_MODELS\n' >"$COCKPIT_EVENT_FIFO" 2>/dev/null || true
@@ -349,11 +363,11 @@ computers_key_reader() {
     esac
   done
 }
-if [[ -t 0 ]]; then
+if [[ -n "$computers_key_fd" ]]; then
   computers_key_reader &
   computers_key_pid=$!
 fi
-trap '[[ -n "$computers_key_pid" ]] && kill "$computers_key_pid" 2>/dev/null || true; cockpit_event_close; rm -f "$(cockpit_wake_dir "$session")/COMPUTERS.pid"' EXIT
+trap '[[ -n "$computers_key_pid" ]] && kill "$computers_key_pid" 2>/dev/null || true; [[ "$computers_key_fd" =~ ^[0-9]+$ && "$computers_key_fd" != 0 ]] && exec {computers_key_fd}<&- || true; cockpit_event_close; rm -f "$(cockpit_wake_dir "$session")/COMPUTERS.pid"' EXIT
 
 computers_event_drain() {
   local extra
