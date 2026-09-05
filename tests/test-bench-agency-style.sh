@@ -55,6 +55,10 @@ grep -Fq 'pumblend = 0' "$layout" ||
   fail 'missing pumblend=0 guard for opaque omarchy-flat canvas'
 grep -Fq 'CHIP_PAD_COLS' "$layout" ||
   fail 'missing chip pad for N separate yellow boxes (not one packed strip)'
+grep -Fq 'CHIP_GAP_ROWS' "$layout" ||
+  fail 'missing chip gap rows between N backlinks (not one packed strip)'
+grep -Fq "set-option -g window-style" "$layout" ||
+  fail 'missing global tmux window-style omarchy-flat (survives omarchy-theme-set-tmux)'
 grep -Fq 'WinSeparator' "$layout" ||
   fail 'missing invisible Miller column separators (no ascii vert rules)'
 grep -Fq 'fillchars' "$layout" ||

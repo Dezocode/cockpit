@@ -20,6 +20,7 @@ local OMARCHY_FLAT_BG = "#100e0c"
 local PANE_BG = "#141210"
 local TABLINE_BG = "#1a1814"
 local CHIP_PAD_COLS = 2
+local CHIP_GAP_ROWS = 1 -- blank pane rows between N chips (not one packed strip)
 local CHIP_MAX_INNER = 22
 
 local state = {
@@ -307,7 +308,10 @@ local function soften_tmux_window_strip()
   local flat_bg = OMARCHY_FLAT_BG
   vim.fn.system(
     string.format(
-      [[tmux set-option -w pane-border-status off 2>/dev/null;]] ..
+      [[tmux set-option -g window-style 'bg=%s' 2>/dev/null;]] ..
+        [[tmux set-option -g pane-border-style 'fg=%s,bg=%s' 2>/dev/null;]] ..
+        [[tmux set-option -g pane-active-border-style 'fg=%s,bg=%s' 2>/dev/null;]] ..
+        [[tmux set-option -w pane-border-status off 2>/dev/null;]] ..
         [[tmux set-option -w pane-border-format '' 2>/dev/null;]] ..
         [[tmux set-option -w window-style 'bg=%s' 2>/dev/null;]] ..
         [[tmux set-option -w pane-border-style 'fg=%s,bg=%s' 2>/dev/null;]] ..
@@ -321,6 +325,11 @@ local function soften_tmux_window_strip()
         [[tmux set-option -w window-status-current-format '#[fg=brightblack,dim] #I:#W ' 2>/dev/null;]] ..
         [[tmux set-option window-status-format '#[fg=brightblack,dim] #I:#W ' 2>/dev/null;]] ..
         [[tmux set-option window-status-current-format '#[fg=brightblack,dim] #I:#W ' 2>/dev/null]],
+      flat_bg,
+      flat_bg,
+      flat_bg,
+      flat_bg,
+      flat_bg,
       flat_bg,
       flat_bg,
       flat_bg,
@@ -624,7 +633,9 @@ function M.render_detail_col()
           width = chip_fill_w,
         })
         if i < #state.backlinks then
-          table.insert(lines, "")
+          for _ = 1, CHIP_GAP_ROWS do
+            table.insert(lines, "")
+          end
         end
       end
     end
@@ -651,7 +662,11 @@ function M.render_detail_col()
       local fill_end = math.max(chip.width or 0, 1)
       for r = chip.start, chip.start + 1 do
         local line = lines[r + 1] or ""
-        local line_end = math.max(#line, fill_end)
+        -- Clip fill to the chip box width only (N separate chips, not one packed strip).
+        local line_end = math.min(#line, fill_end)
+        if line_end < 1 then
+          line_end = fill_end
+        end
         vim.api.nvim_buf_add_highlight(buf, NS, "CockpitBenchChipFill", r, 0, line_end)
         if r == chip.start then
           vim.api.nvim_buf_add_highlight(buf, NS, label_group, r, 0, line_end)
@@ -1120,7 +1135,19 @@ function M.setup()
   local hl_group = vim.api.nvim_create_augroup("CockpitBenchHl", { clear = true })
   vim.api.nvim_create_autocmd("ColorScheme", {
     group = hl_group,
-    callback = setup_highlights,
+    callback = function()
+      setup_highlights()
+      apply_omarchy_flat_bg()
+      soften_tmux_window_strip()
+    end,
+  })
+  local flat_group = vim.api.nvim_create_augroup("CockpitBenchOmarchyFlat", { clear = true })
+  vim.api.nvim_create_autocmd({ "VimEnter", "FocusGained" }, {
+    group = flat_group,
+    callback = function()
+      apply_omarchy_flat_bg()
+      soften_tmux_window_strip()
+    end,
   })
   vim.o.showtabline = 2
   vim.o.laststatus = 3
