@@ -1,0 +1,56 @@
+task_id: cursor-bench-bar-complete-t728u-next2
+card_id: cursor-bench-bar-complete-t728u-next2
+kick_ready: true
+schema_class: sequenced
+schema_ids:
+  - process/inspect-prior-before-rework
+  - process/final-outlook-legacy-clean
+  - ui/bench-bar-layout-settled
+  - ui/bench-no-files-regress
+  - ui/bench-bar-one-clean-footer
+  - ui/bench-bar-gold-labels
+  - ui/bench-bar-l3-header
+  - ui/bench-bar-top-chrome
+  - harness/no-invalid-winseparator
+  - ui/bench-bar-resize-no-obfuscate
+  - ui/bench-bar-yellow-backlink-chips
+  - ui/bench-bar-visual-density
+  - ui/bench-bar-omarchy-theme
+  - ui/bench-bar-touch-and-keyboard
+receiver:
+  agent: cursor_cloud
+  model_id: composer-2.5
+  agent_class: frontier_subscription
+fixture:
+  approved_ref: /workspace/proofs/approved-style/bench-ghui-approved-t533u.png
+  prior_fail_refs:
+    - /workspace/proofs/bench-bar-t728u-next-20260905-002855.png
+    - /workspace/proofs/bench-bar-t728u-20260905-001318.png
+  branch: cursor/bench-ghui-7ed3
+  head: 7e789b5
+keep:
+  - resize distinct ≥2-size (NEW KEEP from 002855)
+  - top-chrome product-only top
+  - durable winseparator
+  - layout/FILES/footer/gold/L3/FILL+ASCII
+  - t716u no miller clutter
+complete:
+  - N separate yellow chip boxes when ≥2 backlinks (not one packed multi-label box)
+  - visual-density quieter than CPR 002855
+  - omarchy-theme SEPARATE — Omarchy-flat BENCH bg, no Totoro (live CPR must show flat)
+  - touch AND keyboard live (remote-send ≠ touch PASS)
+  - resize without obfuscation — ≥2 size proofs with distinct sha256
+subtract:
+  - kitchen-sink unrelated schemas
+  - soft PASS / inventing scores
+  - FILES regress
+  - remerging curses miller
+  - force-push / merge (Dezocode merges; stay draft)
+proctor:
+  on_fail: harness_change
+  on_success: buildout
+  score_home: bench/cursor/composer-2.5
+deny_kick:
+  - sol-v1.7.1
+  - local/*
+  - Qwen

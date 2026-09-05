@@ -234,14 +234,15 @@ local function setup_highlights()
   vim.api.nvim_set_hl(0, "CockpitBenchFlat", { fg = colors.chrome, bg = colors.omarchy_flat })
   vim.api.nvim_set_hl(0, "CockpitBenchPane", { fg = colors.chrome, bg = colors.pane_bg })
   vim.api.nvim_set_hl(0, "CockpitBenchTabBar", { fg = colors.dim, bg = colors.tabline_bg })
-  vim.api.nvim_set_hl(0, "Normal", { fg = colors.chrome, bg = colors.pane_bg })
+  -- Canvas default is omarchy-flat (opaque); pane windows override via winhighlight.
+  vim.api.nvim_set_hl(0, "Normal", { fg = colors.chrome, bg = colors.omarchy_flat })
   vim.api.nvim_set_hl(0, "TabLine", { bg = colors.tabline_bg, fg = colors.dim })
   vim.api.nvim_set_hl(0, "TabLineFill", { bg = colors.tabline_bg })
-  vim.api.nvim_set_hl(0, "StatusLine", { fg = colors.dim, bg = colors.pane_bg })
-  vim.api.nvim_set_hl(0, "StatusLineNC", { fg = colors.dim, bg = colors.pane_bg })
-  vim.api.nvim_set_hl(0, "VertSplit", { fg = colors.pane_bg, bg = colors.pane_bg })
-  vim.api.nvim_set_hl(0, "WinSeparator", { fg = colors.pane_bg, bg = colors.pane_bg })
-  vim.api.nvim_set_hl(0, "EndOfBuffer", { fg = colors.pane_bg, bg = colors.pane_bg })
+  vim.api.nvim_set_hl(0, "StatusLine", { fg = colors.dim, bg = colors.omarchy_flat })
+  vim.api.nvim_set_hl(0, "StatusLineNC", { fg = colors.dim, bg = colors.omarchy_flat })
+  vim.api.nvim_set_hl(0, "VertSplit", { fg = colors.omarchy_flat, bg = colors.omarchy_flat })
+  vim.api.nvim_set_hl(0, "WinSeparator", { fg = colors.omarchy_flat, bg = colors.omarchy_flat })
+  vim.api.nvim_set_hl(0, "EndOfBuffer", { fg = colors.omarchy_flat, bg = colors.omarchy_flat })
   vim.api.nvim_set_hl(0, "CockpitBenchSel", { fg = colors.cyan, bold = true })
   vim.api.nvim_set_hl(0, "CockpitBenchGoldLabel", {
     fg = colors.gold_label,
@@ -302,18 +303,29 @@ local function soften_tmux_window_strip()
   end
   -- Product nav lives on the nvim tabline only. Push shell tabs to the bottom
   -- and blank the COCKPIT badge row so tmux is not painted as a second product strip.
+  -- Opaque omarchy-flat tmux canvas blocks Foot/Omarchy wallpaper (no Totoro bleed).
+  local flat_bg = OMARCHY_FLAT_BG
   vim.fn.system(
-    [[tmux set-option -w pane-border-status off 2>/dev/null;]] ..
-      [[tmux set-option -w pane-border-format '' 2>/dev/null;]] ..
-      [[tmux set-option status-position bottom 2>/dev/null;]] ..
-      [[tmux set-option status-left '' 2>/dev/null;]] ..
-      [[tmux set-option status-left-length 0 2>/dev/null;]] ..
-      [[tmux set-option status-right '' 2>/dev/null;]] ..
-      [[tmux set-option status-right-length 0 2>/dev/null;]] ..
-      [[tmux set-option -w window-status-format '#[fg=brightblack,dim] #I:#W ' 2>/dev/null;]] ..
-      [[tmux set-option -w window-status-current-format '#[fg=brightblack,dim] #I:#W ' 2>/dev/null;]] ..
-      [[tmux set-option window-status-format '#[fg=brightblack,dim] #I:#W ' 2>/dev/null;]] ..
-      [[tmux set-option window-status-current-format '#[fg=brightblack,dim] #I:#W ' 2>/dev/null]]
+    string.format(
+      [[tmux set-option -w pane-border-status off 2>/dev/null;]] ..
+        [[tmux set-option -w pane-border-format '' 2>/dev/null;]] ..
+        [[tmux set-option -w window-style 'bg=%s' 2>/dev/null;]] ..
+        [[tmux set-option -w pane-border-style 'fg=%s,bg=%s' 2>/dev/null;]] ..
+        [[tmux set-option status-position bottom 2>/dev/null;]] ..
+        [[tmux set-option status-style 'bg=%s,fg=brightblack' 2>/dev/null;]] ..
+        [[tmux set-option status-left '' 2>/dev/null;]] ..
+        [[tmux set-option status-left-length 0 2>/dev/null;]] ..
+        [[tmux set-option status-right '' 2>/dev/null;]] ..
+        [[tmux set-option status-right-length 0 2>/dev/null;]] ..
+        [[tmux set-option -w window-status-format '#[fg=brightblack,dim] #I:#W ' 2>/dev/null;]] ..
+        [[tmux set-option -w window-status-current-format '#[fg=brightblack,dim] #I:#W ' 2>/dev/null;]] ..
+        [[tmux set-option window-status-format '#[fg=brightblack,dim] #I:#W ' 2>/dev/null;]] ..
+        [[tmux set-option window-status-current-format '#[fg=brightblack,dim] #I:#W ' 2>/dev/null]],
+      flat_bg,
+      flat_bg,
+      flat_bg,
+      flat_bg
+    )
   )
 end
 
@@ -1059,7 +1071,7 @@ function M.statusline()
     "t524u ghui · Esc=pop Enter=drill/backlink · data: %s/ · writer: Proctor",
     display_data_path(display_root())
   )
-  return "%#CockpitBenchPane#" .. "%#CockpitBenchDim#" .. clip(footer, vim.o.columns)
+  return "%#CockpitBenchFlat#" .. "%#CockpitBenchDim#" .. clip(footer, vim.o.columns)
 end
 
 local function create_layout()

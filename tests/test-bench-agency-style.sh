@@ -45,6 +45,10 @@ grep -Fq 'apply_omarchy_flat_bg' "$layout" ||
   fail 'missing omarchy-flat bench canvas (no Totoro/wallpaper bleed)'
 grep -Fq 'OMARCHY_FLAT_BG' "$layout" ||
   fail 'missing OMARCHY_FLAT_BG constant (separate from visual-density PANE_BG)'
+grep -Fq 'bg = colors.omarchy_flat' "$layout" ||
+  fail 'Normal/canvas must use omarchy_flat bg (CockpitBenchFlat live canvas)'
+grep -Fq 'window-style' "$layout" ||
+  fail 'missing tmux window-style omarchy-flat pane bg (no wallpaper/Totoro bleed)'
 grep -Fq 'winblend = 0' "$layout" ||
   fail 'missing winblend=0 guard for opaque omarchy-flat canvas'
 grep -Fq 'pumblend = 0' "$layout" ||
