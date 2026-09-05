@@ -28,7 +28,7 @@ fixture:
     - /workspace/proofs/bench-bar-t728u-next4-live-20260905-010043.txt
     - /workspace/proofs/bench-bar-t728u-next3-20260905-004830.png
   branch: cursor/bench-ghui-next3-c666
-  head: 5a11d51
+  head: ea4c395
 keep:
   - resize distinct ≥2-size (NEW KEEP from 004830)
   - top-chrome product-only
