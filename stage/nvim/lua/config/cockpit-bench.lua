@@ -209,8 +209,7 @@ local function setup_highlights()
           colors.dim = value
         elseif key == "foreground" then
           colors.chrome = value
-        elseif key == "background" then
-          colors.pane_bg = value
+        -- Keep warm opaque pane band; theme wallpaper bg bleeds through gold/chips.
         end
       end
     end
@@ -284,14 +283,20 @@ local function soften_tmux_window_strip()
   if not in_cockpit_tmux() or vim.fn.executable("tmux") ~= 1 then
     return
   end
-  -- Cockpit shell tabs remain; product nav weight stays on the nvim tabline band.
+  -- Product nav lives on the nvim tabline only. Push shell tabs to the bottom
+  -- and blank the COCKPIT badge row so tmux is not painted as a second product strip.
   vim.fn.system(
     [[tmux set-option -w pane-border-status off 2>/dev/null;]] ..
       [[tmux set-option -w pane-border-format '' 2>/dev/null;]] ..
+      [[tmux set-option status-position bottom 2>/dev/null;]] ..
+      [[tmux set-option status-left '' 2>/dev/null;]] ..
+      [[tmux set-option status-left-length 0 2>/dev/null;]] ..
+      [[tmux set-option status-right '' 2>/dev/null;]] ..
+      [[tmux set-option status-right-length 0 2>/dev/null;]] ..
       [[tmux set-option -w window-status-format '#[fg=brightblack,dim] #I:#W ' 2>/dev/null;]] ..
       [[tmux set-option -w window-status-current-format '#[fg=brightblack,dim] #I:#W ' 2>/dev/null;]] ..
-      [[tmux set-option status-left-length 12 2>/dev/null;]] ..
-      [[tmux set-option status-right-length 12 2>/dev/null]]
+      [[tmux set-option window-status-format '#[fg=brightblack,dim] #I:#W ' 2>/dev/null;]] ..
+      [[tmux set-option window-status-current-format '#[fg=brightblack,dim] #I:#W ' 2>/dev/null]]
   )
 end
 

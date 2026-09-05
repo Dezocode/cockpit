@@ -31,6 +31,10 @@ grep -Fq 'in_cockpit_tmux' "$layout" ||
   fail 'missing tmux double-chrome guard'
 grep -Fq 'soften_tmux_window_strip' "$layout" ||
   fail 'missing tmux strip softening for product-nav weight'
+grep -Fq 'status-position bottom' "$layout" ||
+  fail 'missing tmux status-position bottom (t736u single product chrome row)'
+grep -Fq "status-left ''" "$layout" ||
+  fail 'missing tmux status-left blanking (subtract COCKPIT badge as product)'
 grep -Fq 'CockpitBenchPane' "$layout" ||
   fail 'missing solid pane background to quiet watermark bleed'
 grep -Fq 'CockpitBenchTabBar' "$layout" ||

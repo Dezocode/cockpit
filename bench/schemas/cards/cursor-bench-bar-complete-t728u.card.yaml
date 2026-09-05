@@ -1,0 +1,56 @@
+task_id: cursor-bench-bar-complete-t728u
+card_id: cursor-bench-bar-complete-t728u
+kick_ready: true
+schema_class: sequenced
+schema_ids:
+  - process/inspect-prior-before-rework
+  - process/final-outlook-legacy-clean
+  - ui/bench-bar-layout-settled
+  - ui/bench-no-files-regress
+  - ui/bench-bar-one-clean-footer
+  - ui/bench-bar-gold-labels
+  - ui/bench-bar-l3-header
+  - ui/bench-bar-yellow-backlink-chips
+  - ui/bench-bar-top-chrome
+  - ui/bench-bar-visual-density
+  - harness/no-invalid-winseparator
+  - ui/bench-bar-touch-and-keyboard
+  - ui/bench-bar-resize-no-obfuscate
+receiver:
+  agent: cursor_cloud
+  model_id: composer-2.5
+  agent_class: frontier_subscription
+fixture:
+  approved_ref: /workspace/proofs/approved-style/bench-ghui-approved-t533u.png
+  prior_fail_refs:
+    - /workspace/proofs/bench-bar-t293u-20260904-233909.png
+    - /workspace/proofs/bench-bar-t293u-next-20260904-235917.png
+  branch: cursor/bench-ghui-7ed3
+  head: 29a54dd
+keep:
+  - yellow chip FILL chroma (t610u)
+  - ASCII +---+ must_absent (t649u)
+  - layout-settled / FILES untouched (t561u) / one clean footer / gold labels / L3 parent header
+  - t716u: NO schema L1, NO score walls, NO extra tabs, NO footer spam
+  - durable winseparator guard (fillchars + pcall; no bare vim.o.winseparator)
+complete:
+  - pane tabs (t736u/t712u): one product nav row; tmux strip not painted as product
+  - bg (t712u): warm opaque pane band; Totoro/wallpaper must not clash with gold/chips
+  - multi-chip: N yellow filled chips when ≥2 backlinks; ASCII absent
+  - durable winseparator: E5108 guard on branch
+  - touch AND keyboard dual-input proof
+  - resize without obfuscation — ≥2 size proofs
+subtract:
+  - kitchen-sink unrelated schemas
+  - soft PASS / inventing scores
+  - FILES regress
+  - remerging curses miller
+  - force-push / merge (Dezocode merges; stay draft)
+proctor:
+  on_fail: harness_change
+  on_success: buildout
+  score_home: bench/cursor
+deny_kick:
+  - sol-v1.7.1
+  - local/*
+  - Qwen

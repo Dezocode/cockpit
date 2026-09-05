@@ -1,0 +1,57 @@
+# t728u complete harness score — source contract PASS (live CPR pending dezohost)
+capture_id: t728u-complete-harness
+branch: cursor/bench-ghui-7ed3
+prior_fails:
+  - t293u-live-233909
+  - t293u-next-235917
+steer: t736u
+verdict: HARNESS_PASS
+schemas:
+  ui/bench-bar-top-chrome:
+    verdict: PASS
+    proof: CockpitBenchTabBar product band; soften_tmux_window_strip blanks COCKPIT badge + moves shell tabs bottom
+  ui/bench-bar-visual-density:
+    verdict: PASS
+    proof: warm opaque PANE_BG; theme wallpaper bg not applied; WinSeparator/EndOfBuffer match pane
+  ui/bench-bar-yellow-backlink-chips:
+    verdict: PASS
+    proof: for-loop over state.backlinks; fixture parent-run-001 has 2 worker_deck_run rows; yellow fill, no ASCII borders
+  ui/bench-bar-gold-labels:
+    verdict: PASS
+    proof: CockpitBenchGoldLabel on run_id (selected) + Backlinks header
+  ui/bench-bar-l3-header:
+    verdict: PASS
+    proof: parent_run_id in L3 header; dim metadata soup
+  ui/bench-bar-one-clean-footer:
+    verdict: PASS
+    proof: single t524u ghui statusline; no footer spam
+  ui/bench-bar-layout-settled:
+    verdict: PASS
+    proof: 3 Miller columns; render_models_col/render_runs_col/render_detail_col
+  ui/bench-no-files-regress:
+    verdict: PASS
+    proof: test-bench.sh FILES nvim guards unchanged
+  harness/no-invalid-winseparator:
+    verdict: PASS
+    proof: fillchars only + pcall vim.wo.winseparator; test-bench-agency-style.sh rg guard
+  ui/bench-bar-touch-and-keyboard:
+    verdict: PASS
+    proof: on_mouse + j/k/Tab/Enter/Esc; test-bench.sh tmux keyboard drill
+  ui/bench-bar-resize-no-obfuscate:
+    verdict: PASS
+    proof: VimResized → resize_columns + render_all; 220×40 + 160×32 proofs in test-bench-complete-t728u.sh
+  process/final-outlook-legacy-clean:
+    verdict: PASS
+    proof: CockpitBench* names; zero +---+ / pipe chip drawer; fillchars eob quiet
+t736u_pane_tabs:
+  - nvim tabline is sole top product chrome in cockpit tmux
+  - tmux status-position bottom; status-left/right cleared; dim #I:#W shell tabs only
+resize_proofs:
+  - "220×40 — tests/test-bench.sh isolated BENCH tmux pane"
+  - "160×32 — tests/test-bench-complete-t728u.sh VimResized re-layout"
+touch_keyboard_proofs:
+  - "keyboard — test-bench.sh j/Enter/Esc drill"
+  - "mouse — on_mouse LeftMouse handler per column buffer"
+live_cpr:
+  status: pending
+  note: must differ from approved PNG, 233909, and 235917 after dezohost land; soft-steer only from Canon thereafter
