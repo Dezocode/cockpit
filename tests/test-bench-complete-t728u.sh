@@ -103,8 +103,8 @@ grep -Fc 'worker_deck_run' <<<"$cap_wide" | grep -qx '2' ||
   fail '220x40 must show 2 separate worker_deck_run chips (not one packed box)'
 first_rid_line="$(grep -n 'run-local-001' <<<"$cap_wide" | head -n1 | cut -d: -f1)"
 second_label_line="$(grep -n 'worker_deck_run' <<<"$cap_wide" | tail -n1 | cut -d: -f1)"
-((second_label_line > first_rid_line + 1)) ||
-  fail '220x40 multi-chip CPR lacks spacer row between chip boxes'
+((second_label_line > first_rid_line + 3)) ||
+  fail '220x40 multi-chip CPR lacks spacer rows between separate chip boxes'
 hash_wide="$(printf '%s' "$cap_wide" | sha256sum | awk '{print $1}')"
 
 cap_narrow="$(capture_at_size 160 32)" || fail '160x32 resize proof did not render Miller columns'

@@ -57,6 +57,16 @@ grep -Fq 'CHIP_PAD_COLS' "$layout" ||
   fail 'missing chip pad for N separate yellow boxes (not one packed strip)'
 grep -Fq 'CHIP_GAP_ROWS' "$layout" ||
   fail 'missing chip gap rows between N backlinks (not one packed strip)'
+grep -Fq 'CockpitBenchChipEdge' "$layout" ||
+  fail 'missing chip edge highlight for N separate yellow boxes (not one packed strip)'
+grep -Fq 'paint_terminal_flat_bg' "$layout" ||
+  fail 'missing OSC terminal flat bg paint (no Totoro/wallpaper bleed in pixel CPR)'
+grep -Fq 'CockpitBenchTouchReceipts' "$layout" ||
+  fail 'missing touch receipt counter (SGR click proof, not API remote-send)'
+grep -Fq 'harness_runs_title' "$layout" ||
+  fail 'missing harness_runs_title export for SGR touch drill assertion'
+grep -Fq 'status off' "$layout" ||
+  fail 'missing tmux status off on BENCH window (density: no 1:AGENT strip)'
 grep -Fq "set-option -g window-style" "$layout" ||
   fail 'missing global tmux window-style omarchy-flat (survives omarchy-theme-set-tmux)'
 grep -Fq 'WinSeparator' "$layout" ||
