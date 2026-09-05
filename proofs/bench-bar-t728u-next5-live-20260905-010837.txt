@@ -1,0 +1,40 @@
+cockpit · MEMORY  COMPUTERS  MODELS  BENCH  FILES  PRS                                                                                                                                                     ghui  read-only
+Models                                                                    Runs — gpt-5.6-sol                                                      Run + backlinks
+
+  gpt-5.6-luna                                                  frontier   parent-run-001                                                         run_id (selected)
+  gpt-5.6-sol                                                   frontier  incomplete                                                              parent-run-001
+  local/Qwen3.5-4B                                                 local     parent-run-001::abc1                                                 gpt-5.6-sol · experiment_worker · incomplete
+                                                                            incomplete
+                                                                           run-sol-001                                                            Backlinks (Enter → jump)
+                                                                          incomplete
+                                                                                                                                                       worker_deck_run
+                                                                                                                                                        run-local-001
+
+
+
+
+                                                                                                                                                       worker_deck_run
+                                                                                                                                                         run-sol-001
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+t524u ghui · Esc=pop Enter=drill/backlink · data: /tmp/cockpit-bench-cpr-next5.wm5vVr/proctor/ · writer: Proctor

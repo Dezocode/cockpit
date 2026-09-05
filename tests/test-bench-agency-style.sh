@@ -55,6 +55,30 @@ grep -Fq 'pumblend = 0' "$layout" ||
   fail 'missing pumblend=0 guard for opaque omarchy-flat canvas'
 grep -Fq 'CHIP_PAD_COLS' "$layout" ||
   fail 'missing chip pad for N separate yellow boxes (not one packed strip)'
+grep -Fq 'CHIP_GAP_ROWS' "$layout" ||
+  fail 'missing chip gap rows between N backlinks (not one packed strip)'
+grep -Fq 'CockpitBenchChipEdge' "$layout" ||
+  fail 'missing chip edge highlight for N separate yellow boxes (not one packed strip)'
+grep -Fq 'paint_terminal_flat_bg' "$layout" ||
+  fail 'missing OSC terminal flat bg paint (no Totoro/wallpaper bleed in pixel CPR)'
+grep -Fq 'pane-style' "$layout" ||
+  fail 'missing tmux pane-style omarchy-flat (no wallpaper/Totoro bleed)'
+grep -Fq 'write_touch_receipt_file' "$layout" ||
+  fail 'missing dated touch receipt file writer under proofs/'
+grep -Fq 'bench-touch-receipt-' "$layout" ||
+  fail 'missing bench-touch-receipt filename pattern (dated click proof file)'
+grep -Fq 'highlight_chip_box' "$layout" ||
+  fail 'missing full-border chip box highlighter (N separate yellow boxes)'
+grep -Fq 'pad_buffer_omarchy_flat' "$layout" ||
+  fail 'missing opaque omarchy-flat buffer tail fill (no wallpaper bleed)'
+grep -Fq 'CockpitBenchTouchReceipts' "$layout" ||
+  fail 'missing touch receipt counter (SGR click proof, not API remote-send)'
+grep -Fq 'harness_runs_title' "$layout" ||
+  fail 'missing harness_runs_title export for SGR touch drill assertion'
+grep -Fq 'status off' "$layout" ||
+  fail 'missing tmux status off on BENCH window (density: no 1:AGENT strip)'
+grep -Fq "set-option -g window-style" "$layout" ||
+  fail 'missing global tmux window-style omarchy-flat (survives omarchy-theme-set-tmux)'
 grep -Fq 'WinSeparator' "$layout" ||
   fail 'missing invisible Miller column separators (no ascii vert rules)'
 grep -Fq 'fillchars' "$layout" ||

@@ -1,0 +1,64 @@
+# t728u-next3 harness score — source + local CPR PASS (dezohost Canon pending)
+capture_id: t728u-next3-harness
+branch: cursor/bench-ghui-7ed3
+prior_fails:
+  - t728u-next2-003648
+  - t728u-next-002855
+  - t728u-live-001318
+  - t293u-live-233909
+  - t293u-next-235917
+steer: t728u-next3
+verdict: HARNESS_PASS
+local_cpr:
+  path: /workspace/proofs/bench-bar-t728u-next3-live-20260905-004602.txt
+  sha256: d7c2f6f77555e2c61a775238ea77095a59edcab4ceac3e75dd7101e9c9f341c0
+  multi_chip_count: 2
+schemas:
+  ui/bench-bar-top-chrome:
+    verdict: PASS
+    proof: CockpitBenchTabBar product band; soften_tmux_window_strip blanks COCKPIT badge + omarchy-flat window-style
+  ui/bench-bar-visual-density:
+    verdict: PASS
+    proof: short L3 tag line; CHIP_PAD_COLS + CHIP_GAP_ROWS between N chips; quieter than 003648 CPR
+  ui/bench-bar-omarchy-theme:
+    verdict: PASS
+    proof: global+window tmux omarchy-flat; Normal/EndOfBuffer/StatusLine on omarchy_flat; VimEnter/FocusGained re-apply; no Totoro in local CPR
+  ui/bench-bar-yellow-backlink-chips:
+    verdict: PASS
+    proof: for-loop over state.backlinks; N separate 2-line chips with gap rows; fill clipped to box width; 2× worker_deck_run in local CPR
+  ui/bench-bar-gold-labels:
+    verdict: PASS
+    proof: CockpitBenchGoldLabel on run_id (selected) + Backlinks header
+  ui/bench-bar-l3-header:
+    verdict: PASS
+    proof: parent_run_id in L3 header; dim short tag line
+  ui/bench-bar-one-clean-footer:
+    verdict: PASS
+    proof: single t524u ghui statusline on CockpitBenchFlat; no footer spam
+  ui/bench-bar-layout-settled:
+    verdict: PASS
+    proof: 3 Miller columns; render_models_col/render_runs_col/render_detail_col
+  ui/bench-no-files-regress:
+    verdict: PASS
+    proof: test-bench.sh FILES nvim guards unchanged
+  harness/no-invalid-winseparator:
+    verdict: PASS
+    proof: fillchars only + pcall vim.wo.winseparator; test-bench-agency-style.sh rg guard
+  ui/bench-bar-touch-and-keyboard:
+    verdict: PASS
+    proof: test-bench-touch-t728u.sh SGR mouse L1→L2; test-bench.sh j/Enter/Esc keyboard drill
+  ui/bench-bar-resize-no-obfuscate:
+    verdict: PASS
+    proof: VimResized → resize_columns; 220×40 + 160×32 with distinct sha256 THIS stamp (e233c9cf ≠ 753cf7ff)
+  process/final-outlook-legacy-clean:
+    verdict: PASS
+    proof: CockpitBench* names; zero +---+ / pipe chip drawer; fillchars eob quiet
+resize_proofs:
+  - "220×40 — proofs/bench-bar-t728u-resize-220x40.sha256 (e233c9cf4874164eb48e859fbc9824e84543d162ad87a839132ea75c30c73448)"
+  - "160×32 — proofs/bench-bar-t728u-resize-160x32.sha256 (753cf7ff47e304ff45b2113ede7b80b6983a570be76b222417b7ed257f8eac1c)"
+touch_keyboard_proofs:
+  - "keyboard — test-bench.sh j/Enter/Esc drill"
+  - "touch — test-bench-touch-t728u.sh SGR mouse on pane tty"
+live_cpr:
+  status: local_pass
+  note: dezohost pixel CPR still required for Canon; must differ from approved PNG and prior FAIL hashes including 003648

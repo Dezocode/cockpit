@@ -1,0 +1,57 @@
+task_id: cursor-bench-bar-complete-t728u-next5
+card_id: cursor-bench-bar-complete-t728u-next5
+kick_ready: true
+schema_class: sequenced
+schema_ids:
+  - process/inspect-prior-before-rework
+  - process/final-outlook-legacy-clean
+  - ui/bench-bar-layout-settled
+  - ui/bench-no-files-regress
+  - ui/bench-bar-one-clean-footer
+  - ui/bench-bar-gold-labels
+  - ui/bench-bar-l3-header
+  - ui/bench-bar-top-chrome
+  - harness/no-invalid-winseparator
+  - ui/bench-bar-resize-no-obfuscate
+  - ui/bench-bar-yellow-backlink-chips
+  - ui/bench-bar-visual-density
+  - ui/bench-bar-omarchy-theme
+  - ui/bench-bar-touch-and-keyboard
+receiver:
+  agent: cursor_cloud
+  model_id: composer-2.5
+  agent_class: frontier_subscription
+fixture:
+  approved_ref: /workspace/proofs/approved-style/bench-ghui-approved-t533u.png
+  prior_fail_refs:
+    - /workspace/proofs/bench-bar-t728u-next4-20260905-010200.png
+    - /workspace/proofs/bench-bar-t728u-next4-live-20260905-010043.txt
+    - /workspace/proofs/bench-bar-t728u-next3-20260905-004830.png
+  branch: cursor/bench-ghui-next3-c666
+  head: ea4c395
+keep:
+  - resize distinct ≥2-size (NEW KEEP from 004830)
+  - top-chrome product-only
+  - durable winseparator
+  - layout/FILES/footer/gold/L3/FILL+ASCII
+  - bottom tmux-strip-off
+  - t716u no miller clutter
+complete:
+  - N separate bordered yellow chip boxes (full highlight borders, not corner-only or one packed strip)
+  - omarchy-flat opaque BENCH bg — must_absent Totoro in live pixel CPR
+  - touch dated click receipt file under /workspace/proofs/ plus keyboard drill
+subtract:
+  - kitchen-sink unrelated schemas
+  - soft PASS / inventing scores
+  - prior-KEEP soft-steer on resize
+  - FILES regress
+  - remerging curses miller
+  - force-push / merge (Dezocode merges; stay draft PR #5)
+proctor:
+  on_fail: harness_change
+  on_success: buildout
+  score_home: bench/cursor/composer-2.5
+deny_kick:
+  - sol-v1.7.1
+  - local/*
+  - Qwen
