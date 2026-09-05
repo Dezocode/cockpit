@@ -41,6 +41,16 @@ grep -Fq 'CockpitBenchTabBar' "$layout" ||
   fail 'missing product tabline band highlight (approved bar weight)'
 grep -Fq 'apply_visual_quiet' "$layout" ||
   fail 'missing eob/ascii quiet helper (no ~ filler or box borders)'
+grep -Fq 'apply_omarchy_flat_bg' "$layout" ||
+  fail 'missing omarchy-flat bench canvas (no Totoro/wallpaper bleed)'
+grep -Fq 'OMARCHY_FLAT_BG' "$layout" ||
+  fail 'missing OMARCHY_FLAT_BG constant (separate from visual-density PANE_BG)'
+grep -Fq 'winblend = 0' "$layout" ||
+  fail 'missing winblend=0 guard for opaque omarchy-flat canvas'
+grep -Fq 'pumblend = 0' "$layout" ||
+  fail 'missing pumblend=0 guard for opaque omarchy-flat canvas'
+grep -Fq 'CHIP_PAD_COLS' "$layout" ||
+  fail 'missing chip pad for N separate yellow boxes (not one packed strip)'
 grep -Fq 'WinSeparator' "$layout" ||
   fail 'missing invisible Miller column separators (no ascii vert rules)'
 grep -Fq 'fillchars' "$layout" ||
@@ -53,6 +63,10 @@ grep -Fq 'for i, link in ipairs(state.backlinks)' "$layout" ||
   fail 'missing multi-chip backlink loop (N chips for N sqlite rows)'
 grep -Fq 'on_mouse' "$layout" ||
   fail 'missing mouse drill handler for dual touch+keyboard input'
+grep -Fq 'touch_probe' "$layout" ||
+  fail 'missing touch_probe harness hook (on_mouse path, not keyboard remote-send)'
+grep -Fq 'vim.g.CockpitBench' "$layout" ||
+  fail 'missing live CockpitBench instance for touch harness probe'
 grep -Fq 'map("j"' "$layout" ||
   fail 'missing keyboard j/k drill handler'
 grep -Fq 'VimResized' "$layout" ||

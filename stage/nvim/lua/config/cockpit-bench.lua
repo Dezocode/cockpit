@@ -14,8 +14,13 @@ local PUNCH_GOLD_LABEL = "#ffcc66"
 local PUNCH_YELLOW_CHIP = "#ffcc66"
 local GOLD_LABEL_BG = "#252018"
 local CHIP_BG = "#4a3f18"
+-- Omarchy-flat canvas: solid bench bg, blocks Foot/Omarchy wallpaper (no Totoro bleed).
+local OMARCHY_FLAT_BG = "#100e0c"
+-- Warm opaque pane band for visual-density (labels/chips); separate from flat canvas.
 local PANE_BG = "#141210"
 local TABLINE_BG = "#1a1814"
+local CHIP_PAD_COLS = 2
+local CHIP_MAX_INNER = 22
 
 local state = {
   focus_col = 0,
@@ -187,6 +192,16 @@ WHERE rl.from_run_id = '%s' ORDER BY rl.link_kind, rl.to_run_id;
   return links
 end
 
+local function apply_omarchy_flat_bg()
+  -- ui/bench-bar-omarchy-theme: flat Omarchy BENCH canvas — never transparent wallpaper.
+  vim.o.termguicolors = true
+  vim.o.background = "dark"
+  vim.o.winblend = 0
+  pcall(function()
+    vim.o.pumblend = 0
+  end)
+end
+
 local function setup_highlights()
   local colors = {
     cyan = PUNCH_CYAN,
@@ -196,6 +211,7 @@ local function setup_highlights()
     dim = "#6c7086",
     chrome = "#cdd6f4",
     chip_bg = CHIP_BG,
+    omarchy_flat = OMARCHY_FLAT_BG,
     pane_bg = PANE_BG,
     tabline_bg = TABLINE_BG,
   }
@@ -209,12 +225,13 @@ local function setup_highlights()
           colors.dim = value
         elseif key == "foreground" then
           colors.chrome = value
-        -- Keep warm opaque pane band; theme wallpaper bg bleeds through gold/chips.
+        -- Never inherit theme background: omarchy-flat canvas stays opaque (no Totoro/wallpaper).
         end
       end
     end
   end
-  -- Warm pane band harmonizes with gold labels + yellow chips; tabline reads as product nav.
+  -- Flat canvas under panes; warm pane band is a separate visual-density layer.
+  vim.api.nvim_set_hl(0, "CockpitBenchFlat", { fg = colors.chrome, bg = colors.omarchy_flat })
   vim.api.nvim_set_hl(0, "CockpitBenchPane", { fg = colors.chrome, bg = colors.pane_bg })
   vim.api.nvim_set_hl(0, "CockpitBenchTabBar", { fg = colors.dim, bg = colors.tabline_bg })
   vim.api.nvim_set_hl(0, "Normal", { fg = colors.chrome, bg = colors.pane_bg })
@@ -527,14 +544,18 @@ function M.render_runs_col()
   end
 end
 
-local function draw_backlink_chip_lines(kind, run_id, width)
-  local inner = math.max(1, width)
+local function chip_inner_width(col_width)
+  return math.max(12, math.min(CHIP_MAX_INNER, col_width - CHIP_PAD_COLS - 2))
+end
+
+local function draw_backlink_chip_lines(kind, run_id, inner)
   local label = clip(kind or "backlink", inner)
   local rid = chip_run_id_label(run_id, inner)
+  local pad = string.rep(" ", CHIP_PAD_COLS)
   return {
-    center_text(label, inner),
-    center_text(rid, inner),
-  }
+    pad .. center_text(label, inner),
+    pad .. center_text(rid, inner),
+  }, inner + CHIP_PAD_COLS
 end
 
 function M.render_detail_col()
@@ -552,12 +573,11 @@ function M.render_detail_col()
     local parent_id = parent_run_id(state.run.run_id)
     table.insert(lines, "run_id (selected)")
     table.insert(lines, clip(parent_id, width))
+    -- Quieter L3 density: short tag line (model · role · status), not full receipt soup.
     local meta_parts = {}
     for _, value in ipairs({
       state.run.model_id,
-      state.run.agent_class,
       state.run.role,
-      state.run.campaign,
       state.run.status,
     }) do
       if value and value ~= "" then
@@ -567,16 +587,20 @@ function M.render_detail_col()
     local metadata = table.concat(meta_parts, " · ")
     local meta_row = nil
     if metadata ~= "" then
-      table.insert(lines, clip(metadata, width))
+      table.insert(lines, clip(metadata, math.min(width, 48)))
       meta_row = #lines - 1
     end
+    table.insert(lines, "")
     table.insert(lines, "Backlinks (Enter → jump)")
     if #state.backlinks == 0 then
       table.insert(lines, "ABSENT")
     else
       for i, link in ipairs(state.backlinks) do
-        local chip_w = math.min(26, math.max(16, width - 2))
-        local chip_lines = draw_backlink_chip_lines(link.link_kind, link.to_run_id, chip_w)
+        local chip_lines, chip_fill_w = draw_backlink_chip_lines(
+          link.link_kind,
+          link.to_run_id,
+          chip_inner_width(width)
+        )
         local chip_row = #lines
         for _, cl in ipairs(chip_lines) do
           table.insert(lines, cl)
@@ -585,7 +609,7 @@ function M.render_detail_col()
           start = chip_row,
           bl_idx = i - 1,
           selected = state.focus_col == 2 and i - 1 == state.bl_idx,
-          width = chip_w,
+          width = chip_fill_w,
         })
         if i < #state.backlinks then
           table.insert(lines, "")
@@ -1071,8 +1095,14 @@ function M.refresh()
   M.render_all()
 end
 
+-- Harness touch probe: invokes the same on_mouse path as <LeftMouse> (not keyboard remote-send).
+function M.touch_probe(line0, col)
+  on_mouse(line0, col)
+end
+
 function M.setup()
   state.absent = vim.env.COCKPIT_BENCH_ABSENT == "1" or db_path() == ""
+  apply_omarchy_flat_bg()
   setup_highlights()
   apply_visual_quiet()
   local hl_group = vim.api.nvim_create_augroup("CockpitBenchHl", { clear = true })
@@ -1102,6 +1132,7 @@ function M.setup()
   end
   create_layout()
   setup_mouse()
+  vim.g.CockpitBench = M
   M.render_all()
   local group = vim.api.nvim_create_augroup("CockpitBenchLayout", { clear = true })
   vim.api.nvim_create_autocmd("VimResized", {

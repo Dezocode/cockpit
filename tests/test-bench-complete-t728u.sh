@@ -99,11 +99,23 @@ cap_wide="$(capture_at_size 220 40)" || fail '220x40 resize proof did not render
 grep -Fq 'Models' <<<"$cap_wide" || fail '220x40 missing Models column'
 grep -Fq 'Run + backlinks' <<<"$cap_wide" || fail '220x40 missing detail column'
 grep -Fq 'worker_deck_run' <<<"$cap_wide" || fail '220x40 missing multi-chip backlink label'
+hash_wide="$(printf '%s' "$cap_wide" | sha256sum | awk '{print $1}')"
 
 cap_narrow="$(capture_at_size 160 32)" || fail '160x32 resize proof did not render Miller columns'
 grep -Fq 'Models' <<<"$cap_narrow" || fail '160x32 missing Models column'
 grep -Fq 'Run + backlinks' <<<"$cap_narrow" || fail '160x32 missing detail column'
 grep -Eq '\+---|^\s*\|' <<<"$cap_narrow" &&
   fail '160x32 resize introduced ASCII box borders'
+hash_narrow="$(printf '%s' "$cap_narrow" | sha256sum | awk '{print $1}')"
+
+[[ "$hash_wide" != "$hash_narrow" ]] ||
+  fail "resize CPR sha256 must differ (wide=$hash_wide narrow=$hash_narrow)"
+
+proof_dir="$repo_root/proofs"
+mkdir -p "$proof_dir"
+printf '%s  %s\n' "$hash_wide" "bench-bar-t728u-resize-220x40.txt" >"$proof_dir/bench-bar-t728u-resize-220x40.sha256"
+printf '%s  %s\n' "$hash_narrow" "bench-bar-t728u-resize-160x32.txt" >"$proof_dir/bench-bar-t728u-resize-160x32.sha256"
 
 printf '%s\n' 'Bench t728u complete contract: PASS'
+printf 'resize_cpr_sha256_wide=%s\n' "$hash_wide"
+printf 'resize_cpr_sha256_narrow=%s\n' "$hash_narrow"
