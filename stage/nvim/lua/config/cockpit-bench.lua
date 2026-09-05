@@ -268,9 +268,9 @@ local function apply_pane_chrome(win)
 end
 
 local function apply_visual_quiet()
-  vim.o.fillchars = "eob: "
+  -- No vim.o.winseparator (not a real option; E5108 on product nvim). Quiet via fillchars only.
+  vim.o.fillchars = "eob: ,vert: ,horiz: ,horizup: ,horizdown: ,vertleft: ,vertright: ,verthoriz: "
   vim.o.list = false
-  vim.o.winseparator = " "
   pcall(function()
     vim.opt.fillchars:append({ stl = " ", stlnc = " " })
   end)
@@ -635,7 +635,7 @@ function M.draw_vrules()
       apply_pane_chrome(win)
       vim.wo[win].signcolumn = "no"
       vim.wo[win].statusline = ""
-      vim.wo[win].winseparator = " "
+      pcall(function() vim.wo[win].winseparator = " " end)
     end
   end
   soften_tmux_window_strip()

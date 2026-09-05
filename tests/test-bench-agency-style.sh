@@ -72,3 +72,13 @@ grep -Fq "('parent-run-001', 'run-local-001', 'worker_deck_run')" "$bench_test" 
   fail 'missing second backlink fixture row for multi-chip proof'
 
 printf '%s\n' 'Bench agency style contract: PASS'
+
+# harness/no-invalid-winseparator — bare option blanks product BENCH (E5108)
+if rg -n 'vim\.o\.winseparator\s*=' stage/nvim/lua/config/cockpit-bench.lua; then
+  echo 'FAIL: bare vim.o.winseparator (use fillchars only)' >&2
+  exit 1
+fi
+if rg -n 'vim\.wo\[.*\]\.winseparator\s*=' stage/nvim/lua/config/cockpit-bench.lua | rg -v pcall; then
+  echo 'FAIL: unguarded vim.wo.winseparator without pcall' >&2
+  exit 1
+fi
