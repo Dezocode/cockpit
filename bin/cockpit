@@ -40,10 +40,12 @@ Commands:
   config                sync Cockpit profile files
   cpr | update          validate/apply the live Cockpit overlay
   plugin [COMMAND]      manage Cockpit-native plugins
+  worktree [COMMAND]    inspect/bind/use/add Git worktrees safely
   setup                 open the persistent setup flow
   audit                 inspect provider and tmux health
   profile [ARGS...]     inspect/apply provider project profiles
-  files|diff|map|prs    focus a workspace view
+  files|diff|map|memory|computers|bench|prs
+                         focus a workspace view
   vimdiff               open the on-demand Vim diff view
   restart               relaunch the active Agent in place
 EOF
@@ -68,6 +70,10 @@ EOF
     shift
     exec "$script_root/cockpit-plugin" "${1:-list}" "${@:2}"
     ;;
+  worktree|wt)
+    shift
+    exec "$script_root/cockpit-worktree" "${1:-inspect}" "${@:2}"
+    ;;
   setup)
     shift
     exec "$script_root/cockpit-setup" "$@"
@@ -85,7 +91,7 @@ EOF
     shift
     exec "$script_root/cockpit-profile" "$@"
     ;;
-  files|diff|map|mermaid|prs|help)
+  files|diff|map|memory|computers|bench|mermaid|prs|help)
     view="$1"
     shift
     [[ "$view" == mermaid ]] && view=map

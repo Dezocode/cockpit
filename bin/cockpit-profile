@@ -1,7 +1,11 @@
 #!/usr/bin/env bash
-# Detect the attaching client: Omarchy Foot vs iPhone Termius (Tailscale/SSH).
-# Prints: foot | termius-ios
+# Detect the attaching client endpoint for platform adapters.
+# Prints: foot | generic-desktop | macos-terminal | termius-ios
 set -euo pipefail
+
+script_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=cockpit-lib
+source "$script_root/cockpit-lib"
 
 usage() {
   printf 'usage: cockpit profile-detect [pid|--session NAME|--explain]\n' >&2
@@ -38,8 +42,8 @@ env_val() {
 fingerprint_pid() {
   local start=${1:-$$}
   local pid=$start depth=0
-  local comms="" blob ssh_client colorterm wayland session_type term_program lc_terminal terminal_var
-  ssh_client=""; colorterm=""; wayland=""; session_type=""; term_program=""; lc_terminal=""; terminal_var=""
+  local comms="" blob ssh_client colorterm wayland session_type term_program lc_terminal terminal_var display_var
+  ssh_client=""; colorterm=""; wayland=""; session_type=""; term_program=""; lc_terminal=""; terminal_var=""; display_var=""
 
   while [[ -n "$pid" && "$pid" != "0" && "$pid" != "1" && $depth -lt 24 ]]; do
     comms+=":$(pid_comm "$pid"):"
@@ -51,9 +55,21 @@ fingerprint_pid() {
     [[ -z "$term_program" ]] && term_program="$(env_val "$blob" TERM_PROGRAM)"
     [[ -z "$lc_terminal" ]] && lc_terminal="$(env_val "$blob" LC_TERMINAL)"
     [[ -z "$terminal_var" ]] && terminal_var="$(env_val "$blob" TERMINAL)"
+    [[ -z "$display_var" ]] && display_var="$(env_val "$blob" DISPLAY)"
     pid="$(pid_ppid "$pid")"
     depth=$((depth + 1))
   done
+
+  if [[ -z "$comms" || "$comms" == "::" ]]; then
+    ssh_client="${SSH_CLIENT:-}"
+    colorterm="${COLORTERM:-}"
+    wayland="${WAYLAND_DISPLAY:-}"
+    session_type="${XDG_SESSION_TYPE:-}"
+    term_program="${TERM_PROGRAM:-}"
+    lc_terminal="${LC_TERMINAL:-}"
+    terminal_var="${TERMINAL:-}"
+    display_var="${DISPLAY:-}"
+  fi
 
   printf 'comms=%s\n' "$comms"
   printf 'ssh_client=%s\n' "$ssh_client"
@@ -63,11 +79,12 @@ fingerprint_pid() {
   printf 'term_program=%s\n' "$term_program"
   printf 'lc_terminal=%s\n' "$lc_terminal"
   printf 'terminal=%s\n' "$terminal_var"
+  printf 'display=%s\n' "$display_var"
 }
 
 classify_fp() {
   local fp=$1 width=${2:-0} height=${3:-0}
-  local comms ssh_client colorterm wayland session_type term_program lc_terminal terminal_var ssh_ip
+  local comms ssh_client colorterm wayland session_type term_program lc_terminal terminal_var display_var ssh_ip
   comms=$(printf '%s\n' "$fp" | awk -F= '/^comms=/{print substr($0,7)}')
   ssh_client=$(printf '%s\n' "$fp" | awk -F= '/^ssh_client=/{print substr($0,12)}')
   colorterm=$(printf '%s\n' "$fp" | awk -F= '/^colorterm=/{print substr($0,11)}')
@@ -76,10 +93,12 @@ classify_fp() {
   term_program=$(printf '%s\n' "$fp" | awk -F= '/^term_program=/{print substr($0,14)}')
   lc_terminal=$(printf '%s\n' "$fp" | awk -F= '/^lc_terminal=/{print substr($0,13)}')
   terminal_var=$(printf '%s\n' "$fp" | awk -F= '/^terminal=/{print substr($0,10)}')
+  display_var=$(printf '%s\n' "$fp" | awk -F= '/^display=/{print substr($0,9)}')
   ssh_ip=${ssh_client%% *}
 
   # Local Omarchy Foot (xdg-terminal-exec, wayland, or foot process).
-  if [[ "$comms" == *:foot:* || "$terminal_var" == *xdg-terminal-exec* || -n "$wayland" || "$session_type" == "wayland" ]]; then
+  if [[ "$comms" == *:foot:* || "$terminal_var" == *xdg-terminal-exec* ||
+    "$colorterm" == *foot* || -n "$wayland" || "$session_type" == "wayland" ]]; then
     printf 'foot\n'
     return 0
   fi
@@ -99,7 +118,27 @@ classify_fp() {
     fi
   fi
 
-  printf 'foot\n'
+  if [[ "$(uname -s 2>/dev/null || true)" == "Darwin" ]]; then
+    printf 'macos-terminal\n'
+    return 0
+  fi
+
+  if [[ "$comms" == *:xfce4-terminal:* || "$comms" == *:xfce4-terminal.wrapper:* ||
+    "$comms" == *:xterm:* || "$comms" == *:gnome-terminal:* ||
+    "$comms" == *:mate-terminal:* || "$comms" == *:konsole:* ||
+    "$comms" == *:lxterminal:* || "$comms" == *:alacritty:* ||
+    "$comms" == *:kitty:* || "$terminal_var" == *xfce4-terminal* ||
+    "$terminal_var" == *xterm* || "$terminal_var" == *gnome-terminal* ]]; then
+    printf 'generic-desktop\n'
+    return 0
+  fi
+
+  if [[ -n "$display_var" && -z "$wayland" && "$session_type" != "wayland" ]]; then
+    printf 'generic-desktop\n'
+    return 0
+  fi
+
+  printf 'generic-desktop\n'
 }
 
 classify_pid() {
@@ -110,19 +149,22 @@ classify_pid() {
 session_profile() {
   local session=$1
   local pid width height profile
-  local saw_foot=0 saw_termius=0
+  local saw_desktop=0 saw_termius=0
   while read -r pid width height; do
     [[ -n "$pid" ]] || continue
     profile="$(classify_pid "$pid" "$width" "$height")"
-    if [[ "$profile" == "foot" ]]; then
-      saw_foot=1
-    else
+    if cockpit_platform_is_desktop "$profile"; then
+      saw_desktop=1
+      printf '%s\n' "$profile"
+      return 0
+    fi
+    if cockpit_platform_is_touch "$profile"; then
       saw_termius=1
     fi
   done < <(tmux list-clients -t "$session" -F '#{client_pid} #{client_width} #{client_height}' 2>/dev/null || true)
 
-  if ((saw_foot == 1)); then
-    printf 'foot\n'
+  if ((saw_desktop == 1)); then
+    classify_pid "$$"
   elif ((saw_termius == 1)); then
     printf 'termius-ios\n'
   else
@@ -137,6 +179,11 @@ session=""
 while (($#)); do
   case "$1" in
     --explain) explain=1 ;;
+    --classify-fp)
+      shift || true
+      classify_fp "$@"
+      exit 0
+      ;;
     --session)
       shift || true
       session=${1:-}

@@ -1,0 +1,439 @@
+#!/usr/bin/env bash
+# Cockpit BENCH: ghui/FILES-grammar drill over Proctor bench receipts (read-only).
+# L1 models → L2 runs → L3 run+backlinks. Enter on backlink jumps peer run; Esc pops stack.
+set -euo pipefail
+
+script_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=cockpit-lib
+source "$script_root/cockpit-lib"
+export PATH="$script_root:$HOME/.local/bin:$PATH"
+
+BENCH_ROOT=''
+BENCH_SOURCE=''
+
+bench_intercom_root() {
+  local candidate="${COCKPIT_PROCTOR_HOME:-${COCKPIT_INTERCOM_HOME:-$HOME/intercom}/proctor}"
+  [[ -d "$candidate" ]] && printf '%s\n' "$candidate"
+}
+
+bench_resolve_root() {
+  local intercom
+  intercom="$(bench_intercom_root || true)"
+  if [[ -n "$intercom" && -f "$intercom/db/runs.sqlite" ]]; then
+    BENCH_ROOT="$intercom"
+    BENCH_SOURCE=intercom
+    return 0
+  fi
+  BENCH_ROOT=''
+  BENCH_SOURCE=''
+  return 1
+}
+
+bench_db() {
+  [[ -n "$BENCH_ROOT" ]] || bench_resolve_root || return 1
+  printf '%s/db/runs.sqlite\n' "$BENCH_ROOT"
+}
+
+bench_models_index() {
+  [[ -n "$BENCH_ROOT" ]] || bench_resolve_root || return 1
+  local path="$BENCH_ROOT/MODELS_INDEX.csv"
+  [[ -f "$path" ]] && printf '%s\n' "$path"
+}
+
+bench_crossref() {
+  [[ -n "$BENCH_ROOT" ]] || bench_resolve_root || return 1
+  local path="$BENCH_ROOT/CROSSREF_LINKS.csv"
+  [[ -f "$path" ]] && printf '%s\n' "$path"
+}
+
+bench_sqlite() {
+  command -v sqlite3 >/dev/null 2>&1 || {
+    printf 'BENCH unavailable: sqlite3 is required to read bench receipts.\n' >&2
+    return 1
+  }
+  local db
+  db="$(bench_db)" || return 1
+  sqlite3 -readonly -noheader -separator $'\t' "$db" "$@"
+}
+
+bench_schema_ok() {
+  local db schema
+  command -v sqlite3 >/dev/null 2>&1 || return 1
+  db="$(bench_db)" || return 1
+  schema="$(sqlite3 -readonly -noheader "$db" '
+    SELECT CASE WHEN
+      (SELECT COUNT(*) FROM pragma_table_info('"'"'models'"'"')
+        WHERE name IN ('"'"'model_id'"'"','"'"'agent_class'"'"','"'"'home_path'"'"','"'"'notes'"'"')) = 4
+      AND (SELECT COUNT(*) FROM pragma_table_info('"'"'runs'"'"')
+        WHERE name IN ('"'"'run_id'"'"','"'"'model_id'"'"','"'"'role'"'"','"'"'campaign'"'"','"'"'disposition'"'"','"'"'scored_at'"'"','"'"'payload_json'"'"')) = 7
+      AND (SELECT COUNT(*) FROM pragma_table_info('"'"'run_links'"'"')
+        WHERE name IN ('"'"'from_run_id'"'"','"'"'to_run_id'"'"','"'"'link_kind'"'"')) = 3
+      THEN 1 ELSE 0 END;')" || return 1
+  [[ "$schema" == "1" ]]
+}
+
+bench_records_ok() {
+  local db invalid
+  db="$(bench_db)" || return 1
+  invalid="$(sqlite3 -readonly -noheader "$db" \
+    "SELECT
+       (SELECT COUNT(*) FROM models
+          WHERE trim(COALESCE(model_id, '')) = ''
+             OR trim(COALESCE(agent_class, '')) = ''
+             OR trim(COALESCE(home_path, '')) = '')
+       + (SELECT COUNT(*) FROM runs r
+            LEFT JOIN models m ON m.model_id = r.model_id
+          WHERE trim(COALESCE(r.run_id, '')) = ''
+             OR m.model_id IS NULL
+             OR trim(COALESCE(r.payload_json, '')) = '')" 2>/dev/null)" || return 1
+  [[ "$invalid" == "0" ]]
+}
+
+bench_links_ok() {
+  local db dangling
+  db="$(bench_db)" || return 1
+  dangling="$(sqlite3 -readonly -noheader "$db" \
+    "SELECT COUNT(*) FROM run_links l
+       LEFT JOIN runs from_run ON from_run.run_id = l.from_run_id
+       LEFT JOIN runs to_run ON to_run.run_id = l.to_run_id
+       WHERE l.link_kind = 'sol_session_ref'
+         AND from_run.run_id IS NOT NULL AND to_run.run_id IS NULL;" 2>/dev/null)" || return 1
+  [[ "$dangling" == "0" ]]
+}
+
+bench_validate() {
+  local db
+  command -v sqlite3 >/dev/null 2>&1 || {
+    printf 'BENCH unavailable: sqlite3 is required to read the Proctor mirror.\n' >&2
+    return 1
+  }
+  if ! bench_resolve_root; then
+    printf 'BENCH unavailable: no Proctor mirror found (checked ~/intercom/proctor).\n' >&2
+    return 1
+  fi
+  db="$(bench_db)"
+  if [[ ! -r "$db" ]]; then
+    printf 'BENCH unavailable: runs.sqlite is not readable: %s\n' "$db" >&2
+    return 1
+  fi
+  if ! bench_schema_ok; then
+    printf 'BENCH unavailable: runs.sqlite is missing models/runs/run_links tables: %s\n' "$db" >&2
+    return 1
+  fi
+  if ! bench_models_index >/dev/null 2>&1; then
+    printf 'BENCH unavailable: MODELS_INDEX.csv is missing under %s\n' "$BENCH_ROOT" >&2
+    return 1
+  fi
+  if [[ ! -r "$(bench_models_index)" ]]; then
+    printf 'BENCH unavailable: MODELS_INDEX.csv is not readable under %s\n' "$BENCH_ROOT" >&2
+    return 1
+  fi
+  if ! bench_records_ok; then
+    printf 'BENCH unavailable: a model or run receipt is incomplete\n' >&2
+    return 1
+  fi
+  if ! bench_links_ok; then
+    printf 'BENCH unavailable: a backlink target is missing from the Proctor mirror\n' >&2
+    return 1
+  fi
+  return 0
+}
+
+bench_display_label() {
+  if [[ -z "$BENCH_ROOT" ]]; then
+    bench_resolve_root >/dev/null 2>&1 || true
+  fi
+  if [[ -n "$BENCH_ROOT" ]]; then
+    printf '%s (%s)' "$BENCH_ROOT" "${BENCH_SOURCE:-unknown}"
+  else
+    printf 'managed proctor receipt'
+  fi
+}
+
+bench_models_lines() {
+  local lines
+  bench_validate >/dev/null 2>&1 || return 1
+  lines="$(bench_sqlite "SELECT model_id, agent_class FROM models ORDER BY model_id;")"
+  if [[ -n "$lines" ]]; then
+    printf '%s\n' "$lines"
+  else
+    printf 'ABSENT\n'
+  fi
+}
+
+bench_runs_lines() {
+  local model_id=$1 lines
+  bench_validate >/dev/null 2>&1 || return 1
+  lines="$(bench_sqlite "SELECT r.run_id, m.agent_class, COALESCE(r.role, ''),
+      COALESCE(r.disposition, 'ABSENT'), COALESCE(r.scored_at, '')
+    FROM runs r JOIN models m ON m.model_id = r.model_id
+    WHERE r.model_id = '$(printf '%s' "$model_id" | sed "s/'/''/g")'
+    ORDER BY r.scored_at DESC, r.run_id;")"
+  if [[ -n "$lines" ]]; then
+    printf '%s\n' "$lines"
+  else
+    printf 'ABSENT\n'
+  fi
+}
+
+bench_run_detail() {
+  local run_id=$1 lines
+  bench_validate >/dev/null 2>&1 || return 1
+  lines="$(bench_sqlite "SELECT r.run_id, r.model_id, m.agent_class,
+      COALESCE(r.role, ''), COALESCE(r.campaign, ''),
+      COALESCE(r.disposition, 'ABSENT'), COALESCE(r.scored_at, '')
+    FROM runs r JOIN models m ON m.model_id = r.model_id
+    WHERE r.run_id = '$(printf '%s' "$run_id" | sed "s/'/''/g")' LIMIT 1;")"
+  if [[ -n "$lines" ]]; then
+    printf '%s\n' "$lines"
+  else
+    printf 'ABSENT\n'
+  fi
+}
+
+bench_backlink_lines() {
+  local run_id=$1
+  bench_validate >/dev/null 2>&1 || return 1
+  bench_sqlite "SELECT rl.to_run_id, r.model_id, m.agent_class, rl.link_kind
+    FROM run_links rl
+    JOIN runs r ON r.run_id = rl.to_run_id
+    JOIN models m ON m.model_id = r.model_id
+    WHERE rl.from_run_id = '$(printf '%s' "$run_id" | sed "s/'/''/g")'
+    ORDER BY rl.link_kind, rl.to_run_id;"
+}
+
+case "${1:-}" in
+  path)
+    bench_validate || exit 1
+    printf 'root=%s\n' "$BENCH_ROOT"
+    printf 'source=%s\n' "$BENCH_SOURCE"
+    printf 'db=%s\n' "$(bench_db)"
+    bench_models_index && printf 'models_index=%s\n' "$(bench_models_index)"
+    bench_crossref && printf 'crossref=%s\n' "$(bench_crossref)" || true
+    exit 0
+    ;;
+  check)
+    if ! bench_validate; then
+      exit 1
+    fi
+    printf 'status=ok\n'
+    printf 'source=%s\n' "$BENCH_SOURCE"
+    printf 'model_count=%s\n' "$(bench_sqlite 'SELECT COUNT(*) FROM models;')"
+    printf 'run_count=%s\n' "$(bench_sqlite 'SELECT COUNT(*) FROM runs;')"
+    printf 'backlink_count=%s\n' "$(bench_sqlite 'SELECT COUNT(*) FROM run_links;')"
+    exit 0
+    ;;
+  models)
+    bench_validate || exit 1
+    bench_models_lines
+    exit 0
+    ;;
+  runs)
+    [[ -n "${2:-}" ]] || {
+      printf 'Usage: cockpit-bench runs MODEL_ID\n' >&2
+      exit 2
+    }
+    bench_validate || exit 1
+    bench_runs_lines "$2"
+    exit 0
+    ;;
+  show-run)
+    [[ -n "${2:-}" ]] || {
+      printf 'Usage: cockpit-bench show-run RUN_ID\n' >&2
+      exit 2
+    }
+    bench_validate || exit 1
+    bench_run_detail "$2"
+    bench_backlink_lines "$2" | while IFS=$'\t' read -r to_run model agent_class kind; do
+      [[ -n "$to_run" ]] || continue
+      printf 'backlink\t%s\t%s\t%s\t%s\n' "$to_run" "$model" "$agent_class" "$kind"
+    done
+    exit 0
+    ;;
+esac
+
+once=0
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --once) once=1 ;;
+    -h|--help)
+      cat <<'EOF'
+Usage: cockpit-bench [path|check|models|runs MODEL_ID|show-run RUN_ID] [--once]
+
+Interactive ghui drill (default in Cockpit BENCH pane):
+  L1 models → L2 runs → L3 run+backlinks
+  Enter drills down; Enter on backlink jumps peer run; Esc pops stack.
+Read-only. Proctor is the sole writer. Never invents scores (ABSENT fail-closed).
+EOF
+      exit 0
+      ;;
+    *)
+      printf 'Usage: cockpit-bench [path|check|models|runs MODEL_ID|show-run RUN_ID] [--once]\n' >&2
+      exit 2
+      ;;
+  esac
+  shift
+done
+
+bench_render_absent() {
+  clear_screen
+  printf '%sBENCH%s  %sABSENT%s\n\n' \
+    "$(cockpit_theme_heading)" "$(cockpit_theme_reset)" \
+    "$(cockpit_theme_style accent '' 1)" "$(cockpit_theme_reset)"
+  printf 'BENCH unavailable: Proctor bench receipt is missing or incomplete.\n'
+  printf 'Expected a readable ~/intercom/proctor/ mirror with db/runs.sqlite.\n'
+  printf 'Cockpit does not write scores; Proctor is the sole writer.\n'
+}
+
+bench_nvim_listen=''
+bench_nvim_theme_init=''
+bench_nvim_layout_init=''
+bench_nvim_bare_init=''
+
+bench_resolve_nvim_paths() {
+  local config_home script_root bare_config_dir
+  script_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+  config_home="$(cockpit_config_home)"
+  bench_nvim_theme_init="${COCKPIT_NVIM_THEME_INIT:-$config_home/nvim/cockpit-diff.lua}"
+  if [[ ! -f "$bench_nvim_theme_init" ]]; then
+    bench_nvim_theme_init="$script_root/../stage/nvim/lua/config/cockpit-diff.lua"
+  fi
+  bench_nvim_layout_init="${COCKPIT_NVIM_BENCH_LAYOUT_INIT:-$config_home/nvim/cockpit-bench.lua}"
+  if [[ ! -f "$bench_nvim_layout_init" ]]; then
+    bench_nvim_layout_init="$script_root/../stage/nvim/lua/config/cockpit-bench.lua"
+  fi
+  bench_nvim_bare_init="${COCKPIT_NVIM_BENCH_BARE_INIT:-$config_home/nvim-cockpit-bench-bare/init.lua}"
+  if [[ ! -f "$bench_nvim_bare_init" ]]; then
+    bench_nvim_bare_init="$script_root/../stage/nvim-cockpit-bench-bare/init.lua"
+  fi
+  bare_config_dir="$config_home/nvim-cockpit-bench-bare"
+  mkdir -p "$bare_config_dir"
+  if [[ -f "$bench_nvim_bare_init" ]]; then
+    if [[ ! -f "$bare_config_dir/init.lua" ]]; then
+      install -m 0644 "$bench_nvim_bare_init" "$bare_config_dir/init.lua"
+    fi
+    bench_nvim_bare_init="$bare_config_dir/init.lua"
+  fi
+}
+
+bench_refresh_nvim() {
+  [[ -n "$bench_nvim_listen" && -S "$bench_nvim_listen" ]] || return 0
+  nvim --server "$bench_nvim_listen" --remote-send \
+    '<Cmd>lua dofile(vim.env.COCKPIT_NVIM_BENCH_LAYOUT_INIT).refresh()<CR>' \
+    >/dev/null 2>&1 || true
+}
+
+bench_follow_proctor() {
+  local watch_dir=${1:-}
+  [[ -n "$watch_dir" ]] || return 0
+  cockpit_event_watch "$watch_dir" \
+    -e close_write,moved_to,create,delete \
+    --exclude "$cockpit_noise_exclude"
+  while cockpit_event_read; do
+    case "$COCKPIT_EVENT" in
+      QUIT) exit 0 ;;
+      WAKE)
+        if cockpit_view_visible; then
+          bench_refresh_nvim
+        fi
+        continue
+        ;;
+    esac
+    sleep "$COCKPIT_DEBOUNCE"
+    cockpit_event_drain >/dev/null
+    if cockpit_view_visible; then
+      bench_refresh_nvim
+    fi
+  done
+}
+
+bench_launch_nvim() {
+  local absent=0 db display_root
+  bench_resolve_nvim_paths
+  bench_nvim_listen="$(cockpit_runtime_home)/nvim.bench.$$.sock"
+  mkdir -p "$(cockpit_runtime_home)"
+  if ! bench_validate >/dev/null 2>&1; then
+    absent=1
+    db=''
+    display_root=''
+  else
+    db="$(bench_db)"
+    display_root="$BENCH_ROOT"
+  fi
+  export COCKPIT_BENCH_DB="$db"
+  export COCKPIT_BENCH_ROOT="$display_root"
+  export COCKPIT_BENCH_ABSENT="$absent"
+  export COCKPIT_NVIM_BENCH_LAYOUT_INIT="$bench_nvim_layout_init"
+  export NVIM_APPNAME=cockpit-bench-bare
+  if ((once)); then
+    export COCKPIT_BENCH_ONCE=1
+  else
+    unset COCKPIT_BENCH_ONCE
+  fi
+
+  local nvim_args=(--listen "$bench_nvim_listen")
+  if [[ -f "$bench_nvim_bare_init" ]]; then
+    nvim_args+=(-u "$bench_nvim_bare_init")
+  fi
+  if [[ -f "$bench_nvim_theme_init" ]]; then
+    export COCKPIT_NVIM_THEME_INIT="$bench_nvim_theme_init"
+    nvim_args+=(-c 'lua dofile(vim.env.COCKPIT_NVIM_THEME_INIT).setup()')
+  fi
+  if [[ -f "$bench_nvim_layout_init" ]]; then
+    nvim_args+=(-c 'lua dofile(vim.env.COCKPIT_NVIM_BENCH_LAYOUT_INIT).setup()')
+  fi
+  nvim_args+=(-c 'set errorbells visualbell belloff=all shortmess+=I nonumber norelativenumber signcolumn=no foldcolumn=0')
+
+  if ((once)); then
+  exec nvim "${nvim_args[@]}"
+  fi
+
+  local watch_dir="${BENCH_ROOT:-}"
+  if [[ -z "$watch_dir" ]]; then
+    watch_dir="${COCKPIT_PROCTOR_HOME:-${COCKPIT_INTERCOM_HOME:-$HOME/intercom}/proctor}"
+  fi
+  bench_follow_proctor "$watch_dir" &
+  local watcher_pid=$!
+  trap 'cockpit_event_close; kill "$watcher_pid" 2>/dev/null || true; rm -f "$bench_nvim_listen"; rm -f "$(cockpit_wake_dir "$session")/BENCH.pid"' EXIT
+  exec nvim "${nvim_args[@]}"
+}
+
+clear_screen() {
+  printf '\033[2J\033[H'
+}
+
+if ((once)); then
+  if ! bench_validate >/dev/null 2>&1; then
+    bench_render_absent
+    exit 1
+  fi
+  bench_launch_nvim
+fi
+
+session="$(tmux display-message -p '#{session_name}' 2>/dev/null || echo unknown)"
+COCKPIT_DEBOUNCE=0.25
+
+if [[ "$session" == unknown ]]; then
+  printf 'BENCH idle: open the Cockpit BENCH page from the managed session.\n'
+  while true; do sleep 3600; done
+fi
+
+cockpit_event_open "$session" BENCH
+trap 'cockpit_event_close; rm -f "$(cockpit_wake_dir "$session")/BENCH.pid"' EXIT
+
+bench_idle_message() {
+  clear_screen
+  printf '%sBENCH%s  idle\n\n' \
+    "$(cockpit_theme_heading)" "$(cockpit_theme_reset)"
+  printf 'Open the BENCH page or press a wake to render the Proctor bench drill.\n'
+}
+
+if ! cockpit_view_visible; then
+  bench_idle_message
+  while cockpit_event_read; do
+    [[ "$COCKPIT_EVENT" == "WAKE" ]] && break
+    cockpit_view_visible && break
+  done
+fi
+
+bench_launch_nvim

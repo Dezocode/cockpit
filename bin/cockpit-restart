@@ -24,13 +24,14 @@ pane="$(tmux list-panes -s -t "$session" -F '#{pane_id} #{@cockpit_role}' 2>/dev
 
 runtime_id="$(tmux display-message -p -t "$pane" '#{@cockpit_runtime_id}' 2>/dev/null || true)"
 [[ -n "$runtime_id" ]] || runtime_id=codex
-root="$(tmux display-message -p -t "$pane" '#{pane_current_path}' 2>/dev/null || pwd)"
+root="${COCKPIT_RESTART_ROOT:-$(tmux display-message -p -t "$pane" '#{pane_current_path}' 2>/dev/null || pwd)}"
+root="$(cd -- "$root" && pwd -P)"
 start="$(cockpit_auth_field "$runtime_id" start 2>/dev/null || true)"
 [[ -n "$start" ]] || start=codex
 
 if [[ "$runtime_id" == codex* ]]; then
   codex_bin="$(cockpit_resolve_codex_bin || true)"
-  [[ -n "$codex_bin" ]] && start="$(cockpit_codex_runtime_command "$start" "$codex_bin")"
+  [[ -n "$codex_bin" ]] && start="$(cockpit_codex_runtime_command "$start" "$codex_bin" "$root")"
 fi
 
 runtime_env="$(cockpit_runtime_color_setup)"

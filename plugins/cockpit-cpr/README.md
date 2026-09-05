@@ -5,7 +5,7 @@ marketplace and does not call `codex plugin add`.
 
 The plugin validates the tmux overlay before applying it, records an overlay
 hash so repeated updates are idempotent, refreshes the toolbar with `SIGWINCH`,
-and leaves the live Agent, FILES, SETUP, DIFF, and MAP processes alone by
+and leaves the live Agent, FILES, SETUP, DIFF, MAP, and MEMORY processes alone by
 default. Derived-view respawns require the explicit `--refresh-derived` flag
 or `refresh_derived=1` in `~/.config/cockpit/cockpit.conf`.
 

@@ -1,0 +1,156 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+script_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=cockpit-lib
+source "$script_root/cockpit-lib"
+export PATH="$script_root:$HOME/.local/bin:$PATH"
+
+once=0
+case "${1:-}" in
+  '') ;;
+  --once) once=1 ;;
+  *)
+    printf 'Usage: cockpit-memory [--once]\n' >&2
+    exit 2
+    ;;
+esac
+
+# The intercom clone is the only managed source. The project-relative path is
+# a deliberate local fallback for a checkout that carries its own clone.
+memory_source() {
+  local candidate directory
+  for candidate in "$HOME/intercom/memory/cockpit.mmd" "${PWD:-.}/memory/cockpit.mmd"; do
+    if [[ -f "$candidate" ]]; then
+      directory="$(dirname -- "$candidate")"
+      printf '%s/%s\n' "$(cd -- "$directory" && pwd -P)" "$(basename -- "$candidate")"
+      return 0
+    fi
+  done
+  return 1
+}
+
+memory_file="$(memory_source || true)"
+
+refresh_memory_source() {
+  memory_file="$(memory_source || true)"
+}
+
+memory_validate() {
+  local name
+  if [[ -z "$memory_file" ]]; then
+    printf 'MEMORY unavailable: memory/cockpit.mmd is missing (checked ~/intercom/memory/cockpit.mmd and cwd-relative memory/cockpit.mmd).\n' >&2
+    return 1
+  fi
+  for name in index intercom handshake hooks; do
+    if ! grep -Eq "^[[:space:]]*subgraph[[:space:]]+${name}([[:space:]]|\\[)" "$memory_file"; then
+      printf 'MEMORY unavailable: required subgraph %s is missing from %s.\n' "$name" "$memory_file" >&2
+      return 1
+    fi
+  done
+}
+
+clear_screen() {
+  printf '\033[2J\033[H'
+}
+
+header() {
+  printf '%sMEMORY%s  %s%s%s\n\n' \
+    "$(cockpit_theme_heading)" "$(cockpit_theme_reset)" \
+    "$(cockpit_theme_muted)" "${memory_file:-managed intercom source}" "$(cockpit_theme_reset)"
+  printf 'Intercom-managed projection  ·  index  ·  intercom  ·  handshake  ·  hooks\n\n'
+}
+
+render() {
+  refresh_memory_source
+  clear_screen
+  header
+  if ! memory_validate 2>/dev/null; then
+  if [[ -z "$memory_file" ]]; then
+    printf 'MEMORY unavailable: the managed memory file is missing.\n'
+  else
+      printf 'MEMORY unavailable: the Thesis-managed source is incomplete; update it, then run SETUP o (intercom sync).\n'
+    fi
+    return 0
+  fi
+  if [[ ! -f "$memory_file" ]]; then
+    printf 'MEMORY unavailable: the managed memory file is missing.\n'
+    return 0
+  fi
+  if ! "$script_root/cockpit-showmegraphs" "$memory_file"; then
+    printf '\nMEMORY unavailable: the managed Mermaid file could not be rendered.\n'
+  fi
+}
+
+if ((once)); then
+  refresh_memory_source
+  memory_validate || exit 1
+  render
+  exit 0
+fi
+
+session="$(tmux display-message -p '#{session_name}' 2>/dev/null || echo unknown)"
+COCKPIT_DEBOUNCE=0.25
+
+maybe_render() {
+  if cockpit_view_visible; then
+    render
+  fi
+}
+
+if [[ "$session" == unknown ]]; then
+  printf 'MEMORY idle: open the Cockpit MEMORY page from the managed session.\n'
+  while true; do sleep 3600; done
+fi
+
+cockpit_event_open "$session" MEMORY
+memory_key_pid=''
+memory_key_reader() {
+  local key
+  while IFS= read -r -n 1 key; do
+    case "$key" in
+      q|Q|$'\033')
+        printf 'QUIT\n' >"$COCKPIT_EVENT_FIFO" 2>/dev/null || true
+        return 0
+        ;;
+    esac
+  done
+}
+if [[ -t 0 ]]; then
+  memory_key_reader &
+  memory_key_pid=$!
+fi
+trap '[[ -n "$memory_key_pid" ]] && kill "$memory_key_pid" 2>/dev/null || true; cockpit_event_close; rm -f "$(cockpit_wake_dir "$session")/MEMORY.pid"' EXIT
+
+if cockpit_view_visible; then
+  render
+else
+  clear_screen
+  printf '%sMEMORY%s  idle\n\n' \
+    "$(cockpit_theme_heading)" "$(cockpit_theme_reset)"
+  printf 'Open the MEMORY page to render the intercom-managed projection.\n'
+fi
+
+# Keep the interactive pane alive while the managed source is absent or
+# incomplete. A later SETUP intercom sync sends WAKE, which re-discovers the
+# source and renders it without respawning the page or touching AGENT.
+watch_dir="$HOME/intercom"
+if [[ -n "$memory_file" ]]; then
+  watch_dir="$(dirname -- "$memory_file")"
+fi
+cockpit_event_watch "$watch_dir" \
+  -e close_write,moved_to,create,delete \
+  --exclude "$cockpit_noise_exclude"
+
+while cockpit_event_read; do
+  if [[ "$COCKPIT_EVENT" == QUIT ]]; then
+    exit 0
+  fi
+  if [[ "$COCKPIT_EVENT" == WAKE ]]; then
+    maybe_render
+    continue
+  fi
+  sleep "$COCKPIT_DEBOUNCE"
+  cockpit_event_drain >/dev/null
+  maybe_render
+done

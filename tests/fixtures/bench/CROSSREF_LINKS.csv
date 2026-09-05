@@ -1,0 +1,2 @@
+from_run_id,to_run_id,link_kind
+run-local-001,run-sol-001,sol_session_ref

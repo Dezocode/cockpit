@@ -13,12 +13,22 @@ if ! tmux has-session -t "$session" 2>/dev/null; then
   exit 0
 fi
 
+shell_quote() {
+  local value=$1
+  value=${value//\\/\\\\}
+  value=${value//\'/\'\\\'\'}
+  printf "'%s'" "$value"
+}
+
 role=$view
 case "$view" in
   runtime|codex|agent|CODEX|AGENT) role=runtime; window=AGENT ;;
   files|FILES|nvim) role=files; window=FILES ;;
   diff|DIFF) role=diff; window=DIFF ;;
   map|mermaid|MAP|MERMAID) role=map; window=MAP ;;
+  memory|MEMORY) role=memory; window=MEMORY ;;
+  computers|COMPUTERS) role=computers; window=COMPUTERS ;;
+  bench|BENCH) role=bench; window=BENCH ;;
   setup|SETUP|config|vim) role=setup; window=SETUP ;;
   setup-edit|SETUP-EDIT|setup_legacy|SETUP_LEGACY) role=setup-legacy; window=SETUP-EDIT ;;
   prs|PRS|github) role=prs; window=PRS ;;
@@ -52,7 +62,105 @@ if [[ "$role" == "prs" ]]; then
   exit 0
 fi
 
-if [[ "$role" == "setup-legacy" ]]; then
+if [[ "$role" == "computers" ]]; then
+  pane="$(
+    tmux list-panes -s -t "$session" -F '#{pane_id} #{@cockpit_role} #{window_name}' 2>/dev/null |
+      awk '$2 == "computers" || ($2 == "" && $3 == "COMPUTERS") { print $1; exit }'
+  )"
+  root="$(tmux display-message -p -t "$session:AGENT" '#{pane_current_path}' 2>/dev/null || true)"
+  [[ -n "$root" && -d "$root" ]] || root="$(tmux display-message -p -t "$session:" '#{pane_current_path}' 2>/dev/null || true)"
+  [[ -n "$root" && -d "$root" ]] || root="$PWD"
+  if [[ -z "$pane" ]]; then
+    tmux new-window -d -t "$session:" -n COMPUTERS -c "$root" \
+      "cd -- $(shell_quote "$root") && exec cockpit-computers" 2>/dev/null || true
+    pane="$(tmux display-message -p -t "$session:COMPUTERS" '#{pane_id}' 2>/dev/null || true)"
+  fi
+  if [[ -n "$pane" ]]; then
+    parent="$(tmux display-message -p -t "$pane" '#{window_name}' 2>/dev/null || true)"
+    if [[ "$parent" != COMPUTERS ]]; then
+      tmux break-pane -d -n COMPUTERS -s "$pane" 2>/dev/null || true
+    fi
+    if [[ "$(tmux display-message -p -t "$pane" '#{pane_dead}' 2>/dev/null || echo 0)" == "1" ]]; then
+      tmux respawn-pane -k -t "$pane" -c "$root" \
+        "cd -- $(shell_quote "$root") && exec cockpit-computers" 2>/dev/null || true
+    fi
+    tmux select-pane -t "$pane" -T COMPUTERS 2>/dev/null || true
+    tmux set-option -p -t "$pane" @cockpit_role computers 2>/dev/null || true
+    tmux set-option -p -t "$pane" remain-on-exit on 2>/dev/null || true
+    tmux set-option -w -t "$pane" automatic-rename off 2>/dev/null || true
+    tmux set-option -w -t "$pane" allow-rename off 2>/dev/null || true
+    tmux select-window -t "$pane" 2>/dev/null || true
+    tmux select-pane -t "$pane" 2>/dev/null || true
+    cockpit-wake "$session" COMPUTERS || true
+  fi
+  exit 0
+elif [[ "$role" == "bench" ]]; then
+  pane="$(
+    tmux list-panes -s -t "$session" -F '#{pane_id} #{@cockpit_role} #{window_name}' 2>/dev/null |
+      awk '$2 == "bench" || ($2 == "" && $3 == "BENCH") { print $1; exit }'
+  )"
+  root="$(tmux display-message -p -t "$session:AGENT" '#{pane_current_path}' 2>/dev/null || true)"
+  [[ -n "$root" && -d "$root" ]] || root="$(tmux display-message -p -t "$session:" '#{pane_current_path}' 2>/dev/null || true)"
+  [[ -n "$root" && -d "$root" ]] || root="$PWD"
+  if [[ -z "$pane" ]]; then
+    tmux new-window -d -t "$session:" -n BENCH -c "$root" \
+      "cd -- $(shell_quote "$root") && exec cockpit-bench" 2>/dev/null || true
+    pane="$(tmux display-message -p -t "$session:BENCH" '#{pane_id}' 2>/dev/null || true)"
+  fi
+  if [[ -n "$pane" ]]; then
+    parent="$(tmux display-message -p -t "$pane" '#{window_name}' 2>/dev/null || true)"
+    if [[ "$parent" != BENCH ]]; then
+      tmux break-pane -d -n BENCH -s "$pane" 2>/dev/null || true
+    fi
+    if [[ "$(tmux display-message -p -t "$pane" '#{pane_dead}' 2>/dev/null || echo 0)" == "1" ]]; then
+      tmux respawn-pane -k -t "$pane" -c "$root" \
+        "cd -- $(shell_quote "$root") && exec cockpit-bench" 2>/dev/null || true
+    fi
+    tmux select-pane -t "$pane" -T BENCH 2>/dev/null || true
+    tmux set-option -p -t "$pane" @cockpit_role bench 2>/dev/null || true
+    tmux set-option -p -t "$pane" remain-on-exit on 2>/dev/null || true
+    tmux set-option -w -t "$pane" automatic-rename off 2>/dev/null || true
+    tmux set-option -w -t "$pane" allow-rename off 2>/dev/null || true
+    tmux select-window -t "$pane" 2>/dev/null || true
+    tmux select-pane -t "$pane" 2>/dev/null || true
+    cockpit-wake "$session" BENCH || true
+  fi
+  exit 0
+elif [[ "$role" == "memory" ]]; then
+  # MEMORY is a real top-level page. If an older session left it nested in
+  # MAP (or another page), break that pane out without touching the runtime.
+  pane="$(
+    tmux list-panes -s -t "$session" -F '#{pane_id} #{@cockpit_role} #{window_name}' 2>/dev/null |
+      awk '$2 == "memory" || ($2 == "" && $3 == "MEMORY") { print $1; exit }'
+  )"
+  root="$(tmux display-message -p -t "$session:AGENT" '#{pane_current_path}' 2>/dev/null || true)"
+  [[ -n "$root" && -d "$root" ]] || root="$(tmux display-message -p -t "$session:" '#{pane_current_path}' 2>/dev/null || true)"
+  [[ -n "$root" && -d "$root" ]] || root="$PWD"
+  if [[ -z "$pane" ]]; then
+    tmux new-window -d -t "$session:" -n MEMORY -c "$root" \
+      "cd -- $(shell_quote "$root") && exec cockpit-memory" 2>/dev/null || true
+    pane="$(tmux display-message -p -t "$session:MEMORY" '#{pane_id}' 2>/dev/null || true)"
+  fi
+  if [[ -n "$pane" ]]; then
+    parent="$(tmux display-message -p -t "$pane" '#{window_name}' 2>/dev/null || true)"
+    if [[ "$parent" != MEMORY ]]; then
+      tmux break-pane -d -n MEMORY -s "$pane" 2>/dev/null || true
+    fi
+    if [[ "$(tmux display-message -p -t "$pane" '#{pane_dead}' 2>/dev/null || echo 0)" == "1" ]]; then
+      tmux respawn-pane -k -t "$pane" -c "$root" \
+        "cd -- $(shell_quote "$root") && exec cockpit-memory" 2>/dev/null || true
+    fi
+    tmux select-pane -t "$pane" -T MEMORY 2>/dev/null || true
+    tmux set-option -p -t "$pane" @cockpit_role memory 2>/dev/null || true
+    tmux set-option -p -t "$pane" remain-on-exit on 2>/dev/null || true
+    tmux set-option -w -t "$pane" automatic-rename off 2>/dev/null || true
+    tmux set-option -w -t "$pane" allow-rename off 2>/dev/null || true
+    tmux select-window -t "$pane" 2>/dev/null || true
+    tmux select-pane -t "$pane" 2>/dev/null || true
+    cockpit-wake "$session" MEMORY || true
+  fi
+  exit 0
+elif [[ "$role" == "setup-legacy" ]]; then
   pane="$(
     tmux list-panes -s -t "$session" -F '#{pane_id} #{@cockpit_role} #{window_name}' 2>/dev/null |
       awk '$2 == "setup-legacy" && $3 == "SETUP-EDIT" { print $1; exit }'
@@ -67,7 +175,7 @@ fi
 # Derived panes can disappear when their watcher exits or while a layout
 # migration is in progress. A page button should repair that state and then
 # select the requested page, rather than silently leaving the user elsewhere.
-if [[ -z "$pane" && ( "$role" == "diff" || "$role" == "map" ) ]] &&
+if [[ -z "$pane" && ( "$role" == "diff" || "$role" == "map" || "$role" == "memory" || "$role" == "computers" || "$role" == "bench" ) ]] &&
   command -v cockpit-reload-views >/dev/null 2>&1; then
   cockpit-reload-views "$session" >/dev/null 2>&1 || true
   pane="$(
@@ -91,7 +199,7 @@ if [[ "$role" == "setup" && -z "$pane" ]]; then
   [[ -n "$root" ]] || root="$PWD"
   setup_arg=""
   case "$focus" in
-    auth|model) setup_arg=" $focus" ;;
+    auth|model|intercom) setup_arg=" $focus" ;;
   esac
   tmux new-window -d -t "$session:" -n SETUP -c "$root" \
     "exec cockpit-setup$setup_arg" 2>/dev/null || true
@@ -112,7 +220,9 @@ if [[ -n "$pane" ]]; then
   tmux select-pane -t "$pane"
   pane_count="$(tmux display-message -p -t "$pane" '#{window_panes}')"
   zoomed="$(tmux display-message -p -t "$pane" '#{window_zoomed_flag}')"
-  if [[ "${pane_count:-1}" -gt 1 && "$zoomed" != "1" ]]; then
+  if [[ "$role" == "map" && "$zoomed" == "1" ]]; then
+    tmux resize-pane -Z -t "$pane"
+  elif [[ "$role" != "map" && "${pane_count:-1}" -gt 1 && "$zoomed" != "1" ]]; then
     tmux resize-pane -Z -t "$pane"
   fi
   if [[ "$role" == "setup" ]]; then
@@ -125,6 +235,9 @@ if [[ -n "$pane" ]]; then
         ;;
       model)
         tmux send-keys -t "$pane" m Enter
+        ;;
+      intercom)
+        tmux send-keys -t "$pane" o Enter
         ;;
     esac
   fi

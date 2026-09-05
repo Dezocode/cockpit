@@ -1,0 +1,1 @@
+../../../plugins/cockpit-native/skills/cockpit-pages/SKILL.md

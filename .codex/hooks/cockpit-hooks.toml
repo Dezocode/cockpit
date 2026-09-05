@@ -1,0 +1,55 @@
+# Project-local Cockpit hook registry.
+# The dispatcher records metadata and invokes only idempotent, existing
+# Cockpit refresh paths. The native Codex plugin manifest intentionally does
+# not claim a `hooks` field; this file is consumed by cockpit-hooks-install.
+
+version = 1
+dispatcher = "cockpit-project-hook"
+
+[[hook]]
+event = "client-attached"
+effect = "bind project/worktree metadata and refresh chrome"
+
+[[hook]]
+event = "client-resized"
+effect = "refresh Foot/Omarchy chrome without changing page topology"
+
+[[hook]]
+event = "client-session-changed"
+effect = "rebind the selected session to its runtime worktree"
+
+[[hook]]
+event = "session-created"
+effect = "initialize project/worktree metadata"
+
+[[hook]]
+event = "after-select-window"
+effect = "wake the selected page and refresh agent target metadata"
+
+[[hook]]
+event = "after-new-window"
+effect = "record topology change and refresh agent target metadata"
+
+[[hook]]
+event = "after-rename-window"
+effect = "record named-page topology change"
+
+[[hook]]
+event = "after-resize-pane"
+effect = "record pane resize without spawning a new page"
+
+[[hook]]
+event = "after-split-window"
+effect = "record topology change without recursive splitting"
+
+[[hook]]
+event = "after-kill-pane"
+effect = "refresh surviving runtime/worktree metadata"
+
+[[hook]]
+event = "after-resize-window"
+effect = "refresh surviving page registry after a window resize"
+
+[[hook]]
+event = "after-rename-session"
+effect = "record session identity change"

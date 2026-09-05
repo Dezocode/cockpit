@@ -12,6 +12,7 @@ cleanup() { rm -rf "$test_root"; }
 trap cleanup EXIT
 
 export HOME="$test_home"
+export XDG_CONFIG_HOME="$test_home/.config"
 export PATH="$fakebin:$repo_root/bin:/usr/bin:/bin"
 export FAKE_TMUX_LOG="$log"
 export FAKE_COCKPIT_PROJECT="$test_root/project"

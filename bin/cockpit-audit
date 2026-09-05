@@ -94,6 +94,179 @@ cockpit_plugin_health() {
   else
     fail_check 'Cockpit CPR native plugin is missing or invalid'
   fi
+  if grep -Eq '^cockpit\.memory[[:space:]]+type=cockpit[[:space:]]+version=' <<<"$rows"; then
+    pass_check 'Cockpit MEMORY native plugin is available'
+  else
+    fail_check 'Cockpit MEMORY native plugin is missing or invalid'
+  fi
+  if grep -Eq '^cockpit\.computers[[:space:]]+type=cockpit[[:space:]]+version=' <<<"$rows"; then
+    pass_check 'Cockpit COMPUTERS native plugin is available'
+  else
+    fail_check 'Cockpit COMPUTERS native plugin is missing or invalid'
+  fi
+  if grep -Eq '^cockpit\.bench[[:space:]]+type=cockpit[[:space:]]+version=' <<<"$rows"; then
+    pass_check 'Cockpit BENCH native plugin is available'
+  else
+    fail_check 'Cockpit BENCH native plugin is missing or invalid'
+  fi
+  if grep -Eq '^cockpit\.intercom[[:space:]]+type=cockpit[[:space:]]+version=' <<<"$rows"; then
+    pass_check 'Cockpit INTERCOM native plugin is available'
+  else
+    fail_check 'Cockpit INTERCOM native plugin is missing or invalid'
+  fi
+}
+
+native_project_plugin_health() {
+  local plugin_root manifest marketplace skill_count hook_count json installed
+  plugin_root="$script_root/../plugins/cockpit-native"
+  manifest="$plugin_root/.codex-plugin/plugin.json"
+  marketplace="$script_root/../.agents/plugins/marketplace.json"
+  if [[ ! -f "$manifest" || ! -f "$marketplace" ]]; then
+    warn_check 'Native Cockpit project plugin manifests are incomplete'
+    return 0
+  fi
+  if has_command python3 &&
+    python3 /home/dezocode/.codex/skills/.system/plugin-creator/scripts/validate_plugin.py \
+      "$plugin_root" >/dev/null 2>&1; then
+    pass_check 'Native Cockpit plugin manifest validates'
+  else
+    fail_check 'Native Cockpit plugin manifest is invalid'
+  fi
+  skill_count="$(find "$plugin_root/skills" -mindepth 2 -maxdepth 2 -type f -name SKILL.md \
+    -print 2>/dev/null | wc -l)"
+  hook_count="$(awk '/^\[\[hook\]\]/{n++} END {print n + 0}' \
+    "$script_root/../.codex/hooks/cockpit-hooks.toml" 2>/dev/null || printf '0')"
+  if [[ "$skill_count" -ge 10 ]]; then
+    pass_check "Native Cockpit project skills: $skill_count"
+  else
+    fail_check "Native Cockpit project skills: $skill_count; expected at least 10"
+  fi
+  if [[ "$hook_count" -ge 10 ]]; then
+    pass_check "Native Cockpit project hook workflows: $hook_count"
+  else
+    fail_check "Native Cockpit project hook workflows: $hook_count; expected at least 10"
+  fi
+  if has_command jq && has_command codex; then
+    if has_command timeout; then
+      json="$(timeout 1.5s codex plugin list --json 2>/dev/null || true)"
+    else
+      json="$(codex plugin list --json 2>/dev/null || true)"
+    fi
+    installed="$(jq -r '[.installed[]? | select(.pluginId == "cockpit-native@personal" and .enabled == true)] | length' \
+      <<<"$json" 2>/dev/null || printf '0')"
+    if [[ "$installed" -ge 1 ]]; then
+      pass_check 'Native Cockpit plugin is installed and enabled in Codex'
+    else
+      warn_check 'Native Cockpit plugin is available in the project but not enabled in Codex'
+    fi
+  else
+    warn_check 'Native Cockpit plugin activation check skipped (codex or jq missing)'
+  fi
+}
+
+intercom_source_health() {
+  local state
+  if ! has_command cockpit-intercom; then
+    fail_check 'Intercom readiness gate is not installed'
+    return 0
+  fi
+  state="$(COCKPIT_INTERCOM_ROOT="$HOME/intercom" cockpit-intercom status --summary 2>/dev/null || true)"
+  if [[ "$state" == ready ]]; then
+    pass_check 'Intercom sync gate is ready'
+  else
+    fail_check "Intercom sync gate is ${state:-unavailable}"
+  fi
+}
+
+memory_source_health() {
+  local file name
+  file="$HOME/intercom/memory/cockpit.mmd"
+  if [[ ! -f "$file" ]]; then
+    fail_check 'MEMORY source is missing from ~/intercom/memory/cockpit.mmd'
+    return 0
+  fi
+  for name in index intercom handshake hooks; do
+    if grep -Eq "^[[:space:]]*subgraph[[:space:]]+${name}([[:space:]]|\\[)" "$file"; then
+      pass_check "MEMORY source contains ${name} subgraph"
+    else
+      fail_check "MEMORY source is missing ${name} subgraph"
+    fi
+  done
+}
+
+computers_source_health() {
+  local file source_label
+  file="$HOME/intercom/models/deck.json"
+  source_label='~/intercom/models/deck.json'
+  if [[ ! -f "$file" ]]; then
+    file="$HOME/intercom/computers/receipt.tsv"
+    source_label='~/intercom/computers/receipt.tsv'
+  fi
+  if [[ ! -f "$file" ]]; then
+    fail_check 'COMPUTERS receipt is missing from ~/intercom/models/deck.json (or the legacy TSV fallback)'
+    return 0
+  fi
+  if COCKPIT_INTERCOM_HOME="$HOME/intercom" computers check >/dev/null 2>&1; then
+    pass_check "COMPUTERS receipt validates (intercom-managed source: $source_label)"
+  else
+    fail_check "COMPUTERS receipt is present but invalid: $source_label"
+  fi
+}
+
+bench_source_health() {
+  local root db source_label
+  root="${COCKPIT_PROCTOR_HOME:-${COCKPIT_INTERCOM_HOME:-$HOME/intercom}/proctor}"
+  db="$root/db/runs.sqlite"
+  if [[ ! -f "$db" ]]; then
+    warn_check "BENCH source is absent; page is fail-closed ($db)"
+    return 0
+  fi
+  source_label="$db"
+  [[ -f "$root/MODELS_INDEX.csv" ]] && source_label="$db + $root/MODELS_INDEX.csv"
+  if has_command cockpit-bench && COCKPIT_PROCTOR_HOME="$root" cockpit-bench check >/dev/null 2>&1; then
+    pass_check "BENCH Proctor mirror validates (source: $source_label)"
+  else
+    warn_check "BENCH Proctor mirror is present but unavailable: $source_label"
+  fi
+}
+
+page_topology_health() {
+  local spec name role pane parent count
+  for spec in "FILES:files" "DIFF:diff" "MAP:map" "SETUP:setup" "PRS:prs" "MEMORY:memory" "COMPUTERS:computers" "BENCH:bench"; do
+    name=${spec%%:*}
+    role=${spec##*:}
+    pane="$(tmux list-panes -s -t "$session" -F '#{pane_id} #{@cockpit_role} #{window_name}' 2>/dev/null |
+      awk -v r="$role" -v n="$name" '$2 == r || ($2 == "" && $3 == n) { print $1; exit }')"
+    if [[ -z "$pane" ]]; then
+      fail_check "${name} page pane is missing"
+      continue
+    fi
+    parent="$(tmux display-message -p -t "$pane" '#{window_name}' 2>/dev/null || true)"
+    count="$(tmux display-message -p -t "$pane" '#{window_panes}' 2>/dev/null || true)"
+    if [[ "$parent" != "$name" ]]; then
+      fail_check "${name} page is nested in ${parent:-an unknown window}"
+    elif [[ "$count" != 1 ]]; then
+      fail_check "${name} page has ${count:-unknown} panes; expected one"
+    else
+      pass_check "${name} page is a single top-level pane"
+    fi
+  done
+}
+
+client_health() {
+  local count pid profile
+  count="$(tmux list-clients -t "$session" -F '#{client_pid}' 2>/dev/null | sed '/^$/d' | wc -l)"
+  if [[ "$count" != 1 ]]; then
+    fail_check "Foot sole-client contract: ${count} attached clients"
+    return 0
+  fi
+  pid="$(tmux list-clients -t "$session" -F '#{client_pid}' 2>/dev/null | head -1)"
+  profile="$(cockpit-profile "$pid" 2>/dev/null || true)"
+  if [[ "$profile" == foot ]]; then
+    pass_check 'Foot is the sole attached Cockpit client'
+  else
+    fail_check "Foot sole-client contract is unmet: ${profile:-unknown} client"
+  fi
 }
 
 agent_target_health() {
@@ -127,6 +300,30 @@ agent_target_health() {
   esac
 }
 
+worktree_session_health() {
+  local runtime_pane runtime_path runtime_root bound_root branch worktree_path
+  runtime_pane="$(tmux list-panes -s -t "$session" -F '#{pane_id} #{@cockpit_role}' 2>/dev/null |
+    awk '$2 == "runtime" { print $1; exit }')"
+  [[ -n "$runtime_pane" ]] || return 0
+  runtime_path="$(tmux display-message -p -t "$runtime_pane" '#{pane_current_path}' 2>/dev/null || true)"
+  runtime_root="$(git -C "$runtime_path" rev-parse --show-toplevel 2>/dev/null || true)"
+  bound_root="$(tmux show-options -v -t "$session" @cockpit_git_worktree_path 2>/dev/null || true)"
+  branch="$(tmux show-options -v -t "$session" @cockpit_git_branch 2>/dev/null || true)"
+  worktree_path="$(tmux show-options -v -t "$session" @cockpit_project_root 2>/dev/null || true)"
+  if [[ -n "$runtime_root" && -n "$bound_root" && "$runtime_root" == "$bound_root" ]]; then
+    pass_check "Git worktree is bound to ${branch:-unborn}"
+  elif [[ -z "$bound_root" ]]; then
+    warn_check 'Git worktree binding metadata is not initialized for this session'
+  else
+    fail_check "Git worktree binding ${bound_root} differs from runtime ${runtime_root:-$runtime_path}"
+  fi
+  if [[ -n "$worktree_path" && -n "$runtime_root" && "$worktree_path" == "$runtime_root" ]]; then
+    pass_check 'Project root and runtime worktree agree'
+  elif [[ -z "$worktree_path" ]]; then
+    warn_check 'Project root binding is not initialized for this session'
+  fi
+}
+
 printf '%sCOCKPIT AUDIT%s  ·  session=%s\n\n' "$bright" "$reset" "$session"
 
 printf '%sCOMMANDS%s\n' "$bright" "$reset"
@@ -155,13 +352,33 @@ if ! has_command tmux || ! tmux has-session -t "$session" 2>/dev/null; then
   fail_check "tmux session is not running: $session"
 else
   pass_check "tmux session is running: $session"
-  for window in AGENT FILES DIFF SETUP; do
+  expected_windows='AGENT FILES DIFF MAP SETUP PRS MEMORY COMPUTERS BENCH'
+  actual_windows="$(tmux list-windows -t "$session" -F '#{window_name}' 2>/dev/null | paste -sd' ' -)"
+  if [[ "$actual_windows" == "$expected_windows" ]]; then
+    pass_check 'nine named Cockpit pages are ordered in the bar'
+  else
+    fail_check "named page bar is ${actual_windows:-empty}; expected ${expected_windows}"
+  fi
+  for window in AGENT FILES DIFF MAP SETUP PRS MEMORY COMPUTERS BENCH; do
     if tmux list-windows -t "$session" -F '#W' 2>/dev/null | grep -Fxq "$window"; then
       pass_check "window $window exists"
     else
       fail_check "window $window is missing"
     fi
   done
+
+  map_win="$(tmux display-message -p -t "$session:MAP" '#{window_id}' 2>/dev/null || true)"
+  memory_in_map=0
+  if [[ -n "$map_win" ]]; then
+    while read -r role window; do
+      [[ "$role" == memory && "$window" == "$map_win" ]] && memory_in_map=1
+    done < <(tmux list-panes -s -t "$session" -F '#{@cockpit_role} #{window_id}' 2>/dev/null || true)
+  fi
+  if ((memory_in_map == 0)); then
+    pass_check 'MEMORY is not nested inside MAP'
+  else
+    fail_check 'MEMORY is nested inside MAP (must be a named page)'
+  fi
 
   runtime_pane="$(tmux list-panes -s -t "$session" -F '#{pane_id} #{@cockpit_role}' 2>/dev/null |
     awk '$2 == "runtime" { print $1; exit }')"
@@ -196,10 +413,23 @@ else
   [[ -n "$profile" ]] && pass_check "endpoint profile recorded: $profile" || warn_check 'endpoint profile is not recorded'
   [[ -n "$runtime_id" ]] && pass_check "active runtime recorded: $runtime_id" || fail_check 'active runtime is not recorded'
   agent_target_health
+  worktree_session_health
+  page_topology_health
+  client_health
+  if ! tmux list-keys -T root 2>/dev/null | grep -Eqi '(^|[[:space:]])F10[[:space:]]'; then
+    pass_check 'F10 is not a Cockpit page binding'
+  else
+    fail_check 'F10 is still bound as a Cockpit page action'
+  fi
+  memory_source_health
+  computers_source_health
+  bench_source_health
+  intercom_source_health
 fi
 
 printf '\n%sPLUGIN CATALOG%s\n' "$bright" "$reset"
 cockpit_plugin_health
+native_project_plugin_health
 plugin_catalog_health
 
 printf '\n%sRESULT%s  %s passed · %s warnings · %s failures\n' \

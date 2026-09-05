@@ -68,6 +68,51 @@ cockpit_migrate_legacy_session() {
   tmux rename-session -t "$legacy" "$target" 2>/dev/null
 }
 
+# Platform adapter labels. These select launch/color/clipboard/path backends only.
+# The tmux TUI (pad/tabs, bar, overlay, pages) stays the same on every desktop
+# endpoint; only termius-ios switches to the touch tab layout.
+cockpit_platform_is_desktop() {
+  case "${1:-}" in
+    foot|generic-desktop|macos-terminal) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+cockpit_platform_is_touch() {
+  [[ "${1:-}" == "termius-ios" ]]
+}
+
+cockpit_prepare_live_session() {
+  local session=${1:-$(cockpit_session_name)}
+  command -v tmux >/dev/null 2>&1 || return 1
+  tmux start-server 2>/dev/null || true
+  cockpit_migrate_legacy_session "$session" || true
+}
+
+cockpit_select_agent_window() {
+  local session=$1
+  tmux select-window -t "$session:AGENT" 2>/dev/null ||
+    tmux select-window -t "$session:CODEX" 2>/dev/null || true
+}
+
+cockpit_select_agent_pane() {
+  local session=$1 pane
+  pane="$(
+    tmux list-panes -s -t "$session" -F '#{pane_id} #{@cockpit_role}' 2>/dev/null |
+      awk '$2 == "runtime" { print $1; exit }'
+  )"
+  if [[ -z "$pane" ]]; then
+    pane="$(tmux display-message -p -t "$session:AGENT" '#{pane_id}' 2>/dev/null || true)"
+  fi
+  [[ -n "$pane" ]] || pane="$(tmux display-message -p -t "$session:CODEX" '#{pane_id}' 2>/dev/null || true)"
+  if [[ -n "$pane" ]]; then
+    cockpit_select_agent_window "$session"
+    tmux select-pane -t "$pane" 2>/dev/null || true
+  else
+    cockpit_select_agent_window "$session"
+  fi
+}
+
 cockpit_runtime_home() {
   printf '%s/cockpit\n' "$XDG_RUNTIME_DIR"
 }
@@ -120,12 +165,18 @@ cockpit_resolve_codex_bin() {
 # Replace only the stock `codex` provider command. Custom provider commands
 # remain untouched, while `codex --oss` still uses the resolved binary.
 cockpit_codex_runtime_command() {
-  local command=${1:-} codex_bin=${2:-} quoted
+  local command=${1:-} codex_bin=${2:-} project=${3:-} quoted prefix
   [[ -n "$command" && -n "$codex_bin" ]] || return 1
   quoted="$(cockpit_shell_quote "$codex_bin")"
+  prefix="$quoted"
+  # Keep the native Codex project selector tied to the same Git worktree as
+  # the tmux pages. Custom provider commands are deliberately left untouched.
+  if [[ -n "$project" ]]; then
+    prefix+=" -C $(cockpit_shell_quote "$project")"
+  fi
   case "$command" in
-    codex) printf '%s\n' "$quoted" ;;
-    'codex '*) printf '%s%s\n' "$quoted" "${command#codex}" ;;
+    codex) printf '%s\n' "$prefix" ;;
+    'codex '*) printf '%s%s\n' "$prefix" "${command#codex}" ;;
     *) printf '%s\n' "$command" ;;
   esac
 }

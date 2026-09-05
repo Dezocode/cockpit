@@ -12,12 +12,49 @@ if [[ -z "$diagram" || ! -f "$diagram" ]]; then
   exit 1
 fi
 
+renderer_diagram="$diagram"
+cleanup_renderer_diagram() {
+  [[ "$renderer_diagram" == "$diagram" ]] || rm -f -- "$renderer_diagram"
+}
+trap cleanup_renderer_diagram EXIT
+
+# mermaid-ascii is intentionally kept as the MAP renderer, but it expects the
+# graph declaration to be the first line and does not accept a top-to-bottom
+# layout. Normalize only its temporary input so the managed Mermaid source is
+# never rewritten and the raw-source fallback remains available.
+normalize_renderer_diagram() {
+  local normalized
+  normalized="$(mktemp "${TMPDIR:-/tmp}/cockpit-mermaid.XXXXXX" 2>/dev/null || true)"
+  [[ -n "$normalized" ]] || return 1
+  if ! awk '
+    BEGIN { started = 0 }
+    /^[[:space:]]*%%/ { next }
+    !started && /^[[:space:]]*$/ { next }
+    !started {
+      line = $0
+      sub(/^[[:space:]]*/, "", line)
+      sub(/[[:space:]]*$/, "", line)
+      if (line == "flowchart TB") $0 = "flowchart LR"
+      if (line == "graph TB") $0 = "graph LR"
+      started = 1
+    }
+    { print }
+  ' "$diagram" >"$normalized"; then
+    rm -f -- "$normalized"
+    return 1
+  fi
+  renderer_diagram="$normalized"
+}
+
 if command -v mermaid-ascii >/dev/null 2>&1; then
-  exec mermaid-ascii -f "$diagram" -x 2 -y 1
+  normalize_renderer_diagram || renderer_diagram="$diagram"
+  mermaid-ascii -f "$renderer_diagram" -x 2 -y 1
+  exit $?
 fi
 
 if command -v merman-cli >/dev/null 2>&1; then
-  exec merman-cli render "$diagram" --format unicode --output -
+  merman-cli render "$diagram" --format unicode --output -
+  exit $?
 fi
 
 cat -- "$diagram"

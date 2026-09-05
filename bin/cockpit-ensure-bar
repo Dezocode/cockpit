@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Put PRS / provider / MODEL / RESTART above the live Agent pane. Never
+# Put PRS / provider / 2:FILES / MEMORY / MODEL / RESTART above the live Agent pane. Never
 # respawns the Agent. hide: park the bar so the composer stays on screen above
 # the keyboard.
 set -euo pipefail

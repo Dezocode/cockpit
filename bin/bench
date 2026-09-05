@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# Standalone equivalent of the interactive `bench` shell function.
+set -euo pipefail
+exec cockpit-plugin run bench "$@"

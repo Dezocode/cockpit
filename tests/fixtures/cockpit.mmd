@@ -1,0 +1,21 @@
+flowchart TB
+  subgraph index ["Index"]
+    idx_a[Agents]
+    idx_b[Devices]
+  end
+  subgraph intercom ["Intercom"]
+    ic_a[Peer bus]
+    ic_b[Channels]
+  end
+  subgraph hooks ["Hooks"]
+    hk_a[Wake]
+    hk_b[Reload]
+  end
+  subgraph Foundry ["Foundry"]
+    fd_hidden[Must not render]
+  end
+  subgraph PiSai ["PiSai"]
+    ps_hidden[Must not render]
+  end
+  index --> intercom
+  intercom --> hooks

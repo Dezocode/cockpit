@@ -1,0 +1,1 @@
+../../../plugins/cockpit-native/skills/cockpit-regression/SKILL.md

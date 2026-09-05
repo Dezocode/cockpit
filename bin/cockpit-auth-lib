@@ -100,10 +100,13 @@ cockpit_auth_run_probe() {
   local command=$1 timeout_value
   [[ -n "$command" ]] || return 1
   timeout_value="${COCKPIT_AUTH_TIMEOUT:-1.5s}"
+  # Probes must inherit the caller's PATH and provider-scoped environment.
+  # A login shell reloads machine profile files and can silently discard the
+  # isolated CLI under test (and the canonical Cockpit bin directory).
   if command -v timeout >/dev/null 2>&1; then
-    timeout "$timeout_value" bash -lc "$command" >/dev/null 2>&1
+    timeout "$timeout_value" bash -c "$command" >/dev/null 2>&1
   else
-    bash -lc "$command" >/dev/null 2>&1
+    bash -c "$command" >/dev/null 2>&1
   fi
 }
 
