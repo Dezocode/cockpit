@@ -28,7 +28,7 @@ fixture:
     - /workspace/proofs/bench-bar-t728u-next-20260905-002855.png
     - /workspace/proofs/bench-bar-t728u-20260905-001318.png
   branch: cursor/bench-ghui-7ed3
-  head: pending
+  head: 6608bc1
 keep:
   - top-chrome product-only
   - durable winseparator
