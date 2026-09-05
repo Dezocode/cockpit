@@ -27,7 +27,7 @@ fixture:
     - /workspace/proofs/bench-bar-t728u-next-20260905-002855.png
     - /workspace/proofs/bench-bar-t728u-20260905-001318.png
   branch: cursor/bench-ghui-7ed3
-  head: 7e789b5
+  head: be4c096
 keep:
   - resize distinct ≥2-size (NEW KEEP from 002855)
   - top-chrome product-only top

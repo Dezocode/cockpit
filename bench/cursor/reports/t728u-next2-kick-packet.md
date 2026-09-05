@@ -2,7 +2,7 @@
 
 **Card:** `cursor-bench-bar-complete-t728u-next2`  
 **Branch:** `cursor/bench-ghui-7ed3` (draft PR #4 — never merge/force-push)  
-**Prior head:** `7e789b5`
+**Prior head:** `be4c096` (was `7e789b5`)
 
 ## Prior FAIL CPRs
 
