@@ -6,6 +6,7 @@ repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 test_root="$(mktemp -d /tmp/cockpit-bench-touch-t728u.XXXXXX)"
 mirror="$test_root/proctor"
 runtime_dir="$test_root/runtime"
+proof_dir="$test_root/proofs"
 fixture_root="$repo_root/tests/fixtures/bench"
 db="$mirror/db/runs.sqlite"
 layout="$repo_root/stage/nvim/lua/config/cockpit-bench.lua"
@@ -26,7 +27,7 @@ command -v nvim >/dev/null 2>&1 || command -v "$repo_root/.local/bin/nvim" >/dev
   fail 'nvim required for touch proof'
 command -v python3 >/dev/null 2>&1 || fail 'python3 required for PTY SGR touch proof'
 
-mkdir -p "$mirror/db" "$runtime_dir" "$test_root/home"
+mkdir -p "$mirror/db" "$runtime_dir" "$test_root/home" "$proof_dir"
 install -m 0644 "$fixture_root/MODELS_INDEX.csv" "$mirror/MODELS_INDEX.csv"
 install -m 0644 "$fixture_root/CROSSREF_LINKS.csv" "$mirror/CROSSREF_LINKS.csv"
 
@@ -44,7 +45,7 @@ INSERT INTO runs VALUES
 SQL
 
 MIRROR="$mirror" RUNTIME="$runtime_dir" HOME_DIR="$test_root/home" LAYOUT="$layout" BARE="$bare" \
-  NVIM_SOCK="$nvim_sock" REPO="$repo_root" python3 - <<'PY'
+  NVIM_SOCK="$nvim_sock" REPO="$repo_root" PROOF_DIR="$proof_dir" python3 - <<'PY'
 import fcntl
 import os
 import pty
@@ -62,6 +63,7 @@ layout = os.environ["LAYOUT"]
 bare = os.environ["BARE"]
 sock = os.environ["NVIM_SOCK"]
 repo = os.environ["REPO"]
+proof_dir = os.environ["PROOF_DIR"]
 
 pid, master = pty.fork()
 if pid == 0:
@@ -77,6 +79,7 @@ if pid == 0:
         "PATH": f"{repo}/.local/bin:{repo}/bin:/usr/bin:/bin",
         "XDG_RUNTIME_DIR": runtime,
         "COCKPIT_BENCH_ONCE": "1",
+        "COCKPIT_BENCH_PROOF_DIR": proof_dir,
     })
     os.execlp("nvim", "nvim", "--listen", sock, "-u", bare,
               "-c", "lua dofile(vim.env.COCKPIT_NVIM_BENCH_LAYOUT_INIT).setup()",
@@ -122,6 +125,17 @@ if receipts() < 1:
     raise SystemExit(
         "SGR mouse did not register touch receipts (API remote-send is not touch proof)"
     )
+
+import glob
+receipt_files = sorted(glob.glob(os.path.join(proof_dir, "bench-touch-receipt-*.txt")))
+if not receipt_files:
+    raise SystemExit("touch did not write dated bench-touch-receipt file under proofs/")
+receipt_path = receipt_files[-1]
+with open(receipt_path, encoding="utf-8") as fh:
+    receipt_body = fh.read()
+if "timestamp=" not in receipt_body or "click_line=" not in receipt_body or "click_col=" not in receipt_body:
+    raise SystemExit(f"touch receipt file missing timestamp/coords: {receipt_path}")
+print(f"touch_receipt_path={receipt_path}")
 
 # Negative control: harness touch_probe must not increment receipts (API ≠ touch PASS).
 before = receipts()

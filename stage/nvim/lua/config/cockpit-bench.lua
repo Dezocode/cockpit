@@ -271,7 +271,8 @@ local function setup_highlights()
   vim.api.nvim_set_hl(0, "CockpitBenchBadgeDim", { fg = colors.dim })
   vim.api.nvim_set_hl(0, "CockpitBenchAbsent", { fg = "#c45c5c", bold = true })
   vim.api.nvim_set_hl(0, "CockpitBenchChipFill", { bg = colors.chip_bg })
-  vim.api.nvim_set_hl(0, "CockpitBenchChipEdge", { fg = colors.yellow_chip, bg = colors.omarchy_flat, bold = true })
+  -- Yellow border band (full edge highlight — N separate boxes in pixel CPR, not one packed strip).
+  vim.api.nvim_set_hl(0, "CockpitBenchChipEdge", { fg = colors.omarchy_flat, bg = colors.yellow_chip, bold = true })
   vim.api.nvim_set_hl(0, "CockpitBenchChip", { fg = colors.yellow_chip, bg = colors.chip_bg, bold = true })
   vim.api.nvim_set_hl(0, "CockpitBenchChipId", { fg = colors.dim, bg = colors.chip_bg })
   vim.api.nvim_set_hl(0, "CockpitBenchChipSel", {
@@ -321,11 +322,13 @@ local function soften_tmux_window_strip()
   vim.fn.system(
     string.format(
       [[tmux set-option -g window-style 'bg=%s' 2>/dev/null;]] ..
+        [[tmux set-option -g pane-style 'bg=%s' 2>/dev/null;]] ..
         [[tmux set-option -g pane-border-style 'fg=%s,bg=%s' 2>/dev/null;]] ..
         [[tmux set-option -g pane-active-border-style 'fg=%s,bg=%s' 2>/dev/null;]] ..
         [[tmux set-option -w pane-border-status off 2>/dev/null;]] ..
         [[tmux set-option -w pane-border-format '' 2>/dev/null;]] ..
         [[tmux set-option -w window-style 'bg=%s' 2>/dev/null;]] ..
+        [[tmux set-option -w pane-style 'bg=%s' 2>/dev/null;]] ..
         [[tmux set-option -w pane-border-style 'fg=%s,bg=%s' 2>/dev/null;]] ..
         [[tmux set-option -w status off 2>/dev/null;]] ..
         [[tmux set-option status-position bottom 2>/dev/null;]] ..
@@ -339,6 +342,8 @@ local function soften_tmux_window_strip()
         [[tmux set-option -w window-status-current-format '#[fg=brightblack,dim] #I:#W ' 2>/dev/null;]] ..
         [[tmux set-option window-status-format '#[fg=brightblack,dim] #I:#W ' 2>/dev/null;]] ..
         [[tmux set-option window-status-current-format '#[fg=brightblack,dim] #I:#W ' 2>/dev/null]],
+      flat_bg,
+      flat_bg,
       flat_bg,
       flat_bg,
       flat_bg,
@@ -476,6 +481,57 @@ local function set_buffer_lines(buf, lines)
   vim.bo[buf].modifiable = false
 end
 
+local function pad_buffer_omarchy_flat(buf, win)
+  if not buf or not win or not vim.api.nvim_win_is_valid(win) then
+    return
+  end
+  local height = vim.api.nvim_win_get_height(win)
+  local line_count = vim.api.nvim_buf_line_count(buf)
+  if line_count >= height then
+    return
+  end
+  local pad = {}
+  for _ = line_count, height - 1 do
+    table.insert(pad, "")
+  end
+  vim.bo[buf].modifiable = true
+  vim.api.nvim_buf_set_lines(buf, -1, -1, false, pad)
+  vim.bo[buf].modifiable = false
+  for r = line_count - 1, height - 1 do
+    vim.api.nvim_buf_add_highlight(buf, NS, "CockpitBenchFlat", r, 0, -1)
+  end
+end
+
+local function highlight_chip_box(buf, chip, lines, label_group)
+  local fill_end = math.max(chip.width or 0, 1)
+  local body_start = chip.start + 1
+  local body_end = chip.start + 2
+  for r = chip.start, chip.start + 3 do
+    local line = lines[r + 1] or ""
+    local line_end = math.min(#line, fill_end)
+    if line_end < 1 then
+      line_end = fill_end
+    end
+    if r == chip.start or r == chip.start + 3 then
+      -- Full horizontal yellow border (separate bordered box per chip).
+      vim.api.nvim_buf_add_highlight(buf, NS, "CockpitBenchChipEdge", r, 0, line_end)
+    else
+      vim.api.nvim_buf_add_highlight(buf, NS, "CockpitBenchChipEdge", r, 0, 1)
+      if line_end > 2 then
+        vim.api.nvim_buf_add_highlight(buf, NS, "CockpitBenchChipFill", r, 1, line_end - 1)
+        vim.api.nvim_buf_add_highlight(buf, NS, "CockpitBenchChipEdge", r, line_end - 1, line_end)
+        if r == body_start then
+          vim.api.nvim_buf_add_highlight(buf, NS, label_group, r, 1, line_end - 1)
+        else
+          vim.api.nvim_buf_add_highlight(buf, NS, "CockpitBenchChipId", r, 1, line_end - 1)
+        end
+      elseif line_end > 1 then
+        vim.api.nvim_buf_add_highlight(buf, NS, "CockpitBenchChipEdge", r, 1, line_end)
+      end
+    end
+  end
+end
+
 local function clear_ns(buf)
   vim.api.nvim_buf_clear_namespace(buf, NS, 0, -1)
 end
@@ -537,6 +593,7 @@ function M.render_models_col()
   else
     vim.api.nvim_buf_add_highlight(buf, NS, "CockpitBenchChrome", 0, 0, -1)
   end
+  pad_buffer_omarchy_flat(buf, win)
 end
 
 function M.render_runs_col()
@@ -578,6 +635,7 @@ function M.render_runs_col()
     vim.api.nvim_buf_add_highlight(buf, NS, "CockpitBenchDim", row + 1, 0, -1)
     row = row + 2
   end
+  pad_buffer_omarchy_flat(buf, win)
 end
 
 local function chip_inner_width(col_width)
@@ -607,6 +665,7 @@ function M.render_detail_col()
   local width = column_width(win)
   local lines = { "Run + backlinks", "" }
   state.chip_rows = {}
+  local gap_rows = {}
   if not state.run then
     table.insert(lines, "ABSENT")
   else
@@ -654,6 +713,7 @@ function M.render_detail_col()
         if i < #state.backlinks then
           for _ = 1, CHIP_GAP_ROWS do
             table.insert(lines, "")
+            table.insert(gap_rows, #lines - 1)
           end
         end
       end
@@ -678,35 +738,12 @@ function M.render_detail_col()
     end
     for _, chip in ipairs(state.chip_rows) do
       local label_group = chip.selected and "CockpitBenchChipSel" or "CockpitBenchChip"
-      local fill_end = math.max(chip.width or 0, 1)
-      local body_start = chip.start + 1
-      local body_end = chip.start + 2
-      for r = chip.start, chip.start + 3 do
-        local line = lines[r + 1] or ""
-        local line_end = math.min(#line, fill_end)
-        if line_end < 1 then
-          line_end = fill_end
-        end
-        if r == chip.start or r == chip.start + 3 then
-          -- Top/bottom edge band: yellow corners only (separate box read in pixel CPR).
-          vim.api.nvim_buf_add_highlight(buf, NS, "CockpitBenchChipEdge", r, 0, 1)
-          if line_end > 1 then
-            vim.api.nvim_buf_add_highlight(buf, NS, "CockpitBenchChipEdge", r, line_end - 1, line_end)
-          end
-        else
-          vim.api.nvim_buf_add_highlight(buf, NS, "CockpitBenchChipFill", r, 0, line_end)
-          vim.api.nvim_buf_add_highlight(buf, NS, "CockpitBenchChipEdge", r, 0, 1)
-          if line_end > 1 then
-            vim.api.nvim_buf_add_highlight(buf, NS, "CockpitBenchChipEdge", r, line_end - 1, line_end)
-          end
-          if r == body_start then
-            vim.api.nvim_buf_add_highlight(buf, NS, label_group, r, 0, line_end)
-          else
-            vim.api.nvim_buf_add_highlight(buf, NS, "CockpitBenchChipId", r, 0, line_end)
-          end
-        end
-      end
+      highlight_chip_box(buf, chip, lines, label_group)
     end
+    for _, gap_row in ipairs(gap_rows) do
+      vim.api.nvim_buf_add_highlight(buf, NS, "CockpitBenchFlat", gap_row, 0, -1)
+    end
+    pad_buffer_omarchy_flat(buf, win)
     return
   end
   set_buffer_lines(buf, lines)
@@ -948,9 +985,29 @@ local function chip_at_line(line0)
   return nil
 end
 
-local function record_touch_receipt()
+local function write_touch_receipt_file(line0, miller_col)
+  local proof_dir = vim.env.COCKPIT_BENCH_PROOF_DIR or "/workspace/proofs"
+  local stamp = os.date("!%Y%m%d-%H%M%S")
+  local path = string.format("%s/bench-touch-receipt-%s.txt", proof_dir, stamp)
+  vim.fn.mkdir(proof_dir, "p")
+  local ts = os.date("!%Y-%m-%dT%H:%M:%SZ")
+  local fh = io.open(path, "w")
+  if fh then
+    fh:write(string.format(
+      "timestamp=%s\nclick_line=%d\nclick_col=%d\nsurface=bench-ghui\n",
+      ts,
+      line0,
+      miller_col
+    ))
+    fh:close()
+    vim.g.CockpitBenchLastTouchReceipt = path
+  end
+end
+
+local function record_touch_receipt(line0, miller_col)
   state.touch_receipts = (state.touch_receipts or 0) + 1
   vim.g.CockpitBenchTouchReceipts = state.touch_receipts
+  write_touch_receipt_file(line0, miller_col)
 end
 
 local function on_mouse(line0, col, from_touch)
@@ -958,7 +1015,7 @@ local function on_mouse(line0, col, from_touch)
     return
   end
   if from_touch then
-    record_touch_receipt()
+    record_touch_receipt(line0, col)
     vim.g.CockpitBenchLastMouse = { line = line0, col = col }
   end
   line0 = math.max(0, line0)
@@ -1239,6 +1296,7 @@ function M.setup()
     group = group,
     callback = function()
       resize_columns()
+      apply_omarchy_flat_bg()
       M.render_all()
     end,
   })
