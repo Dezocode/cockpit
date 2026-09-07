@@ -1,4 +1,5 @@
-import { useRef, useCallback } from "react";
+import { useRef, useCallback, useEffect } from "react";
+import { useLocation } from "react-router-dom";
 import {
   DockviewReact,
   DockviewReadyEvent,
@@ -61,9 +62,15 @@ function PagePanel(props: IDockviewPanelProps<{ title: string }>) {
 const components = { default: PagePanel };
 
 export function CockpitShell() {
+  const location = useLocation();
   const setActivePage = useCockpitStore((s) => s.setActivePage);
   const activePage = useCockpitStore((s) => s.activePage);
   const apiRef = useRef<DockviewApi | null>(null);
+
+  const focusPage = useCallback((id: PageId) => {
+    setActivePage(id);
+    apiRef.current?.getPanel(id)?.api.setActive();
+  }, [setActivePage]);
 
   const onReady = useCallback((event: DockviewReadyEvent) => {
     apiRef.current = event.api;
@@ -80,10 +87,14 @@ export function CockpitShell() {
     });
   }, [setActivePage]);
 
-  const focusPage = (id: PageId) => {
-    setActivePage(id);
-    apiRef.current?.getPanel(id)?.api.setActive();
-  };
+  useEffect(() => {
+    const hash = location.hash.replace("#", "") as PageId;
+    if (hash && PAGE_IDS.includes(hash)) {
+      focusPage(hash);
+    }
+  }, [location.hash, focusPage]);
+
+  const focusPageNav = (id: PageId) => focusPage(id);
 
   return (
     <div className="flex h-screen flex-col">
@@ -95,7 +106,7 @@ export function CockpitShell() {
             label={id}
             tone={activePage === id ? "cyan" : "yellow"}
             active={activePage === id}
-            onClick={() => focusPage(id)}
+            onClick={() => focusPageNav(id)}
           />
         ))}
       </nav>

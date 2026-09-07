@@ -188,7 +188,7 @@ fi
 if [[ -d "$root/app" && -f "$root/app/package.json" ]]; then
   if command -v pnpm >/dev/null 2>&1; then
     (cd "$root/app" && pnpm install --frozen-lockfile 2>/dev/null || pnpm install) || true
-    if [[ "${COCKPIT_INSTALL_WEB_BUILD:-0}" == 1 ]]; then
+    if [[ "${COCKPIT_INSTALL_WEB_BUILD:-0}" == 1 || "${COCKPIT_INSTALL_HOSTINGER:-0}" == 1 ]]; then
       (cd "$root/app" && pnpm build && pnpm build:server) || true
     fi
   fi
@@ -198,13 +198,15 @@ fi
 if [[ "${COCKPIT_INSTALL_HOSTINGER:-0}" == 1 && "$(id -u)" -eq 0 ]]; then
   install -d /opt/cockpit
   cp -a "$root/." /opt/cockpit/
+  chown -R cockpit:cockpit /opt/cockpit 2>/dev/null || true
   id cockpit &>/dev/null || useradd -r -s /usr/sbin/nologin cockpit
   install -m 0644 "$root/deploy/cockpit-web.service" /etc/systemd/system/cockpit-web.service
   install -m 0644 "$root/deploy/nginx-cockpit.conf" /etc/nginx/sites-available/cockpit.conf
   ln -sf /etc/nginx/sites-available/cockpit.conf /etc/nginx/sites-enabled/cockpit.conf 2>/dev/null || true
   systemctl daemon-reload
   systemctl enable cockpit-web.service 2>/dev/null || true
-  printf 'Hostinger: systemd cockpit-web + nginx TLS configured (start after certbot)\n'
+  systemctl restart cockpit-web.service 2>/dev/null || systemctl start cockpit-web.service 2>/dev/null || true
+  printf 'Hostinger H0: systemd cockpit-web + nginx TLS (certbot required for HTTPS)\n'
 fi
 
 printf 'Installed to %s\nRun: cockpit   (workspace)\n      cockpit agent   (jump to live Agent pane)\n      cockpit-web     (GUI API server)\n      codex           (Codex CLI)\nProfile sync: cockpit config push|pull (your gh login, secret gist)\nCanonical config: %s\n' \
