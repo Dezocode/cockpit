@@ -1,0 +1,46 @@
+.root {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  height: 100%;
+}
+
+.note {
+  font-size: 0.65rem;
+  color: var(--cockpit-muted);
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  overflow: auto;
+  flex: 1;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border: 1px solid var(--cockpit-border-muted);
+  padding: 0.35rem 0.5rem;
+  font-size: 0.7rem;
+}
+
+.badge {
+  font-size: 0.6rem;
+  padding: 0.1rem 0.35rem;
+  border: 1px solid var(--cockpit-chrome);
+  color: var(--cockpit-chrome);
+}
+
+.badgeWarn {
+  border-color: var(--cockpit-accent-alt);
+  color: var(--cockpit-accent-alt);
+}
+
+.hermes {
+  font-size: 0.6rem;
+  color: var(--cockpit-accent-alt);
+  margin-left: 0.35rem;
+}

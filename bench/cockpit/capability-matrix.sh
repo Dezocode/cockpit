@@ -186,6 +186,40 @@ check "DENY local Qwen/sol-v1.7.1 (frontier envelope)" "$deny"
 grep -rq 'ghui-chip-cyan\|GhuiChip' "$root/app/src" 2>/dev/null && ghui=ok || ghui=fail
 check "ghui t533u cyan/yellow chips" "$ghui"
 
+# Cockpit 2.2 visual multiview
+[[ -f "$root/app/STYLE.md" ]] && style=ok || style=fail
+check "STYLE.md fieldset terminal guide" "$style"
+
+[[ -f "$root/app/src/styles/tokens.css" ]] && tok=ok || tok=fail
+check "tokens.css CSS vars (no hardcoded panel hex)" "$tok"
+
+grep -rq 'fieldset-dark\|ghui-cyan\|high-contrast' "$root/app/src/lib/theme.ts" 2>/dev/null && th=ok || th=fail
+check "≥3 themes (fieldset-dark, ghui-cyan, high-contrast)" "$th"
+
+grep -rq 'cockpit.theme' "$root/app/src" 2>/dev/null && tp=ok || tp=fail
+check "theme persist cockpit.theme" "$tp"
+
+grep -rq 'cockpit.layout.v3' "$root/app/src" 2>/dev/null && lv=ok || lv=fail
+check "layout persist cockpit.layout.v3" "$lv"
+
+grep -rq 'StagingPage\|/splash/staging' "$root/app/src" 2>/dev/null && stg=ok || stg=fail
+check "post-auth /splash/staging multiview" "$stg"
+
+grep -rq 'FieldsetPanel' "$root/app/src" 2>/dev/null && fs=ok || fs=fail
+check "fieldset panels (cyan border, title-in-border)" "$fs"
+
+grep -rq 'ResizeObserver' "$root/app/src" 2>/dev/null && ro=ok || ro=fail
+check "ResizeObserver charts" "$ro"
+
+grep -rq 'uplot\|uPlot' "$root/app/package.json" "$root/app/src" 2>/dev/null && chart=ok || chart=fail
+check "uPlot chart panel" "$chart"
+
+grep -rq '# Cockpit PATH' "$root/install.sh" 2>/dev/null && path=ok || path=fail
+check "install.sh cockpit PATH/alias" "$path"
+
+ls "$root/app/src/panels/"*.module.css >/dev/null 2>&1 && mod=ok || mod=fail
+check "CSS modules per panel" "$mod"
+
 # Emulator registry
 grep -rq 'foot\|ghostty' "$root/app" 2>/dev/null && emu=ok || emu=fail
 check "Ghostty+Foot emulator registry" "$emu"

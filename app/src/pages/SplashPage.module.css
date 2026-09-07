@@ -1,0 +1,78 @@
+.page {
+  display: flex;
+  min-height: 100vh;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1.5rem;
+  padding: 2rem;
+  background: var(--cockpit-bg);
+  color: var(--cockpit-text);
+  font-family: var(--cockpit-font);
+}
+
+.title {
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: var(--cockpit-chrome);
+  margin: 0;
+}
+
+.subtitle {
+  max-width: 28rem;
+  text-align: center;
+  color: var(--cockpit-muted);
+  font-size: 0.85rem;
+  margin: 0;
+}
+
+.fieldsetWrap {
+  width: min(24rem, 100%);
+}
+
+.authBody {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.link {
+  font-size: 0.8rem;
+  color: var(--cockpit-chrome);
+  text-decoration: underline;
+}
+
+.hint {
+  font-size: 0.7rem;
+  color: var(--cockpit-muted);
+  margin: 0;
+}
+
+.primaryBtn,
+.enterBtn {
+  border: 1px solid var(--cockpit-border);
+  background: color-mix(in srgb, var(--cockpit-chrome) 15%, var(--cockpit-bg));
+  color: var(--cockpit-chrome);
+  font-family: var(--cockpit-font);
+  font-size: 0.8rem;
+  padding: 0.45rem 1rem;
+  cursor: pointer;
+}
+
+.primaryBtn:disabled,
+.enterBtn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.primaryBtn:focus-visible,
+.enterBtn:focus-visible {
+  outline: 2px solid var(--cockpit-focus-ring);
+  outline-offset: 2px;
+}
+
+.enterBtn {
+  border-color: var(--cockpit-active);
+  color: var(--cockpit-active);
+}

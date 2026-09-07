@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# t384u screenshot capture — splash, ≥20 agents, live term, COMPUTERS, MEMORY, Hostinger health
+# t384u screenshot capture — Cockpit 2.2 visual multiview evidence set
 set -euo pipefail
 
 root="$(cd -- "$(dirname -- "$0")/../.." && pwd)"
@@ -42,7 +42,6 @@ start_ui() {
 start_api
 start_ui
 
-# JSON evidence (always)
 curl -sf "$api_base/api/health" >"$out/hostinger-health.json"
 curl -sf "$api_base/api/agents" >"$out/agents.json"
 curl -sf "$api_base/api/computers" >"$out/computers.json"
@@ -52,7 +51,6 @@ curl -sf "$api_base/api/auth/gh" >"$out/splash-gh-auth.json"
 agent_count=$(python3 -c "import json; print(len(json.load(open('$out/agents.json'))['agents']))")
 printf 'agents fixture count: %s\n' "$agent_count"
 
-# PNG screenshots via Playwright (chromium)
 if ! pnpm --dir "$root/app" exec playwright --version >/dev/null 2>&1; then
   pnpm --dir "$root/app" add -D playwright@1.49.1 2>/dev/null || true
 fi
@@ -60,24 +58,46 @@ pnpm --dir "$root/app" exec playwright install chromium 2>/dev/null || true
 
 shot() {
   local url=$1 file=$2
-  pnpm --dir "$root/app" exec playwright screenshot "$url" "$file" --wait-for-timeout 2000 2>/dev/null || \
-    npx --yes playwright screenshot "$url" "$file" --wait-for-timeout 2000 2>/dev/null || true
+  pnpm --dir "$root/app" exec playwright screenshot "$url" "$file" --wait-for-timeout 2500 2>/dev/null || \
+    npx --yes playwright screenshot "$url" "$file" --wait-for-timeout 2500 2>/dev/null || true
 }
 
-shot "$ui_base/" "$out/splash.png"
-shot "$ui_base/workspace" "$out/agents-20plus.png"
-shot "$ui_base/workspace#AGENT" "$out/live-term.png"
+# Pre-auth login splash (hold redirect)
+shot "$ui_base/splash?screenshot=login" "$out/login-splash.png"
+
+# Staging empty — clear layout first via query
+shot "$ui_base/splash/staging?reset=1" "$out/staging-empty.png"
+
+# Staging with 3 panels
+shot "$ui_base/splash/staging?demo=3panels" "$out/staging-3-panels.png"
+
+# Graph resize + focus rings (graph panel open)
+shot "$ui_base/splash/staging?demo=graph" "$out/graph-resize.png"
+
+# Fullscreen staging
+shot "$ui_base/splash/staging?demo=fullscreen" "$out/fullscreen.png"
+
+# Focus rings on theme switcher
+shot "$ui_base/splash/staging?demo=focus" "$out/focus-rings.png"
+
+# Legacy workspace parity (v2.1.4 baseline)
+shot "$ui_base/workspace#AGENT" "$out/agents-20plus.png"
 shot "$ui_base/workspace#COMPUTERS" "$out/computers.png"
 shot "$ui_base/workspace#MEMORY" "$out/memory.png"
 
-# Manifest for morning CT review
 cat >"$out/MANIFEST.json" <<EOF
 {
   "seed": "cockpit-20260907",
+  "version": "2.2.0",
   "agent_count": $agent_count,
   "files": [
     "hostinger-health.json",
-    "splash.png",
+    "login-splash.png",
+    "staging-empty.png",
+    "staging-3-panels.png",
+    "graph-resize.png",
+    "fullscreen.png",
+    "focus-rings.png",
     "agents-20plus.png",
     "live-term.png",
     "computers.png",

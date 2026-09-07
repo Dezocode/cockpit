@@ -22,8 +22,8 @@ export function AgentBar({ onChip, providerLabel = "AGENT" }: AgentBarProps) {
   const label = (chip: AgentBarChip) => (chip === "provider" ? providerLabel : chip);
 
   return (
-    <div className="flex flex-wrap items-center gap-1 border-b border-slate-700 bg-[#121820] px-2 py-1">
-      <span className="mr-1 text-xs font-bold text-cyan-300">cockpit</span>
+    <div className="flex flex-wrap items-center gap-1 border-b px-2 py-1" style={{ borderColor: "var(--cockpit-border-muted)", background: "var(--cockpit-surface)" }}>
+      <span className="mr-1 text-xs font-bold" style={{ color: "var(--cockpit-chrome)" }}>cockpit</span>
       {AGENT_BAR_CHIPS.map((chip) => (
         <GhuiChip
           key={chip}

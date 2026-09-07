@@ -43,11 +43,25 @@ export function MapPage() {
   );
 }
 
+import { useState } from "react";
+import { ThemeSwitcher } from "../components/ThemeSwitcher";
+import { loadTheme, type CockpitTheme } from "../lib/theme";
+import styles from "../panels/SetupPanel.module.css";
+
 export function SetupPage() {
+  const [theme, setTheme] = useState<CockpitTheme>(loadTheme);
+
   return (
-    <div className="p-3 text-sm">
-      <h2 className="mb-2 text-cyan-300">SETUP</h2>
-      <p className="text-slate-400">Auth, provider, model, git, plugins, audit — TUI SETUP pane intact.</p>
+    <div className={styles.root}>
+      <p className={styles.note}>
+        Auth, provider, model, git, plugins, audit — TUI SETUP pane intact. Envelope: frontier_subscription.
+      </p>
+      <ThemeSwitcher value={theme} onChange={setTheme} />
+      <ul className={styles.list}>
+        <li>GitHub device-flow via gh keyring</li>
+        <li>PTY web + desktop (tauri-plugin-pty)</li>
+        <li>Origin ≠ intercom bus</li>
+      </ul>
     </div>
   );
 }

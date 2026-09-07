@@ -1,15 +1,5 @@
 @import "tailwindcss";
 
-:root {
-  --cockpit-cyan: #22d3ee;
-  --cockpit-yellow: #facc15;
-  --cockpit-bg: #0b0f14;
-  --cockpit-panel: #121820;
-  --cockpit-border: #1e293b;
-  --cockpit-text: #e2e8f0;
-  --cockpit-muted: #94a3b8;
-}
-
 html,
 body,
 #root {
@@ -17,28 +7,34 @@ body,
   margin: 0;
   background: var(--cockpit-bg);
   color: var(--cockpit-text);
-  font-family: "JetBrains Mono", "SF Mono", ui-monospace, monospace;
+  font-family: var(--cockpit-font);
+}
+
+.ghui-chip-cyan {
+  background: color-mix(in srgb, var(--cockpit-accent) 18%, transparent);
+  border: 1px solid var(--cockpit-accent);
+  color: var(--cockpit-accent);
+}
+
+.ghui-chip-yellow {
+  background: color-mix(in srgb, var(--cockpit-accent-alt) 18%, transparent);
+  border: 1px solid var(--cockpit-accent-alt);
+  color: var(--cockpit-accent-alt);
+}
+
+*:focus-visible {
+  outline: 2px solid var(--cockpit-focus-ring);
+  outline-offset: 1px;
 }
 
 .dockview-theme-cockpit {
   --dv-background-color: var(--cockpit-bg);
-  --dv-tabs-and-actions-container-background-color: var(--cockpit-panel);
+  --dv-tabs-and-actions-container-background-color: var(--cockpit-surface);
   --dv-activegroup-visiblepanel-tab-background-color: var(--cockpit-panel);
-  --dv-activegroup-hiddenpanel-tab-background-color: #0f141c;
-  --dv-inactivegroup-visiblepanel-tab-background-color: #0f141c;
-  --dv-tab-divider-color: var(--cockpit-border);
-  --dv-separator-border: var(--cockpit-border);
+  --dv-activegroup-hiddenpanel-tab-background-color: var(--cockpit-bg);
+  --dv-inactivegroup-visiblepanel-tab-background-color: var(--cockpit-bg);
+  --dv-tab-divider-color: var(--cockpit-border-muted);
+  --dv-separator-border: var(--cockpit-border-muted);
   --dv-paneview-header-border-color: var(--cockpit-border);
-}
-
-.ghui-chip-cyan {
-  background: color-mix(in srgb, var(--cockpit-cyan) 18%, transparent);
-  border: 1px solid var(--cockpit-cyan);
-  color: var(--cockpit-cyan);
-}
-
-.ghui-chip-yellow {
-  background: color-mix(in srgb, var(--cockpit-yellow) 18%, transparent);
-  border: 1px solid var(--cockpit-yellow);
-  color: var(--cockpit-yellow);
+  --dv-activegroup-visiblepanel-tab-color: var(--cockpit-active);
 }

@@ -1,0 +1,51 @@
+/* Cockpit 2.2 design tokens — panels MUST use var() only (no hardcoded accent hex). */
+
+:root,
+[data-theme="fieldset-dark"] {
+  --cockpit-bg: #0a0c10;
+  --cockpit-panel: #0f1218;
+  --cockpit-surface: #121820;
+  --cockpit-border: #22d3ee;
+  --cockpit-border-muted: #1e293b;
+  --cockpit-chrome: #22d3ee;
+  --cockpit-active: #e879f9;
+  --cockpit-text: #e2e8f0;
+  --cockpit-muted: #94a3b8;
+  --cockpit-accent: #22d3ee;
+  --cockpit-accent-alt: #facc15;
+  --cockpit-focus-ring: #e879f9;
+  --cockpit-fieldset-title-bg: var(--cockpit-bg);
+  --cockpit-font: "JetBrains Mono", "SF Mono", ui-monospace, monospace;
+}
+
+[data-theme="ghui-cyan"] {
+  --cockpit-bg: #0b1117;
+  --cockpit-panel: #101820;
+  --cockpit-surface: #152028;
+  --cockpit-border: #06b6d4;
+  --cockpit-border-muted: #164e63;
+  --cockpit-chrome: #06b6d4;
+  --cockpit-active: #f472b6;
+  --cockpit-text: #ecfeff;
+  --cockpit-muted: #67e8f9;
+  --cockpit-accent: #06b6d4;
+  --cockpit-accent-alt: #fbbf24;
+  --cockpit-focus-ring: #f472b6;
+  --cockpit-fieldset-title-bg: var(--cockpit-bg);
+}
+
+[data-theme="high-contrast"] {
+  --cockpit-bg: #000000;
+  --cockpit-panel: #0a0a0a;
+  --cockpit-surface: #111111;
+  --cockpit-border: #00ffff;
+  --cockpit-border-muted: #666666;
+  --cockpit-chrome: #00ffff;
+  --cockpit-active: #ff00ff;
+  --cockpit-text: #ffffff;
+  --cockpit-muted: #cccccc;
+  --cockpit-accent: #00ffff;
+  --cockpit-accent-alt: #ffff00;
+  --cockpit-focus-ring: #ff00ff;
+  --cockpit-fieldset-title-bg: var(--cockpit-bg);
+}

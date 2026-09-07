@@ -1,0 +1,130 @@
+.staging {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background: var(--cockpit-bg);
+  color: var(--cockpit-text);
+  font-family: var(--cockpit-font);
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0.5rem;
+  border-bottom: 1px solid var(--cockpit-border-muted);
+  background: var(--cockpit-surface);
+}
+
+.brand {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--cockpit-chrome);
+  margin-right: 0.25rem;
+}
+
+.body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.palette {
+  width: 9rem;
+  flex-shrink: 0;
+  border-right: 1px solid var(--cockpit-border-muted);
+  padding: 0.5rem 0.35rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.paletteTitle {
+  font-size: 0.65rem;
+  color: var(--cockpit-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.paletteItem {
+  border: 1px dashed var(--cockpit-border);
+  background: var(--cockpit-panel);
+  color: var(--cockpit-chrome);
+  font-family: var(--cockpit-font);
+  font-size: 0.7rem;
+  padding: 0.45rem 0.35rem;
+  cursor: grab;
+  text-align: center;
+}
+
+.paletteItem:active {
+  cursor: grabbing;
+  border-color: var(--cockpit-active);
+  color: var(--cockpit-active);
+}
+
+.canvas {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  position: relative;
+}
+
+.dockHost {
+  position: absolute;
+  inset: 0;
+  height: 100%;
+  width: 100%;
+}
+
+.canvasEmpty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--cockpit-muted);
+  font-size: 0.75rem;
+  border: 1px dashed var(--cockpit-border-muted);
+  margin: 0.5rem;
+}
+
+.footer {
+  font-size: 0.65rem;
+  color: var(--cockpit-muted);
+  padding: 0.25rem 0.5rem;
+  border-top: 1px solid var(--cockpit-border-muted);
+}
+
+.btn {
+  border: 1px solid var(--cockpit-border);
+  background: var(--cockpit-bg);
+  color: var(--cockpit-chrome);
+  font-family: var(--cockpit-font);
+  font-size: 0.65rem;
+  padding: 0.2rem 0.45rem;
+  cursor: pointer;
+}
+
+.btn:focus-visible {
+  outline: 2px solid var(--cockpit-focus-ring);
+  outline-offset: 1px;
+}
+
+.btnActive {
+  border-color: var(--cockpit-active);
+  color: var(--cockpit-active);
+}
+
+[data-fullscreen="true"],
+[data-screenshot-fullscreen="1"] {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: var(--cockpit-bg);
+}
+
+.panelWrap {
+  height: 100%;
+  padding: 0.35rem;
+}
