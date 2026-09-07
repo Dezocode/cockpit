@@ -23,6 +23,6 @@ app/dist/
 app/dist-server/
 dist/release/
 marketing/output/
-bench/cockpit/screenshots/
+bench/cockpit/screenshots/*
 !bench/cockpit/screenshots/t384u/
-!bench/cockpit/screenshots/t384u/**
+bench/cockpit/screenshots/t384u/**

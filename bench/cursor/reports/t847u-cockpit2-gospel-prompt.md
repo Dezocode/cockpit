@@ -39,7 +39,7 @@ Lane: `deploy/hostinger-grok-build-install.sh` (grok-build subscription runtime)
 - [x] TUI harness TMUX_TMPDIR (6/6)
 - [x] t384u screenshot set (live SPA + dist-server — not HTML stand-ins)
 - [x] H0 health contract (`bench/cockpit/H0-HEALTH-CONTRACT.md`)
-- [ ] Draft PR (residuals t72u — stay draft)
+- [x] Draft PR #13 (residuals t72u — stay draft)
 
 ## Verification
 
