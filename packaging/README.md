@@ -5,13 +5,13 @@ Install root: **`/opt/cockpit`** — separate from Saul `/root/.grok` and `saul-
 ## One-liners (v2.1.1+)
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Dezocode/cockpit/v2.1.1/scripts/hostinger-grok-build.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/Dezocode/cockpit/v2.1.2/scripts/hostinger-grok-build.sh | sudo bash
 ```
 
 Or:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Dezocode/cockpit/v2.1.1/scripts/install-hostinger.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/Dezocode/cockpit/v2.1.2/scripts/install-hostinger.sh | sudo bash
 ```
 
 ## Packaging layout

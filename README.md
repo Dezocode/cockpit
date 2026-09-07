@@ -23,7 +23,7 @@ Hostinger + grok-build subscription lane (install root `/opt/cockpit`):
 ./deploy/hostinger-grok-build-install.sh
 ```
 
-Release: [v2.1.1](RELEASE_NOTES_v2.1.1.md) · matrix: `./bench/cockpit/capability-matrix.sh`
+Release: [v2.1.2](RELEASE_NOTES_v2.1.2.md) · matrix: `./bench/cockpit/capability-matrix.sh`
 
 ## New machine (for a human or an agent)
 
