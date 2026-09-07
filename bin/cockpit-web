@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# Cockpit web API server launcher
+set -euo pipefail
+root="$(cd -- "$(dirname -- "$0")/.." && pwd)"
+export COCKPIT_WEB_PORT="${COCKPIT_WEB_PORT:-8787}"
+cd "$root/app"
+if [[ ! -d node_modules ]]; then
+  pnpm install
+fi
+exec pnpm exec tsx server/index.ts

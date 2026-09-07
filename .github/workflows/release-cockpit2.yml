@@ -1,0 +1,68 @@
+name: Release Cockpit 2
+
+on:
+  push:
+    tags:
+      - 'v2.*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+          cache-dependency-path: app/pnpm-lock.yaml
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Linux deps (Tauri)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf
+
+      - name: Build release bundle
+        run: |
+          chmod +x scripts/release-bundle.sh bench/cockpit/*.sh marketing/*.sh
+          bash scripts/release-bundle.sh
+
+      - name: Capability matrix
+        run: bash bench/cockpit/capability-matrix.sh
+
+      - name: Build Tauri (optional)
+        continue-on-error: true
+        working-directory: app
+        run: |
+          pnpm install
+          pnpm tauri build --bundles deb,appimage
+
+      - name: Collect Tauri artifacts
+        continue-on-error: true
+        run: |
+          mkdir -p dist/release/extra
+          shopt -s nullglob
+          for f in app/src-tauri/target/release/bundle/deb/*.deb app/src-tauri/target/release/bundle/appimage/*.AppImage; do
+            cp "$f" dist/release/extra/
+          done
+
+      - name: GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            dist/release/cockpit-2.0.0-linux-x64.tar.gz
+            dist/release/cockpit-2.0.0-web.tar.gz
+            dist/release/extra/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

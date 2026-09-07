@@ -3,6 +3,26 @@
 tmux workspace for local coding agents (Codex, Grok, Anthropic, Cursor).
 Public repo: **https://github.com/Dezocode/cockpit**. Tokens never go in git.
 
+## Cockpit 2 (GUI — parallel upgrade)
+
+Tauri 2 + React web IDE alongside the tmux TUI (zero regression). Product name
+**cockpit** only.
+
+```bash
+./install.sh                              # TUI (unchanged)
+COCKPIT_INSTALL_WEB_BUILD=1 ./install.sh  # + web build
+cockpit-web                               # API on :8787
+curl -s localhost:8787/api/health | jq .
+```
+
+Hostinger + grok-build subscription lane:
+
+```bash
+./deploy/hostinger-grok-build-install.sh
+```
+
+Release: [v2.0.0](RELEASE_NOTES_v2.0.0.md) · matrix: `./bench/cockpit/capability-matrix.sh`
+
 ## New machine (for a human or an agent)
 
 Fork or clone **this** repo — not someone else's private files. Then on the

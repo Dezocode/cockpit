@@ -22,6 +22,9 @@ case "$view" in
   setup|SETUP|config|vim) role=setup; window=SETUP ;;
   setup-edit|SETUP-EDIT|setup_legacy|SETUP_LEGACY) role=setup-legacy; window=SETUP-EDIT ;;
   prs|PRS|github) role=prs; window=PRS ;;
+  memory|MEMORY) role=memory; window=MEMORY ;;
+  computers|COMPUTERS) role=computers; window=COMPUTERS ;;
+  bench|BENCH) role=bench; window=BENCH ;;
   help|HELP)
     export PATH="$HOME/.local/bin:$PATH"
     exec cockpit-popup HELP cockpit-help
@@ -51,6 +54,31 @@ if [[ "$role" == "prs" ]]; then
   fi
   exit 0
 fi
+
+lazy_window() {
+  local r=$1 w=$2 cmd=$3 title=$4
+  [[ "$role" == "$r" ]] || return 1
+  pane="$(
+    tmux list-panes -s -t "$session" -F '#{pane_id} #{@cockpit_role}' 2>/dev/null |
+      awk -v rr="$r" '$2 == rr { print $1; exit }'
+  )"
+  if [[ -n "$pane" ]]; then
+    tmux select-window -t "$pane"
+    tmux select-pane -t "$pane"
+  else
+    tmux new-window -t "$session:" -n "$w" -c "#{pane_current_path}" "$cmd"
+    pane="$(tmux display-message -p -t "$session:$w" '#{pane_id}' 2>/dev/null || true)"
+    if [[ -n "$pane" ]]; then
+      tmux select-pane -t "$pane" -T "$title" 2>/dev/null || true
+      tmux set-option -p -t "$pane" "@cockpit_role" "$r" 2>/dev/null || true
+    fi
+  fi
+  exit 0
+}
+
+lazy_window memory MEMORY "exec cockpit-memory" MEMORY || true
+lazy_window computers COMPUTERS "exec cockpit-computers" COMPUTERS || true
+lazy_window bench BENCH "exec cockpit-bench" BENCH || true
 
 if [[ "$role" == "setup-legacy" ]]; then
   pane="$(
