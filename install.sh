@@ -193,6 +193,9 @@ if [[ -d "$root/app" && -f "$root/app/package.json" ]]; then
     fi
   fi
   install -m 0755 "$root/bin/cockpit-web" "$bindir/cockpit-web" 2>/dev/null || true
+  for helper in cockpit-memory cockpit-computers cockpit-bench; do
+    [[ -x "$root/bin/$helper" ]] && install -m 0755 "$root/bin/$helper" "$bindir/$helper" 2>/dev/null || true
+  done
 fi
 
 if [[ "${COCKPIT_INSTALL_HOSTINGER:-0}" == 1 && "$(id -u)" -eq 0 ]]; then

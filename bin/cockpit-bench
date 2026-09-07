@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# BENCH pane — read-only Proctor surface (non-Proctor agents must not write).
+set -euo pipefail
+
+repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+matrix="$repo_root/bench/cockpit/capability-matrix.sh"
+
+draw() {
+  printf '\033[2J\033[H\033[33mBENCH\033[0m  read-only (Proctor writes)\n\n'
+  printf 'Harness: %s\n\n' "$repo_root/bench/cockpit/"
+  if [[ -x "$matrix" ]]; then
+    "$matrix" 2>&1 | tail -n 5 || true
+  else
+    printf 'capability-matrix.sh missing\n'
+  fi
+  printf '\n\033[90mFunnel OFF · Serve OFF · TMUX_TMPDIR isolated tests\033[0m\n'
+}
+
+while true; do
+  draw
+  sleep "${COCKPIT_BENCH_POLL:-5}"
+done

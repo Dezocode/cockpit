@@ -298,6 +298,15 @@ tag "$session:MAP" MAP map
 tmux new-window -d -t "$session:" -n PRS -c "$root" "exec cockpit-prs"
 tag "$session:PRS" PRS prs
 
+tmux new-window -d -t "$session:" -n MEMORY -c "$root" "exec cockpit-memory"
+tag "$session:MEMORY" MEMORY memory
+
+tmux new-window -d -t "$session:" -n COMPUTERS -c "$root" "exec cockpit-computers"
+tag "$session:COMPUTERS" COMPUTERS computers
+
+tmux new-window -d -t "$session:" -n BENCH -c "$root" "exec cockpit-bench"
+tag "$session:BENCH" BENCH bench
+
 tmux select-window -t "$session:1"
 tmux select-pane -t "$session:1.1"
 tmux set-option -t "$session" @cockpit 1

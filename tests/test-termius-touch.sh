@@ -37,6 +37,7 @@ cleanup() {
 trap cleanup EXIT
 
 "$repo_root/install.sh" >/dev/null
+mkdir -p "$test_home/.config/cockpit/providers.d"
 install -m 0644 "$repo_root/tests/fixtures/providers.conf" \
   "$HOME/.config/cockpit/providers.conf"
 

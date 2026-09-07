@@ -34,17 +34,29 @@ Lane: `deploy/hostinger-grok-build-install.sh` (grok-build subscription runtime)
 ## Done-line
 
 - [x] Hostinger H0 health green
-- [x] Capability matrix green
+- [x] Capability matrix green (45/45)
+- [x] Surface matrix TUI↔GUI green (14/14)
+- [x] TUI harness TMUX_TMPDIR (6/6)
 - [x] t384u screenshot set
 - [x] Draft PR #6 (stay draft)
-- [x] Release v2.0.0 artifacts
 
 ## Verification
 
 ```bash
 ./bench/cockpit/hostinger-h0-verify.sh
 ./bench/cockpit/capability-matrix.sh
+./bench/cockpit/surface-matrix.sh
+./bench/cockpit/tui-harness.sh
+./bench/cockpit/input-matrix.sh
 ./bench/cockpit/capture-screenshots.sh
 ```
+
+## Residuals (explicit)
+
+| Item | Status |
+|------|--------|
+| Tauri `.deb`/`.AppImage` | CI Rust ≥1.85 (web+H0 green without) |
+| Live Hostinger VPS | Script ready; needs certbot + grok auth on VPS |
+| Stronghold token store | Device-flow → gh keyring; Stronghold desktop follow-up |
 
 Mirror: `/workspace/forge/cockpit-redesign-oneshot.md`

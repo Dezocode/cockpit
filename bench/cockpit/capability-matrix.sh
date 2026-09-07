@@ -27,9 +27,16 @@ printf 'cockpit capability matrix (seed cockpit-20260907)\n\n'
 [[ -x "$root/bin/cockpit" ]] && tui=ok || tui=fail
 check "TUI bin/cockpit" "$tui"
 
-for page in AGENT FILES DIFF SETUP MAP PRS; do
-  [[ -x "$root/bin/cockpit-main" ]] && p=ok || p=fail
-  check "TUI page $page (session scaffold)" "$p"
+for page in AGENT FILES DIFF SETUP MAP PRS MEMORY COMPUTERS BENCH; do
+  case "$page" in
+    AGENT|FILES|DIFF|SETUP|MAP|PRS)
+      [[ -x "$root/bin/cockpit-main" ]] && p=ok || p=fail
+      ;;
+    MEMORY) [[ -x "$root/bin/cockpit-memory" ]] && p=ok || p=fail ;;
+    COMPUTERS) [[ -x "$root/bin/cockpit-computers" ]] && p=ok || p=fail ;;
+    BENCH) [[ -x "$root/bin/cockpit-bench" ]] && p=ok || p=fail ;;
+  esac
+  check "TUI page $page" "$p"
 done
 
 # Fixtures ≥20 agents
@@ -141,6 +148,13 @@ else
   build=warn
 fi
 check "pnpm build" "$build"
+
+if [[ -x "$root/bench/cockpit/surface-matrix.sh" ]]; then
+  bash "$root/bench/cockpit/surface-matrix.sh" >/dev/null 2>&1 && surf=ok || surf=fail
+else
+  surf=fail
+fi
+check "surface-matrix TUI↔GUI parity" "$surf"
 
 printf '\nmatrix: pass=%d warn=%d fail=%d\n' "$pass" "$warn" "$fail"
 [[ "$fail" -eq 0 ]]

@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# COMPUTERS pane — Hermes deck receipt + tailnet nodes (Hermes ≠ AGENT provider).
+set -euo pipefail
+
+port="${COCKPIT_WEB_PORT:-8787}"
+threshold="${COCKPIT_TAILNET_OFFLINE_MS:-3000}"
+
+draw() {
+  printf '\033[2J\033[H\033[36mCOMPUTERS\033[0m  Hermes=deck receipt · offline≤%sms\n\n' "$threshold"
+  if curl -sf "http://127.0.0.1:$port/api/computers" 2>/dev/null | python3 -m json.tool 2>/dev/null; then
+    return 0
+  fi
+  cat <<EOF
+{
+  "computers": [
+    {"id": "local", "name": "Local Dev", "status": "online", "latencyMs": 0},
+    {"id": "hermes", "name": "Hermes Deck", "status": "online", "latencyMs": 12, "role": "hermes"}
+  ],
+  "offlineThresholdMs": $threshold,
+  "note": "API offline — fixture fallback"
+}
+EOF
+}
+
+while true; do
+  draw
+  sleep "${COCKPIT_COMPUTERS_POLL:-2}"
+done

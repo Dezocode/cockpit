@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# MEMORY pane — cockpit.memory fail-closed watcher (parallel GUI page).
+set -euo pipefail
+
+lib="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/cockpit-lib"
+# shellcheck source=cockpit-lib
+source "$lib"
+
+port="${COCKPIT_WEB_PORT:-8787}"
+repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+fixtures="$repo_root/fixtures/agents.json"
+
+draw() {
+  printf '\033[2J\033[H\033[36mMEMORY\033[0m  fail-closed\n\n'
+  if curl -sf "http://127.0.0.1:$port/api/memory" 2>/dev/null | python3 -m json.tool 2>/dev/null; then
+    return 0
+  fi
+  printf '\033[33m[fail-closed]\033[0m cockpit-web offline — no memory bus write\n'
+  [[ -f "$fixtures" ]] && printf 'seed: %s\n' "$(python3 -c "import json;print(json.load(open('$fixtures')).get('seed',''))" 2>/dev/null || true)"
+}
+
+while true; do
+  draw
+  sleep "${COCKPIT_MEMORY_POLL:-2}"
+done
