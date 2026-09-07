@@ -12,7 +12,7 @@ if [[ ! -d "$src" ]]; then
 fi
 
 mkdir -p "$dest"
-for f in login-splash.png staging-empty.png staging-3-panels.png graph-resize.png \
+for f in login-splash.png splash.png staging-empty.png staging-3-panels.png graph-resize.png \
   fullscreen.png focus-rings.png hostinger-health.json hostinger-fresh-install-health.json \
   MANIFEST.json agents.json computers.json memory.json splash-gh-auth.json; do
   [[ -f "$src/$f" ]] && cp -a "$src/$f" "$dest/$f"

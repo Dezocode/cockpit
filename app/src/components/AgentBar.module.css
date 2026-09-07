@@ -1,0 +1,17 @@
+.bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem;
+  border-bottom: 1px solid var(--cockpit-border-muted);
+  background: var(--cockpit-surface);
+  padding: 0.25rem 0.5rem;
+}
+
+.brand {
+  margin-right: 0.25rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--cockpit-chrome);
+  font-family: var(--cockpit-font);
+}

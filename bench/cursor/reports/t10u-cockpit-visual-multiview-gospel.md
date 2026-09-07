@@ -6,7 +6,7 @@
 **Release floor:** ≥ v2.2.0  
 **Mirror:** `/workspace/forge/cockpit-visual-multiview-t10u.md`
 
-Style reference: **fieldset terminal console aesthetic ONLY** — near-black canvas, cyan 1px fieldset borders, title-in-border, magenta active chrome, monospace. **DENY** LMS/course copy. Style-ref PNG (STYLE ONLY): ask Canon if image not on Thesis box.
+Style reference: **fieldset terminal console aesthetic ONLY** — near-black canvas, cyan 1px fieldset borders, title-in-border, magenta active chrome, monospace. **DENY** LMS/course copy. Style-ref: `proofs/t12u/style-ref-fieldset.png` (STYLE ONLY). Visual gap table: `aspects/cockpit2-visual-multiview-t12u.md`.
 
 Ugly baseline proofs: `/workspace/proofs/t72u/t384u-live-spa/`
 

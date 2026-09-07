@@ -78,7 +78,7 @@ export function PrsPage() {
 export function BenchPage() {
   return (
     <div className="p-3 text-sm">
-      <h2 className="mb-2 text-yellow-300">BENCH</h2>
+      <h2 className="mb-2" style={{ color: "var(--cockpit-chrome)" }}>BENCH</h2>
       <p className="text-slate-400">Read-only Proctor surface. Harness under <code>bench/cockpit/</code>.</p>
       <pre className="mt-2 rounded bg-black/40 p-2 text-xs">pnpm test:matrix{"\n"}pnpm test:doctor</pre>
     </div>

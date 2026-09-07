@@ -72,7 +72,7 @@ export function TerminalPane({ agentId }: TerminalPaneProps) {
           <GhuiChip
             key={e.id}
             label={e.sizeOwning ? `${e.label} · size-owning` : e.label}
-            tone={e.sizeOwning ? "cyan" : "yellow"}
+            tone={e.sizeOwning ? "magenta" : "cyan"}
             onClick={() => launchShellOut(e.id)}
           />
         ))}

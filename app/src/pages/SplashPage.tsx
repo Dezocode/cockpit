@@ -61,7 +61,7 @@ export function SplashPage() {
               <GhuiChip label={`gh ✓ ${gh.user ?? "authenticated"}`} tone="cyan" />
             ) : userCode ? (
               <>
-                <GhuiChip label={`code ${userCode}`} tone="yellow" />
+                <GhuiChip label={`code ${userCode}`} tone="warn" />
                 <a className={styles.link} href={verifyUri ?? "https://github.com/login/device"}>
                   {verifyUri}
                 </a>
@@ -84,7 +84,7 @@ export function SplashPage() {
       {health && (
         <GhuiChip
           label={`health ${health.status}`}
-          tone={health.status === "green" ? "cyan" : "yellow"}
+          tone={health.status === "green" ? "cyan" : "warn"}
         />
       )}
 

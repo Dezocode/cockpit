@@ -64,6 +64,7 @@ shot() {
 
 # Pre-auth login splash (hold redirect)
 shot "$ui_base/splash?screenshot=login" "$out/login-splash.png"
+cp -f "$out/login-splash.png" "$out/splash.png" 2>/dev/null || true
 
 # Staging empty — clear layout first via query
 shot "$ui_base/splash/staging?reset=1" "$out/staging-empty.png"
@@ -93,6 +94,7 @@ cat >"$out/MANIFEST.json" <<EOF
   "files": [
     "hostinger-health.json",
     "login-splash.png",
+    "splash.png",
     "staging-empty.png",
     "staging-3-panels.png",
     "graph-resize.png",

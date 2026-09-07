@@ -192,8 +192,18 @@ fi
 check "DENY local Qwen/sol-v1.7.1 (frontier envelope)" "$deny"
 
 # ghui chips
-grep -rq 'ghui-chip-cyan\|GhuiChip' "$root/app/src" 2>/dev/null && ghui=ok || ghui=fail
-check "ghui t533u cyan/yellow chips" "$ghui"
+grep -rq 'GhuiChip' "$root/app/src" 2>/dev/null && \
+grep -q 'magenta' "$root/app/src/components/GhuiChip.module.css" 2>/dev/null && ghui=ok || ghui=fail
+check "ghui chips cyan idle + magenta active (no yellow primary)" "$ghui"
+
+[[ -f "$root/bench/schemas/cards/cursor-cockpit2-visual-multiview-t12u.card.yaml" ]] && card=ok || card=fail
+check "proctor card cursor-cockpit2-visual-multiview-t12u" "$card"
+
+[[ -f "$root/aspects/cockpit2-visual-multiview-t12u.md" ]] && asp=ok || asp=fail
+check "aspect cockpit2-visual-multiview-t12u" "$asp"
+
+[[ -f "$root/bench/cursor/reports/t12u-cockpit-visual-multiview-kick-packet.md" ]] && kp=ok || kp=fail
+check "t12u kick packet" "$kp"
 
 # Cockpit 2.2 visual multiview
 [[ -f "$root/app/STYLE.md" ]] && style=ok || style=fail
