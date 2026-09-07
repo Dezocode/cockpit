@@ -127,11 +127,14 @@ check "scripts/install-hostinger.sh" "$ih"
 [[ -x "$root/scripts/hostinger-grok-build.sh" ]] && gb=ok || gb=fail
 check "scripts/hostinger-grok-build.sh" "$gb"
 
-grep -qE 'frontier_subscription|DENY.*Qwen|sol-v1\.7\.1' "$root/scripts/hostinger-grok-build.sh" 2>/dev/null && gb_env=ok || gb_env=fail
+grep -qE 'frontier_subscription|DENY.*Qwen|sol-v1\.7\.1' "$root/deploy/hostinger-grok-build-install.sh" 2>/dev/null && gb_env=ok || gb_env=fail
 check "grok-build envelope DENY Qwen/sol-v1.7.1" "$gb_env"
 
-grep -q 'Funnel OFF' "$root/scripts/hostinger-grok-build.sh" 2>/dev/null && gb_fun=ok || gb_fun=fail
+grep -q 'Funnel OFF' "$root/deploy/hostinger-grok-build-install.sh" 2>/dev/null && gb_fun=ok || gb_fun=fail
 check "grok-build Funnel OFF declared" "$gb_fun"
+
+grep -q 'deploy/hostinger-grok-build-install.sh' "$root/scripts/hostinger-grok-build.sh" 2>/dev/null && gb_wrap=ok || gb_wrap=fail
+check "scripts/hostinger-grok-build → deploy recipe" "$gb_wrap"
 
 grep -q '/api/health' "$root/app/server/index.ts" 2>/dev/null && health=ok || health=fail
 check "GET /api/health" "$health"

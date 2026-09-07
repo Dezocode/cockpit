@@ -33,8 +33,11 @@ jobs:
           sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf
 
       - name: Build release bundle
+        env:
+          COCKPIT_VERSION: ${{ github.ref_name }}
         run: |
-          chmod +x scripts/release-bundle.sh bench/cockpit/*.sh marketing/*.sh
+          export COCKPIT_VERSION="${COCKPIT_VERSION#v}"
+          chmod +x scripts/release-bundle.sh scripts/*.sh deploy/*.sh packaging/systemd/*.sh bench/cockpit/*.sh marketing/*.sh
           bash scripts/release-bundle.sh
 
       - name: Capability matrix
@@ -61,8 +64,8 @@ jobs:
         with:
           generate_release_notes: true
           files: |
-            dist/release/cockpit-2.0.0-linux-x64.tar.gz
-            dist/release/cockpit-2.0.0-web.tar.gz
+            dist/release/cockpit-*-linux-x64.tar.gz
+            dist/release/cockpit-*-web.tar.gz
             dist/release/extra/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

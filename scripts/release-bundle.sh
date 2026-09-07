@@ -49,7 +49,8 @@ Seed: cockpit-20260907
 Install TUI: ./install.sh
 Install web: COCKPIT_INSTALL_WEB_BUILD=1 ./install.sh
 Hostinger: ./scripts/install-hostinger.sh
-Hostinger grok-build: ./scripts/hostinger-grok-build.sh
+Hostinger grok-build: ./deploy/hostinger-grok-build-install.sh
+Hostinger grok-build (curl path): ./scripts/hostinger-grok-build.sh
 Health: ./scripts/hostinger-health.sh
 Install root: /opt/cockpit (NOT /root/.grok or saul-go)
 EOF
