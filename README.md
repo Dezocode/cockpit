@@ -24,7 +24,7 @@ Hostinger + grok-build subscription lane (install root `/opt/cockpit`, ≠ Saul)
 
 Health probe: `GET /api/health` — see [deploy/README.md](deploy/README.md)
 
-Release: [v2.2.0](RELEASE_NOTES_v2.2.0.md) · matrix: `./bench/cockpit/capability-matrix.sh` · Canon map: `tmp/t847u/README.md`
+Release: [v2.2.0](RELEASE_NOTES_v2.2.0.md) · gospel: [t10u visual multiview](bench/cursor/reports/t10u-cockpit-visual-multiview-gospel.md) · matrix: `./bench/cockpit/capability-matrix.sh` · proofs: `proofs/t72u/t384u-live-spa/`
 
 ## New machine (for a human or an agent)
 

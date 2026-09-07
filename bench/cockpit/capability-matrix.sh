@@ -95,6 +95,15 @@ check "MODELS sub-view inside COMPUTERS" "$models"
 [[ -f "$root/forge/cockpit-redesign-oneshot.md" ]] && forge=ok || forge=fail
 check "forge gospel on disk" "$forge"
 
+[[ -f "$root/bench/cursor/reports/t10u-cockpit-visual-multiview-gospel.md" ]] && g10=ok || g10=fail
+check "t10u visual multiview gospel (bench/cursor/reports)" "$g10"
+
+[[ -f "$root/forge/cockpit-visual-multiview-t10u.md" ]] && g10f=ok || g10f=fail
+check "t10u forge mirror (forge/cockpit-visual-multiview-t10u.md)" "$g10f"
+
+[[ -f "$root/proofs/t72u/t384u-live-spa/README.md" ]] && pr=ok || pr=fail
+check "t72u t384u-live-spa ugly baseline proofs manifest" "$pr"
+
 # Pages in source
 for page in MEMORY COMPUTERS BENCH SPLASH; do
   grep -rq "$page" "$root/app/src" 2>/dev/null && pg=ok || pg=fail
