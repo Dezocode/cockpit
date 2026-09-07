@@ -36,4 +36,5 @@ node packaging/health-server.js   # bootstrap probe (optional)
 ./scripts/hostinger-health.sh     # install verification
 ```
 
-Full API after install: `node /opt/cockpit/app/dist-server/index.js` via systemd.
+Full API after install: `node /opt/cockpit/app/dist-server/index.js` via systemd.  
+Bootstrap probe only: `node packaging/health-server.js` (residual — see `bench/cockpit/H0-HEALTH-CONTRACT.md`).

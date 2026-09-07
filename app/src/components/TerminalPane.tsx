@@ -28,7 +28,14 @@ export function TerminalPane({ agentId }: TerminalPaneProps) {
     term.loadAddon(fit);
     term.loadAddon(new WebLinksAddon());
     term.open(ref.current);
-    fit.fit();
+    const safeFit = () => {
+      try {
+        fit.fit();
+      } catch {
+        /* viewport not ready yet (headless / zero-size container) */
+      }
+    };
+    safeFit();
 
     term.writeln("\x1b[36mcockpit\x1b[0m web PTY (xterm6)");
     term.writeln("\x1b[33mFoot/Ghostty: shell-out registry only — not fake-attached here\x1b[0m");
@@ -51,7 +58,7 @@ export function TerminalPane({ agentId }: TerminalPaneProps) {
       term.writeln("\x1b[33mPTY unavailable\x1b[0m");
     }
 
-    const ro = new ResizeObserver(() => fit.fit());
+    const ro = new ResizeObserver(() => safeFit());
     ro.observe(ref.current);
     return () => {
       ro.disconnect();

@@ -56,17 +56,18 @@ After certbot:
 curl -sf https://cockpit.example.com/api/health | jq .
 ```
 
-**Green contract** (Hostinger):
+**Green contract** (Hostinger — full API via `app/dist-server/index.js`):
 
 ```json
 {
   "status": "green",
   "product": "cockpit",
   "seed": "cockpit-20260907",
+  "source": "app/dist-server/index.js",
   "checks": {
     "tui": "ok",
     "fixtures": "ok",
-    "gh_auth": "ok",
+    "api_server": "ok",
     "web_build": "ok",
     "hostinger": "configured"
   }
@@ -74,5 +75,7 @@ curl -sf https://cockpit.example.com/api/health | jq .
 ```
 
 - `status` must be `"green"` for done-line pass
+- `source` must be `"app/dist-server/index.js"` — bootstrap `packaging/health-server.js` is **not** full API PASS
 - `checks.hostinger` is `"configured"` when `COCKPIT_HOSTINGER=1`
-- Implemented in `app/server/index.ts` (`GET /api/health`)
+- Contract: `bench/cockpit/H0-HEALTH-CONTRACT.md`
+- Implemented in `app/server/index.ts` → compiled `app/dist-server/index.js`
