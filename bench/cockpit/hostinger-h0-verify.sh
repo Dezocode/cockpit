@@ -31,6 +31,9 @@ check "nginx cockpit.conf" "$n"
 [[ -x "$root/scripts/hostinger-grok-build.sh" ]] && g=ok || g=fail
 check "grok-build install lane" "$g"
 
+grep -qE 'frontier_subscription|DENY.*Qwen|sol-v1\.7\.1' "$root/scripts/hostinger-grok-build.sh" 2>/dev/null && ge=ok || ge=fail
+check "grok-build envelope (subscription only)" "$ge"
+
 [[ -f "$root/app/dist-server/index.js" ]] || (cd "$root/app" && pnpm exec tsc -p tsconfig.server.json) 2>/dev/null
 [[ -f "$root/app/dist-server/index.js" ]] && b=ok || b=fail
 check "compiled API server (dist-server)" "$b"

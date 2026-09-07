@@ -1,12 +1,27 @@
 #!/usr/bin/env bash
 # Hostinger grok-build lane — subscription runtime auth + install-hostinger.sh
-# Uses grok-build CLI on Hostinger. Does NOT touch /root/.grok or saul-go.
+# Envelope: frontier_subscription / grok-build ONLY.
+# DENY: local Qwen · sol-v1.7.1 · Funnel · secrets bake · /root/.grok · saul-go
 set -euo pipefail
 
 root="$(cd -- "$(dirname -- "$0")/.." && pwd)"
 export COCKPIT_INSTALL_ROOT="${COCKPIT_INSTALL_ROOT:-/opt/cockpit}"
+export COCKPIT_HOSTINGER=1
 
 printf 'cockpit hostinger-grok-build (subscription only)\n'
+printf '  envelope: frontier_subscription · Funnel OFF · no secrets bake\n'
+
+case "$COCKPIT_INSTALL_ROOT" in
+  /root/.grok*|*/saul-go*)
+    printf 'DENY: Cockpit install root must not be %s (Saul paths untouched)\n' "$COCKPIT_INSTALL_ROOT"
+    exit 1
+    ;;
+esac
+
+if [[ -n "${COCKPIT_ALLOW_LOCAL_QWEN:-}" || -n "${QWEN_MODEL_PATH:-}" || -n "${SOL_V171_MODEL:-}" ]]; then
+  printf 'DENY: local Qwen/sol-v1.7.1 not permitted on Hostinger grok-build lane\n'
+  exit 1
+fi
 
 # grok-build subscription — fail-closed without auth
 if command -v grok >/dev/null 2>&1; then
