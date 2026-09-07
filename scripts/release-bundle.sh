@@ -9,7 +9,7 @@ name="cockpit-${version}"
 staging="$out/$name"
 
 rm -rf "$staging"
-mkdir -p "$staging"/{app,bin,bench/cockpit,fixtures,marketing,stage,scripts,deploy}
+mkdir -p "$staging"/{app,bin,bench/cockpit,fixtures,marketing,stage,scripts,deploy,tmp/t847u}
 
 printf 'Building cockpit %s release bundle\n' "$version"
 
