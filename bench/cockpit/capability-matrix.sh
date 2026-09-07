@@ -111,12 +111,43 @@ check "bench/cockpit/doctor.sh" "$doc"
 [[ -f "$root/bench/cockpit/hostinger-h0-verify.sh" ]] && h0=ok || h0=fail
 check "bench/cockpit/hostinger-h0-verify.sh" "$h0"
 
-# Deploy Hostinger
-[[ -f "$root/deploy/cockpit-web.service" ]] && svc=ok || svc=fail
-check "deploy/cockpit-web.service" "$svc"
+# Deploy Hostinger (canonical: packaging/ + scripts/)
+[[ -f "$root/packaging/systemd/cockpit-web.service" ]] && svc=ok || svc=fail
+check "packaging/systemd/cockpit-web.service" "$svc"
 
-[[ -f "$root/deploy/nginx-cockpit.conf" ]] && ngx=ok || ngx=fail
-check "deploy/nginx-cockpit.conf" "$ngx"
+[[ -x "$root/packaging/systemd/cockpit-web-heal.sh" ]] && heal=ok || heal=fail
+check "packaging/systemd/cockpit-web-heal (+ heal)" "$heal"
+
+[[ -f "$root/packaging/nginx/cockpit.conf" ]] && ngx=ok || ngx=fail
+check "packaging/nginx/cockpit.conf" "$ngx"
+
+[[ -x "$root/scripts/install-hostinger.sh" ]] && ih=ok || ih=fail
+check "scripts/install-hostinger.sh" "$ih"
+
+[[ -x "$root/scripts/hostinger-grok-build.sh" ]] && gb=ok || gb=fail
+check "scripts/hostinger-grok-build.sh" "$gb"
+
+grep -q '/api/health' "$root/app/server/index.ts" 2>/dev/null && health=ok || health=fail
+check "GET /api/health" "$health"
+
+# Hostinger vs Surface rows
+printf '\nHostinger vs Surface:\n'
+grep -q '/opt/cockpit' "$root/packaging/systemd/cockpit-web.service" 2>/dev/null && \
+grep -q 'DENY.*grok\|/root/.grok' "$root/packaging/systemd/cockpit-web-heal.sh" 2>/dev/null && h1=ok || h1=fail
+check "install root /opt/cockpit (not /root/.grok)" "$h1"
+
+[[ -f "$root/packaging/systemd/cockpit-web.service" && -x "$root/bin/cockpit" ]] && h2=ok || h2=fail
+check "Hostinger systemd + Surface TUI both present" "$h2"
+
+grep -q 'COCKPIT_INSTALL_ROOT' "$root/packaging/systemd/cockpit-web.service" 2>/dev/null && h3=ok || h3=fail
+check "Hostinger separate install root env" "$h3"
+
+[[ -x "$root/bench/cockpit/surface-matrix.sh" ]] && h4=ok || h4=fail
+check "Surface parity harness (zero TUI regression)" "$h4"
+
+# Legacy deploy/ wrappers (backward compat)
+[[ -f "$root/deploy/cockpit-web.service" || -f "$root/packaging/systemd/cockpit-web.service" ]] && legacy=ok || legacy=warn
+check "deploy/ or packaging/ systemd" "$legacy"
 
 # Marketing redact
 [[ -x "$root/marketing/redact-secrets.sh" ]] && mkt=ok || mkt=fail

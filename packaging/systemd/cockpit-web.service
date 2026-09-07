@@ -1,6 +1,8 @@
 [Unit]
 Description=Cockpit Web API (Hostinger subscription deploy)
+Documentation=https://github.com/Dezocode/cockpit
 After=network-online.target
+Wants=network-online.target
 
 [Service]
 Type=simple
@@ -10,10 +12,14 @@ WorkingDirectory=/opt/cockpit/app
 Environment=COCKPIT_INSTALL_ROOT=/opt/cockpit
 Environment=COCKPIT_HOSTINGER=1
 Environment=COCKPIT_WEB_PORT=8787
+Environment=NODE_ENV=production
+# Separate install root — NOT /root/.grok or saul-go
 ExecStartPre=/opt/cockpit/packaging/systemd/cockpit-web-heal.sh
 ExecStart=/usr/bin/node /opt/cockpit/app/dist-server/index.js
 Restart=on-failure
 RestartSec=5
+StartLimitIntervalSec=120
+StartLimitBurst=5
 
 [Install]
 WantedBy=multi-user.target

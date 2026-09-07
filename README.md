@@ -15,13 +15,15 @@ cockpit-web                               # API on :8787
 curl -s localhost:8787/api/health | jq .
 ```
 
-Hostinger + grok-build subscription lane:
+Hostinger + grok-build subscription lane (install root `/opt/cockpit`):
 
 ```bash
+./scripts/hostinger-grok-build.sh
+# or legacy wrapper:
 ./deploy/hostinger-grok-build-install.sh
 ```
 
-Release: [v2.1.0](RELEASE_NOTES_v2.1.0.md) · matrix: `./bench/cockpit/capability-matrix.sh`
+Release: [v2.1.1](RELEASE_NOTES_v2.1.1.md) · matrix: `./bench/cockpit/capability-matrix.sh`
 
 ## New machine (for a human or an agent)
 
