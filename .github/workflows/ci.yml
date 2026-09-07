@@ -1,0 +1,63 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+          cache-dependency-path: app/pnpm-lock.yaml
+
+      - name: Build web + API
+        working-directory: app
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
+          pnpm exec tsc -p tsconfig.server.json
+
+      - name: Capability matrix
+        run: bash bench/cockpit/capability-matrix.sh
+
+      - name: Prove GET /api/health
+        run: |
+          COCKPIT_HOSTINGER=1 node app/dist-server/index.js &
+          pid=$!
+          trap 'kill $pid 2>/dev/null || true' EXIT
+          for _ in $(seq 1 40); do
+            curl -sf http://127.0.0.1:8787/api/health >/tmp/health.json && break
+            sleep 0.5
+          done
+          curl -sf http://127.0.0.1:8787/api/health | tee /tmp/health.json
+          python3 - <<'PY'
+          import json
+          d = json.load(open("/tmp/health.json"))
+          assert d["product"] == "cockpit"
+          assert d["status"] in ("green", "yellow")
+          assert d["checks"]["hostinger"] == "configured"
+          print("health ok:", d["status"])
+          PY
+
+      - name: Hostinger H0 verify
+        run: bash bench/cockpit/hostinger-h0-verify.sh
+
+      - name: Surface matrix (TUI KEEP)
+        run: bash bench/cockpit/surface-matrix.sh
+
+      - name: scripts/hostinger-grok-build → deploy wrapper
+        run: |
+          test -x scripts/hostinger-grok-build.sh
+          grep -q deploy/hostinger-grok-build-install.sh scripts/hostinger-grok-build.sh
