@@ -136,8 +136,17 @@ check "grok-build Funnel OFF declared" "$gb_fun"
 grep -q 'deploy/hostinger-grok-build-install.sh' "$root/scripts/hostinger-grok-build.sh" 2>/dev/null && gb_wrap=ok || gb_wrap=fail
 check "scripts/hostinger-grok-build → deploy recipe" "$gb_wrap"
 
+[[ -f "$root/packaging/health-server.js" ]] && hs=ok || hs=fail
+check "packaging/health-server.js" "$hs"
+
+[[ -f "$root/tmp/t847u/README.md" ]] && t847=ok || t847=fail
+check "tmp/t847u Canon draft alignment manifest" "$t847"
+
+grep -q '/api/health' "$root/packaging/health-server.js" 2>/dev/null && hs_api=ok || hs_api=fail
+check "health-server.js GET /api/health" "$hs_api"
+
 grep -q '/api/health' "$root/app/server/index.ts" 2>/dev/null && health=ok || health=fail
-check "GET /api/health" "$health"
+check "GET /api/health (app server)" "$health"
 
 # Hostinger vs Surface rows
 printf '\nHostinger vs Surface:\n'

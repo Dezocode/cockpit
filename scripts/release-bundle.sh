@@ -3,7 +3,7 @@
 set -euo pipefail
 
 root="$(cd -- "$(dirname -- "$0")/.." && pwd)"
-version="${COCKPIT_VERSION:-2.1.3}"
+version="${COCKPIT_VERSION:-2.1.4}"
 out="$root/dist/release"
 name="cockpit-${version}"
 staging="$out/$name"
@@ -24,6 +24,7 @@ cp -a "$root/plugins" "$staging/"
 cp -a "$root/stage" "$staging/stage"
 cp -a "$root/fixtures" "$staging/fixtures"
 cp -a "$root/packaging" "$staging/packaging" 2>/dev/null || true
+cp -a "$root/tmp/t847u" "$staging/tmp/t847u" 2>/dev/null || true
 cp -a "$root/deploy/cockpit-web.service" "$root/deploy/nginx-cockpit.conf" \
   "$root/deploy/hostinger-grok-build-install.sh" "$staging/deploy/" 2>/dev/null || true
 cp -a "$root/scripts/install-hostinger.sh" "$root/scripts/hostinger-grok-build.sh" \
