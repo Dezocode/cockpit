@@ -24,6 +24,16 @@
   margin-right: 0.25rem;
 }
 
+.demoBadge {
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--cockpit-active);
+  border: 1px solid var(--cockpit-active);
+  padding: 0.1rem 0.35rem;
+}
+
 .body {
   display: flex;
   flex: 1;

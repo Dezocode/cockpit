@@ -1,0 +1,72 @@
+# t12u-live CPR score — Hostinger-LIVE visual multiview (Proctor)
+# Card: cursor-cockpit2-visual-multiview-t12u-next
+# Soft holds BANNED. soft_steer ≠ score.
+
+score_id: t12u-live-cpr
+card_id: cursor-cockpit2-visual-multiview-t12u-next
+parent_card: cursor-cockpit2-visual-multiview-t12u
+status: kick_ready
+verdict: close_ready
+prior_run: bc-e1c5cc28
+proofs_root: proofs/t12u/t384u-hostinger/
+capture_profile: hostinger-live
+release_floor: v2.2.0
+optional_release: v2.2.1
+optional_release_ref: e84669b
+
+manifest:
+  md5_unique_ok: true
+  captured_at: "2026-09-07T17:53:35Z"
+  md5:
+    focus-rings.png: 56ebc9a35a2dd155d1700d0396d72ffa
+    fullscreen.png: b2773cd18cae86004cbffda33d23c849
+    graph-resize.png: a03a8b36df46d2cd740460555a316766
+    theme-ghui-cyan.png: d3d2ffcc111b9c6ecdb4603068269922
+
+policy:
+  soft_holds: banned
+  soft_steer_is_score: false
+  deny_local_qwen: true
+  deny_saul: true
+  pr_state: draft
+  gh_auth_pending_ok: true
+
+keep_gates:
+  github_release_gte_v2_2_0: pass
+  hostinger_h0_green: pass
+  install_sh_cockpit_path_alias: pass
+  pre_auth_splash_post_auth_staging: pass
+  themes_fieldset_dark_high_contrast: pass
+  foot_funnel_off: pass
+
+close_only:
+  recapture_focus_rings_unique_md5:
+    file: focus-rings.png
+    gate: md5_unique_gate
+    required: true
+  recapture_fullscreen_unique_md5:
+    file: fullscreen.png
+    gate: md5_unique_gate
+    required: true
+  recapture_graph_resize_unique_md5:
+    file: graph-resize.png
+    gate: md5_unique_gate
+    required: true
+  theme_ghui_cyan_proof:
+    file: theme-ghui-cyan.png
+    min_themes: 3
+    required: true
+  manifest_md5_unique_ok:
+    field: md5_unique_ok
+    value: true
+    required: true
+
+residuals:
+  gh_auth: pending
+  live_vps_certbot: script_ready
+
+verify:
+  - COCKPIT_CAPTURE_PROFILE=hostinger-live ./bench/cockpit/capture-screenshots.sh
+  - ./proofs/t12u/t384u-hostinger/sync-from-capture.sh
+  - ./bench/cockpit/hostinger-h0-verify.sh
+  - ./bench/cockpit/capability-matrix.sh

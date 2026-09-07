@@ -22,7 +22,7 @@ import {
   type StagingPanelType,
   type StagingPanelState,
 } from "../lib/layout-v3";
-import { loadTheme, type CockpitTheme } from "../lib/theme";
+import { loadTheme, saveTheme, applyTheme, type CockpitTheme } from "../lib/theme";
 import type { AgentBarChip } from "../lib/types";
 import styles from "./StagingMultiview.module.css";
 
@@ -117,10 +117,19 @@ export function StagingMultiview() {
 
   const demoMode = searchParams.get("demo");
   const resetLayout = searchParams.get("reset") === "1";
+  const themeParam = searchParams.get("theme") as CockpitTheme | null;
 
   useEffect(() => {
     if (resetLayout) localStorage.removeItem("cockpit.layout.v3");
   }, [resetLayout]);
+
+  useEffect(() => {
+    if (demoMode === "theme-ghui-cyan" || themeParam === "ghui-cyan") {
+      saveTheme("ghui-cyan");
+      applyTheme("ghui-cyan");
+      setTheme("ghui-cyan");
+    }
+  }, [demoMode, themeParam]);
 
   const onReady = useCallback(
     (event: DockviewReadyEvent) => {
@@ -184,6 +193,19 @@ export function StagingMultiview() {
         window.setTimeout(() => {
           document.querySelector<HTMLButtonElement>('[aria-label="Theme switcher"] button')?.focus();
         }, 300);
+      } else if (demoMode === "theme-ghui-cyan") {
+        ["AGENTS", "COMPUTERS", "FILES"].forEach((t) => {
+          event.api.addPanel({
+            id: newPanelId(t as StagingPanelType),
+            component: "staging",
+            title: t,
+            params: { panelType: t as StagingPanelType },
+            position: event.api.panels.length
+              ? { referencePanel: event.api.panels[event.api.panels.length - 1].id, direction: "right" }
+              : undefined,
+          });
+        });
+        syncCount(event.api);
       }
     },
     [persistLayout, syncCount, demoMode, resetLayout],
@@ -248,6 +270,7 @@ export function StagingMultiview() {
       <AgentBar onChip={onBarChip} providerLabel="AGENT" />
       <div className={styles.toolbar}>
         <span className={styles.brand}>staging multiview</span>
+        {demoMode && <span className={styles.demoBadge} data-demo={demoMode}>{demoMode}</span>}
         <ThemeSwitcher value={theme} onChange={setTheme} compact />
         <button type="button" className={styles.btn} onClick={() => addPanel("GRAPH")}>
           + graph
