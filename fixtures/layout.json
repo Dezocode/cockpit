@@ -1,0 +1,18 @@
+{
+  "seed": "cockpit-20260907",
+  "version": 1,
+  "panels": [
+    {"id": "AGENT", "title": "AGENT", "position": {"referencePanel": null, "direction": "right"}, "size": 0.35},
+    {"id": "FILES", "title": "FILES", "position": {"referencePanel": "AGENT", "direction": "right"}, "size": 0.2},
+    {"id": "DIFF", "title": "DIFF", "position": {"referencePanel": "FILES", "direction": "below"}, "size": 0.25},
+    {"id": "MEMORY", "title": "MEMORY", "position": {"referencePanel": "AGENT", "direction": "below"}, "size": 0.2},
+    {"id": "COMPUTERS", "title": "COMPUTERS", "position": {"referencePanel": "MEMORY", "direction": "right"}, "size": 0.2},
+    {"id": "MODELS", "title": "MODELS", "position": {"referencePanel": "COMPUTERS", "direction": "right"}, "size": 0.15},
+    {"id": "BENCH", "title": "BENCH", "position": {"referencePanel": "DIFF", "direction": "right"}, "size": 0.2},
+    {"id": "PRS", "title": "PRS", "position": {"referencePanel": "BENCH", "direction": "below"}, "size": 0.15},
+    {"id": "SETUP", "title": "SETUP", "position": {"referencePanel": "PRS", "direction": "right"}, "size": 0.15},
+    {"id": "MAP", "title": "MAP", "position": {"referencePanel": "SETUP", "direction": "below"}, "size": 0.15},
+    {"id": "SPLASH", "title": "SPLASH", "position": {"referencePanel": null, "direction": "right"}, "size": 0.0, "hidden": true}
+  ],
+  "activePanel": "AGENT"
+}

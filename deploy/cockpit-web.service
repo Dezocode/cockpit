@@ -1,0 +1,18 @@
+[Unit]
+Description=Cockpit Web (Tauri/React API server)
+After=network.target
+
+[Service]
+Type=simple
+User=cockpit
+Group=cockpit
+WorkingDirectory=/opt/cockpit/app
+Environment=COCKPIT_HOSTINGER=1
+Environment=COCKPIT_WEB_PORT=8787
+Environment=NODE_ENV=production
+ExecStart=/usr/bin/node /opt/cockpit/app/dist-server/index.js
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

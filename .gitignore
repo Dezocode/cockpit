@@ -18,3 +18,9 @@ id_ed25519
 providers.d/
 !stage/auth/providers.d/
 !stage/auth/providers.d/*.conf
+app/node_modules/
+app/dist/
+app/dist-server/
+dist/release/
+marketing/output/
+bench/cockpit/screenshots/
