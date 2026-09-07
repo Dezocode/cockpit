@@ -1,0 +1,53 @@
+{
+  "seed": "cockpit-20260907",
+  "version": "2.2.0",
+  "profile": "hostinger-live",
+  "agent_count": 24,
+  "files": [
+    "hostinger-health.json",
+    "login-splash.png",
+    "splash.png",
+    "staging-empty.png",
+    "staging-3-panels.png",
+    "graph-resize.png",
+    "fullscreen.png",
+    "focus-rings.png",
+    "theme-ghui-cyan.png",
+    "agents.json",
+    "computers.json",
+    "memory.json",
+    "splash-gh-auth.json"
+  ],
+  "residual_hashes": {
+    "theme-ghui-cyan.png": "d71fc43377ef96cacf28c8bdeea45c98",
+    "focus-rings.png": "f57effdca4a0b80261746ffb18aeb550",
+    "fullscreen.png": "0aea3fd49bf583b113068ac5df6d8831",
+    "graph-resize.png": "20cf82790ebae84124809e38c9bc9e8c"
+  },
+  "residual_hashes_unique_ok": true,
+  "residuals_closed_at": "2026-09-07T17:54:00Z",
+  "residuals_source": "canon-hostinger-live",
+  "md5": {
+    "hostinger-health.json": "854914bfb1e074efd0f77bd08f0250cc",
+    "login-splash.png": "1f684fe1ccb0283376984dc6c1b092ac",
+    "splash.png": "1f684fe1ccb0283376984dc6c1b092ac",
+    "staging-empty.png": "4f5ec64ffe924373497521a511a37df8",
+    "staging-3-panels.png": "b804faa71c62942143d32ab369b6f2f8",
+    "graph-resize.png": "279a85fffceada3fe8a858a084c6b2ac",
+    "fullscreen.png": "4ebd0a017fd03dc2c1c5adab5320a98f",
+    "focus-rings.png": "fdf56cf0308999b817df9ae54595efce",
+    "theme-ghui-cyan.png": "c42b9362231c1443f29a2464f201ba7f",
+    "agents.json": "80dcac93a7aee07a9b41ffeb5f3b3254",
+    "computers.json": "65ff8ee75b16f143e3f2868150558f12",
+    "memory.json": "1cc1d19b7dcbb476cccb2975d6dfb5a0",
+    "splash-gh-auth.json": "849364c6d6dbf27e73a5eb29ced85388"
+  },
+  "md5_unique_gate": [
+    "focus-rings.png",
+    "fullscreen.png",
+    "graph-resize.png"
+  ],
+  "md5_unique_ok": true,
+  "health_url": "http://localhost:8787/api/health",
+  "captured_at": "2026-09-07T17:57:46Z"
+}
