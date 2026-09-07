@@ -51,7 +51,8 @@ jobs:
           assert d.get("product") == "cockpit", d
           assert d.get("status") in ("green", "yellow"), d
           assert "checks" in d and d["checks"].get("hostinger") == "configured", d
-          print("GET /api/health: ok status=%s hostinger=%s" % (d["status"], d["checks"]["hostinger"]))
+          assert d.get("source") == "app/dist-server/index.js", d
+          print("GET /api/health: ok status=%s source=%s" % (d["status"], d["source"]))
           PY
 
       - name: Stage release assets

@@ -36,9 +36,10 @@ function healthCheck() {
   const tui = existsSync(join(root, "bin/cockpit"));
   const fixtures = existsSync(join(fixturesDir, "agents.json"));
   const web = existsSync(join(root, "app/dist/index.html"));
+  const api = existsSync(join(root, "app/dist-server/index.js"));
   const hostinger = process.env.COCKPIT_HOSTINGER === "1";
   const core = tui && fixtures;
-  const hostingerReady = !hostinger || web;
+  const hostingerReady = !hostinger || (web && api);
   return {
     status: core && hostingerReady ? "green" : "yellow",
     product: "cockpit",
@@ -48,8 +49,10 @@ function healthCheck() {
       fixtures: fixtures ? "ok" : "missing",
       gh_auth: gh.authenticated ? "ok" : "pending",
       web_build: web ? "ok" : "pending",
+      api_server: api ? "ok" : "pending",
       hostinger: hostinger ? "configured" : "local",
     },
+    source: "app/dist-server/index.js",
     gh,
     timestamp: new Date().toISOString(),
   };

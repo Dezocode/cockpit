@@ -42,6 +42,10 @@ rsync -a --delete \
   --exclude app/node_modules \
   "$root/" "$COCKPIT_INSTALL_ROOT/"
 
+# Production node_modules for dist-server (no Saul / local Qwen paths)
+printf '  → pnpm install --prod in %s/app\n' "$COCKPIT_INSTALL_ROOT"
+(cd "$COCKPIT_INSTALL_ROOT/app" && pnpm install --prod --frozen-lockfile)
+
 chown -R cockpit:cockpit "$COCKPIT_INSTALL_ROOT"
 chmod +x "$COCKPIT_INSTALL_ROOT/packaging/systemd/cockpit-web-heal.sh"
 

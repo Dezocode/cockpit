@@ -37,8 +37,9 @@ Lane: `deploy/hostinger-grok-build-install.sh` (grok-build subscription runtime)
 - [x] Capability matrix green (45/45)
 - [x] Surface matrix TUI↔GUI green (14/14)
 - [x] TUI harness TMUX_TMPDIR (6/6)
-- [x] t384u screenshot set
-- [x] Draft PR #6 (stay draft)
+- [x] t384u screenshot set (live SPA + dist-server — not HTML stand-ins)
+- [x] H0 health contract (`bench/cockpit/H0-HEALTH-CONTRACT.md`)
+- [ ] Draft PR (residuals t72u — stay draft)
 
 ## Verification
 
@@ -55,6 +56,9 @@ Lane: `deploy/hostinger-grok-build-install.sh` (grok-build subscription runtime)
 
 | Item | Status |
 |------|--------|
+| Live SPA + dist-server evidence | **Closed** — `capture-screenshots.sh` + `bench/cockpit/screenshots/t384u/` |
+| Bootstrap vs full API health | **Closed** — `bench/cockpit/H0-HEALTH-CONTRACT.md` + `source` field |
+| Hostinger dist-server node deps | **Closed** — `install-hostinger.sh` `pnpm install --prod` |
 | Tauri `.deb`/`.AppImage` | CI Rust ≥1.85 (web+H0 green without) |
 | Live Hostinger VPS | Script ready; needs certbot + grok auth on VPS |
 | Stronghold token store | Device-flow → gh keyring; Stronghold desktop follow-up |

@@ -1,0 +1,15 @@
+task_id: cursor-cockpit2-t847u-residuals-t72u
+card_id: cursor-cockpit2-t847u-residuals-t72u
+kick_ready: true
+schema_class: sequenced
+schema_ids:
+  - process/inspect-prior-before-rework
+  - process/final-outlook-legacy-clean
+  - process/live-proof-required
+  - process/done-line-screenshot
+  - harness/keep-what-benches
+  - runtime/frontier-vs-local-envelope
+receiver:
+  agent: cursor_cloud
+  model_id: composer-2.5
+  agent_class: frontier_subscription

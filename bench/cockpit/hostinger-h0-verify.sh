@@ -43,10 +43,14 @@ check "compiled API server (dist-server)" "$b"
 
 port="${COCKPIT_WEB_PORT:-8787}"
 if ! curl -sf "http://127.0.0.1:$port/api/health" >/dev/null 2>&1; then
-  COCKPIT_HOSTINGER=1 pnpm --dir "$root/app" exec tsx server/index.ts &
+  ensure_dist() {
+    [[ -f "$root/app/dist-server/index.js" ]] || (cd "$root/app" && pnpm exec tsc -p tsconfig.server.json)
+  }
+  ensure_dist
+  COCKPIT_INSTALL_ROOT="$root" COCKPIT_HOSTINGER=1 node "$root/app/dist-server/index.js" &
   hp=$!
   trap 'kill $hp 2>/dev/null || true' EXIT
-  for _ in $(seq 1 20); do
+  for _ in $(seq 1 30); do
     curl -sf "http://127.0.0.1:$port/api/health" >/dev/null 2>&1 && break
     sleep 0.3
   done
@@ -54,11 +58,16 @@ fi
 
 if curl -sf "http://127.0.0.1:$port/api/health" >/tmp/cockpit-h0-health.json 2>/dev/null; then
   status=$(python3 -c "import json; print(json.load(open('/tmp/cockpit-h0-health.json')).get('status',''))")
+  source=$(python3 -c "import json; print(json.load(open('/tmp/cockpit-h0-health.json')).get('source',''))")
   [[ "$status" == green ]] && h=ok || h=fail
   check "/api/health green" "$h"
+  [[ "$source" == "app/dist-server/index.js" ]] && hs=ok || hs=fail
+  check "health source app/dist-server/index.js" "$hs"
+  mkdir -p "$root/bench/cockpit/screenshots/t384u"
   cp /tmp/cockpit-h0-health.json "$root/bench/cockpit/screenshots/t384u/hostinger-health.json" 2>/dev/null || true
 else
   check "/api/health green" fail
+  check "health source app/dist-server/index.js" fail
 fi
 
 printf '\nH0: pass=%d fail=%d\n' "$pass" "$fail"

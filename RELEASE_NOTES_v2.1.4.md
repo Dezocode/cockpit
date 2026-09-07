@@ -17,8 +17,8 @@ See `tmp/t847u/README.md` for Canon draft ↔ in-repo path map.
 
 ## Health
 
-- Full API: `app/server/index.ts` → `GET /api/health`
-- Bootstrap: `packaging/health-server.js`
-- Probe: `scripts/hostinger-health.sh`
+- **Full API (PASS):** `app/dist-server/index.js` — systemd `ExecStart`, `source: app/dist-server/index.js`
+- **Bootstrap (residual probe only):** `packaging/health-server.js` — optional pre-install; NOT full API
+- Probe: `scripts/hostinger-health.sh` · contract: `bench/cockpit/H0-HEALTH-CONTRACT.md`
 
 CI-proven in `.github/workflows/ci.yml` and `release-cockpit2.yml`.
