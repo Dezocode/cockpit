@@ -24,14 +24,6 @@ jobs:
           cache: 'pnpm'
           cache-dependency-path: app/pnpm-lock.yaml
 
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Install Linux deps (Tauri)
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf
-
       - name: Build release bundle
         env:
           COCKPIT_VERSION: ${{ github.ref_name }}
@@ -43,29 +35,55 @@ jobs:
       - name: Capability matrix
         run: bash bench/cockpit/capability-matrix.sh
 
-      - name: Build Tauri (optional)
-        continue-on-error: true
-        working-directory: app
+      - name: Prove GET /api/health
         run: |
-          pnpm install
-          pnpm tauri build --bundles deb,appimage
-
-      - name: Collect Tauri artifacts
-        continue-on-error: true
-        run: |
-          mkdir -p dist/release/extra
-          shopt -s nullglob
-          for f in app/src-tauri/target/release/bundle/deb/*.deb app/src-tauri/target/release/bundle/appimage/*.AppImage; do
-            cp "$f" dist/release/extra/
+          COCKPIT_HOSTINGER=1 node app/dist-server/index.js &
+          pid=$!
+          trap 'kill $pid 2>/dev/null || true' EXIT
+          for _ in $(seq 1 40); do
+            curl -sf http://127.0.0.1:8787/api/health >/tmp/health.json && break
+            sleep 0.5
           done
+          curl -sf http://127.0.0.1:8787/api/health | tee /tmp/health.json
+          python3 - <<'PY'
+          import json, sys
+          d = json.load(open("/tmp/health.json"))
+          assert d.get("product") == "cockpit", d
+          assert d.get("status") in ("green", "yellow"), d
+          assert "checks" in d and d["checks"].get("hostinger") == "configured", d
+          print("GET /api/health: ok status=%s hostinger=%s" % (d["status"], d["checks"]["hostinger"]))
+          PY
+
+      - name: Stage release assets
+        run: |
+          mkdir -p /tmp/release-assets
+          cp dist/release/cockpit-*-linux-x64.tar.gz dist/release/cockpit-*-web.tar.gz /tmp/release-assets/
+          ls -lh /tmp/release-assets/
 
       - name: GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true
+          fail_on_unmatched_files: false
           files: |
-            dist/release/cockpit-*-linux-x64.tar.gz
-            dist/release/cockpit-*-web.tar.gz
-            dist/release/extra/*
+            /tmp/release-assets/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install Rust
+        continue-on-error: true
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Linux deps (Tauri)
+        continue-on-error: true
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf
+
+      - name: Build Tauri (optional, non-blocking)
+        continue-on-error: true
+        timeout-minutes: 20
+        working-directory: app
+        run: |
+          pnpm install
+          pnpm tauri build --bundles deb,appimage
