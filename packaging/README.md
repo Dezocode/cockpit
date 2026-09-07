@@ -2,17 +2,19 @@
 
 Install root: **`/opt/cockpit`** — separate from Saul `/root/.grok` and `saul-go`.
 
-## One-liners (v2.1.1+)
+## One-liners (v2.1.4+)
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Dezocode/cockpit/v2.1.2/scripts/hostinger-grok-build.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/Dezocode/cockpit/v2.1.4/scripts/hostinger-grok-build.sh | sudo bash
 ```
 
 Or:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Dezocode/cockpit/v2.1.2/scripts/install-hostinger.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/Dezocode/cockpit/v2.1.4/scripts/install-hostinger.sh | sudo bash
 ```
+
+Canon draft alignment: `tmp/t847u/README.md`
 
 ## Packaging layout
 
@@ -24,6 +26,7 @@ curl -fsSL https://raw.githubusercontent.com/Dezocode/cockpit/v2.1.2/scripts/ins
 | `scripts/install-hostinger.sh` | full Hostinger install |
 | `deploy/hostinger-grok-build-install.sh` | grok-build subscription recipe (canonical) |
 | `scripts/hostinger-grok-build.sh` | thin wrapper → deploy recipe |
+| `packaging/health-server.js` | minimal GET `/api/health` bootstrap (optional) |
 | `scripts/hostinger-health.sh` | GET `/api/health` probe |
 
 ## Health
