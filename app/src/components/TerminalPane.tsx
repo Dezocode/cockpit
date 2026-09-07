@@ -1,17 +1,21 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import "@xterm/xterm/css/xterm.css";
-import { ptyWebSocketUrl } from "../lib/api";
+import { api, ptyWebSocketUrl } from "../lib/api";
+import { GhuiChip } from "./GhuiChip";
 
 interface TerminalPaneProps {
   agentId?: string;
 }
 
+/** Web PTY via ws. Foot/Ghostty = shell-out registry (not embedded in xterm). */
 export function TerminalPane({ agentId }: TerminalPaneProps) {
   const ref = useRef<HTMLDivElement>(null);
-  const termRef = useRef<Terminal | null>(null);
+  const [shellOut, setShellOut] = useState<string | null>(null);
+  const { data: emulators } = useQuery({ queryKey: ["emulators"], queryFn: api.emulators });
 
   useEffect(() => {
     if (!ref.current) return;
@@ -25,18 +29,14 @@ export function TerminalPane({ agentId }: TerminalPaneProps) {
     term.loadAddon(new WebLinksAddon());
     term.open(ref.current);
     fit.fit();
-    termRef.current = term;
 
-    term.writeln(`\x1b[36mcockpit\x1b[0m terminal ${agentId ? `[${agentId}]` : ""}`);
-    term.writeln("Connecting PTY…");
+    term.writeln("\x1b[36mcockpit\x1b[0m web PTY (xterm6)");
+    term.writeln("\x1b[33mFoot/Ghostty: shell-out registry only — not fake-attached here\x1b[0m");
 
     let ws: WebSocket | null = null;
     try {
       ws = new WebSocket(ptyWebSocketUrl());
-      ws.onopen = () => {
-        term.writeln("\x1b[32mPTY connected\x1b[0m");
-        ws?.send(JSON.stringify({ type: "input", data: "echo cockpit pty ready\r" }));
-      };
+      ws.onopen = () => term.writeln("\x1b[32mPTY ws connected\x1b[0m");
       ws.onmessage = (ev) => {
         try {
           const msg = JSON.parse(String(ev.data)) as { type: string; data?: string };
@@ -45,21 +45,14 @@ export function TerminalPane({ agentId }: TerminalPaneProps) {
           term.write(String(ev.data));
         }
       };
-      ws.onerror = () => term.writeln("\x1b[33mPTY ws offline — start: pnpm dev:web\x1b[0m");
+      ws.onerror = () => term.writeln("\x1b[33mPTY offline — cockpit-web\x1b[0m");
+      term.onData((d) => ws?.readyState === WebSocket.OPEN && ws.send(JSON.stringify({ type: "input", data: d })));
     } catch {
-      term.writeln("\x1b[33mPTY unavailable in this context\x1b[0m");
+      term.writeln("\x1b[33mPTY unavailable\x1b[0m");
     }
 
-    term.onData((data) => ws?.readyState === WebSocket.OPEN && ws.send(JSON.stringify({ type: "input", data })));
-
-    const ro = new ResizeObserver(() => {
-      fit.fit();
-      if (ws?.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ type: "resize", cols: term.cols, rows: term.rows }));
-      }
-    });
+    const ro = new ResizeObserver(() => fit.fit());
     ro.observe(ref.current);
-
     return () => {
       ro.disconnect();
       ws?.close();
@@ -67,5 +60,25 @@ export function TerminalPane({ agentId }: TerminalPaneProps) {
     };
   }, [agentId]);
 
-  return <div ref={ref} className="h-full w-full p-1" />;
+  const launchShellOut = (id: string) => {
+    setShellOut(id);
+    api.shellOut(id).catch(() => setShellOut(`${id}: launch via TUI/Foot (dezohost socket)`));
+  };
+
+  return (
+    <div className="flex h-full flex-col">
+      <div className="flex gap-1 border-b border-slate-800 p-1">
+        {(emulators?.registry ?? []).map((e) => (
+          <GhuiChip
+            key={e.id}
+            label={e.sizeOwning ? `${e.label} · size-owning` : e.label}
+            tone={e.sizeOwning ? "cyan" : "yellow"}
+            onClick={() => launchShellOut(e.id)}
+          />
+        ))}
+        {shellOut && <span className="text-xs text-slate-400">{shellOut}</span>}
+      </div>
+      <div ref={ref} className="min-h-0 flex-1 p-1" />
+    </div>
+  );
 }

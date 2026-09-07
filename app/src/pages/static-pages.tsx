@@ -71,23 +71,3 @@ export function BenchPage() {
   );
 }
 
-export function ModelsPage() {
-  const models = [
-    "claude-sonnet-5",
-    "composer-2.5",
-    "gpt-5.6-sol-high",
-    "gemini-3.8-flash-high",
-    "frontier-subscription",
-  ];
-  return (
-    <div className="p-3 text-sm">
-      <h2 className="mb-2 text-cyan-300">MODELS</h2>
-      <p className="mb-2 text-slate-400">Envelope: frontier_subscription only — local Qwen / sol-v1.7.1 denied.</p>
-      <ul className="space-y-1">
-        {models.map((m) => (
-          <li key={m} className="rounded border border-slate-700 px-2 py-1">{m}</li>
-        ))}
-      </ul>
-    </div>
-  );
-}

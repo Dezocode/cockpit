@@ -55,29 +55,99 @@ function healthCheck() {
 const app = new Hono();
 app.use("/*", cors());
 
+// GitHub CLI public OAuth app (device-flow) — tokens land in gh OS keyring only, never in repo.
+const GH_CLI_CLIENT_ID = "178c6fc778ccc68e1d6a";
+
+const deviceSessions = new Map<string, { interval: number; expires: number }>();
+
 app.get("/api/health", (c) => c.json(healthCheck()));
 app.get("/api/agents", (c) => c.json(readJson("agents.json", { agents: [], seed: "cockpit-20260907" })));
 app.get("/api/layout", (c) => c.json(readJson("layout.json", { panels: [], activePanel: "AGENT" })));
 app.get("/api/auth/gh", (c) => c.json(ghAuthStatus()));
-app.post("/api/auth/gh/login", (c) =>
-  c.json({ command: "gh auth login -h github.com -p https -w", message: "Run locally; splash reads auth state." }),
-);
+
+app.post("/api/auth/gh/device/start", async (c) => {
+  const res = await fetch("https://github.com/login/device/code", {
+    method: "POST",
+    headers: { Accept: "application/json", "Content-Type": "application/json" },
+    body: JSON.stringify({ client_id: GH_CLI_CLIENT_ID, scope: "repo,gist,read:org" }),
+  });
+  const data = (await res.json()) as {
+    device_code: string;
+    user_code: string;
+    verification_uri: string;
+    expires_in: number;
+    interval: number;
+  };
+  deviceSessions.set(data.device_code, {
+    interval: data.interval,
+    expires: Date.now() + data.expires_in * 1000,
+  });
+  return c.json(data);
+});
+
+app.post("/api/auth/gh/device/poll", async (c) => {
+  const { device_code } = (await c.req.json()) as { device_code: string };
+  const session = deviceSessions.get(device_code);
+  if (!session || Date.now() > session.expires) {
+    return c.json({ status: "error", message: "device code expired" });
+  }
+  const res = await fetch("https://github.com/login/oauth/access_token", {
+    method: "POST",
+    headers: { Accept: "application/json", "Content-Type": "application/json" },
+    body: JSON.stringify({ client_id: GH_CLI_CLIENT_ID, device_code, grant_type: "urn:ietf:params:oauth:grant-type:device_code" }),
+  });
+  const data = (await res.json()) as { access_token?: string; error?: string; interval?: number };
+  if (data.access_token) {
+    try {
+      execSync("gh auth login --with-token", {
+        input: data.access_token,
+        encoding: "utf8",
+        stdio: ["pipe", "pipe", "pipe"],
+      });
+    } catch {
+      /* gh stores in OS keyring when available */
+    }
+    deviceSessions.delete(device_code);
+    const gh = ghAuthStatus();
+    return c.json({ status: "complete", authenticated: gh.authenticated, user: gh.user });
+  }
+  if (data.error === "authorization_pending") {
+    return c.json({ status: "pending" });
+  }
+  return c.json({ status: "error", message: data.error ?? "poll failed" });
+});
+
 app.get("/api/emulators", (c) =>
   c.json({
     registry: [
-      { id: "foot", label: "Foot", sizeOwning: true, dezohostSocket: true },
-      { id: "ghostty", label: "Ghostty", sizeOwning: false, dezohostSocket: false },
+      { id: "foot", label: "Foot", sizeOwning: true, shellOut: true, dezohostSocket: true },
+      { id: "ghostty", label: "Ghostty", sizeOwning: false, shellOut: true, dezohostSocket: false },
     ],
+    funnel: "OFF",
+    serve: "OFF",
   }),
 );
+
+app.post("/api/emulators/:id/launch", (c) => {
+  const id = c.req.param("id");
+  const cmd = id === "foot" ? "foot" : id === "ghostty" ? "ghostty" : null;
+  if (!cmd) return c.json({ ok: false, message: "unknown emulator" }, 404);
+  return c.json({
+    ok: true,
+    message: `Shell-out ${cmd} via dezohost product socket (Foot size-owning). Not embedded in xterm.`,
+  });
+});
+
 app.get("/api/computers", (c) =>
   c.json({
     computers: [
       { id: "local", name: "Local Dev", status: "online", latencyMs: 0, tailnet: false },
+      { id: "hermes", name: "Hermes Deck", status: "online", latencyMs: 12, tailnet: true, role: "hermes" },
       { id: "hostinger", name: "Hostinger VPS", status: "online", latencyMs: 42, tailnet: true },
       { id: "omarchy", name: "Omarchy Pad", status: "online", latencyMs: 8, tailnet: false },
     ],
     offlineThresholdMs: 3000,
+    hermesNote: "Deck receipt / COMPUTERS node — NOT an AGENT provider",
   }),
 );
 app.get("/api/memory", (c) =>

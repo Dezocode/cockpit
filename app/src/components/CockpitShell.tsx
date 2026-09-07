@@ -5,11 +5,12 @@ import {
   DockviewReadyEvent,
   IDockviewPanelProps,
   DockviewApi,
-} from "dockview";
-import "dockview/dist/styles/dockview.css";
-import { PAGE_IDS, type PageId } from "../lib/types";
+} from "dockview-react";
+import "dockview-react/dist/styles/dockview.css";
+import { Group, Panel, Separator } from "react-resizable-panels";
+import { PAGE_IDS, type PageId, type AgentBarChip } from "../lib/types";
 import { useCockpitStore } from "../stores/cockpit";
-import { GhuiChip } from "./GhuiChip";
+import { AgentBar, chipToPage } from "./AgentBar";
 import {
   AgentPage,
   FilesPage,
@@ -18,7 +19,6 @@ import {
   SetupPage,
   PrsPage,
   BenchPage,
-  ModelsPage,
 } from "../pages/static-pages";
 import { MemoryPage, ComputersPage } from "../pages/data-pages";
 
@@ -34,8 +34,6 @@ function panelFactory(id: PageId) {
       return MemoryPage;
     case "COMPUTERS":
       return ComputersPage;
-    case "MODELS":
-      return ModelsPage;
     case "BENCH":
       return BenchPage;
     case "PRS":
@@ -67,52 +65,69 @@ export function CockpitShell() {
   const activePage = useCockpitStore((s) => s.activePage);
   const apiRef = useRef<DockviewApi | null>(null);
 
-  const focusPage = useCallback((id: PageId) => {
-    setActivePage(id);
-    apiRef.current?.getPanel(id)?.api.setActive();
-  }, [setActivePage]);
+  const focusPage = useCallback(
+    (id: PageId) => {
+      setActivePage(id);
+      apiRef.current?.getPanel(id)?.api.setActive();
+    },
+    [setActivePage],
+  );
 
-  const onReady = useCallback((event: DockviewReadyEvent) => {
-    apiRef.current = event.api;
-    PAGE_IDS.forEach((id, i) => {
-      event.api.addPanel({
-        id,
-        component: "default",
-        title: id,
-        position: i === 0 ? undefined : { referencePanel: PAGE_IDS[i - 1], direction: "right" },
+  const onReady = useCallback(
+    (event: DockviewReadyEvent) => {
+      apiRef.current = event.api;
+      PAGE_IDS.forEach((id, i) => {
+        event.api.addPanel({
+          id,
+          component: "default",
+          title: id,
+          position: i === 0 ? undefined : { referencePanel: PAGE_IDS[i - 1], direction: "right" },
+        });
       });
-    });
-    event.api.onDidActivePanelChange((panel) => {
-      if (panel) setActivePage(panel.id as PageId);
-    });
-  }, [setActivePage]);
+      event.api.onDidActivePanelChange(() => {
+        const active = event.api.activePanel;
+        if (active) setActivePage(active.id as PageId);
+      });
+    },
+    [setActivePage],
+  );
 
   useEffect(() => {
-    const hash = location.hash.replace("#", "") as PageId;
-    if (hash && PAGE_IDS.includes(hash)) {
-      focusPage(hash);
+    const hash = location.hash.replace("#", "") as PageId | "MODEL";
+    if (hash === "MODEL") {
+      focusPage("COMPUTERS");
+      return;
+    }
+    if (hash && PAGE_IDS.includes(hash as PageId)) {
+      focusPage(hash as PageId);
     }
   }, [location.hash, focusPage]);
 
-  const focusPageNav = (id: PageId) => focusPage(id);
+  const onBarChip = (chip: AgentBarChip) => {
+    if (chip === "RESTART") {
+      window.location.reload();
+      return;
+    }
+    const page = chipToPage(chip);
+    if (page) focusPage(page);
+  };
 
   return (
     <div className="flex h-screen flex-col">
-      <nav className="flex flex-wrap items-center gap-2 border-b border-slate-700 bg-[#121820] px-3 py-2">
-        <span className="mr-2 font-bold text-cyan-300">cockpit</span>
-        {PAGE_IDS.map((id) => (
-          <GhuiChip
-            key={id}
-            label={id}
-            tone={activePage === id ? "cyan" : "yellow"}
-            active={activePage === id}
-            onClick={() => focusPageNav(id)}
-          />
-        ))}
-      </nav>
-      <div className="dockview-theme-cockpit flex-1">
-        <DockviewReact components={components} onReady={onReady} className="h-full w-full" />
-      </div>
+      <AgentBar onChip={onBarChip} providerLabel="AGENT" />
+      <Group orientation="vertical" className="flex-1">
+        <Panel defaultSize={92} minSize={50}>
+          <div className="dockview-theme-cockpit h-full">
+            <DockviewReact components={components} onReady={onReady} className="h-full w-full" />
+          </div>
+        </Panel>
+        <Separator className="h-1 bg-slate-700" />
+        <Panel defaultSize={8} minSize={4}>
+          <div className="flex h-full items-center px-2 text-xs text-slate-500">
+            active: {activePage} · Foot size-owning on dezohost · Funnel OFF · Serve OFF
+          </div>
+        </Panel>
+      </Group>
     </div>
   );
 }

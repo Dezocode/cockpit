@@ -39,13 +39,13 @@ export interface LayoutResponse {
   activePanel: string;
 }
 
+/** Dockview workspace pages — MODELS is a sub-view (`m`) inside COMPUTERS, not a panel. */
 export type PageId =
   | "AGENT"
   | "FILES"
   | "DIFF"
   | "MEMORY"
   | "COMPUTERS"
-  | "MODELS"
   | "BENCH"
   | "PRS"
   | "SETUP"
@@ -58,9 +58,35 @@ export const PAGE_IDS: PageId[] = [
   "DIFF",
   "MEMORY",
   "COMPUTERS",
-  "MODELS",
   "BENCH",
   "PRS",
   "SETUP",
   "MAP",
 ];
+
+/** 6-chip AGENT bar only — no 7th chip (gospel t847u). */
+export const AGENT_BAR_CHIPS = [
+  "PRS",
+  "provider",
+  "FILES",
+  "MEMORY",
+  "MODEL",
+  "RESTART",
+] as const;
+
+export type AgentBarChip = (typeof AGENT_BAR_CHIPS)[number];
+
+export interface DeviceFlowStart {
+  device_code: string;
+  user_code: string;
+  verification_uri: string;
+  expires_in: number;
+  interval: number;
+}
+
+export interface DeviceFlowPoll {
+  status: "pending" | "complete" | "error";
+  authenticated?: boolean;
+  user?: string;
+  message?: string;
+}

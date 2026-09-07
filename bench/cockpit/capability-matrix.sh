@@ -47,8 +47,12 @@ check "app/package.json (cockpit product)" "$pkg"
 grep -q '"name": "cockpit"' "$root/app/package.json" 2>/dev/null && pname=ok || pname=fail
 check "product name cockpit" "$pname"
 
-# Stack deps
-for dep in dockview zustand "@tanstack/react-query" "framer-motion" tailwindcss; do
+# Stack deps (gospel pins)
+grep -q 'dockview-react' "$root/app/package.json" 2>/dev/null && dv=ok || dv=fail
+check "dep dockview-react 8.x" "$dv"
+grep -q 'react-resizable-panels' "$root/app/package.json" 2>/dev/null && rp=ok || rp=fail
+check "dep react-resizable-panels" "$rp"
+for dep in zustand "@tanstack/react-query" "framer-motion" tailwindcss; do
   grep -q "\"$dep\"" "$root/app/package.json" 2>/dev/null && d=ok || d=fail
   check "dep $dep" "$d"
 done
@@ -59,8 +63,8 @@ check "dep @xterm/xterm (xterm6)" "$xterm"
 [[ -f "$root/app/src-tauri/Cargo.toml" ]] && tauri=ok || tauri=fail
 check "src-tauri/Cargo.toml" "$tauri"
 
-grep -q 'portable-pty' "$root/app/src-tauri/Cargo.toml" 2>/dev/null && pty=ok || pty=fail
-check "portable-pty (desktop PTY)" "$pty"
+grep -q 'tauri-plugin-pty' "$root/app/src-tauri/Cargo.toml" 2>/dev/null && pty=ok || pty=fail
+check "tauri-plugin-pty 0.3 (desktop PTY)" "$pty"
 
 grep -q 'node-pty' "$root/app/package.json" 2>/dev/null && npty=ok || npty=fail
 check "node-pty optional (web PTY)" "$npty"
@@ -69,8 +73,23 @@ check "node-pty optional (web PTY)" "$npty"
 [[ -f "$root/app/server/index.ts" ]] && api=ok || api=fail
 check "API server health/agents/layout" "$api"
 
+grep -q 'AGENT_BAR_CHIPS' "$root/app/src/lib/types.ts" 2>/dev/null && bar=ok || bar=fail
+check "6-chip AGENT bar (no 7th)" "$bar"
+
+grep -q 'device/start' "$root/app/server/index.ts" 2>/dev/null && df=ok || df=fail
+check "splash GitHub device-flow API" "$df"
+
+grep -q 'hermes' "$root/app/server/index.ts" 2>/dev/null && hermes=ok || hermes=fail
+check "Hermes COMPUTERS node (not AGENT)" "$hermes"
+
+grep -rq 'ModelsView' "$root/app/src/pages" 2>/dev/null && models=ok || models=fail
+check "MODELS sub-view inside COMPUTERS" "$models"
+
+[[ -f "$root/forge/cockpit-redesign-oneshot.md" ]] && forge=ok || forge=fail
+check "forge gospel on disk" "$forge"
+
 # Pages in source
-for page in MEMORY COMPUTERS MODELS BENCH SPLASH; do
+for page in MEMORY COMPUTERS BENCH SPLASH; do
   grep -rq "$page" "$root/app/src" 2>/dev/null && pg=ok || pg=fail
   check "GUI page $page" "$pg"
 done
