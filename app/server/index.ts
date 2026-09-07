@@ -63,7 +63,7 @@ const GH_CLI_CLIENT_ID = "178c6fc778ccc68e1d6a";
 
 const deviceSessions = new Map<string, { interval: number; expires: number }>();
 
-app.get("/api/health", (c) => c.json(healthCheck()));
+app.get("/api/health", (c) => c.json(healthCheck())); // green contract — see deploy/README.md
 app.get("/api/agents", (c) => c.json(readJson("agents.json", { agents: [], seed: "cockpit-20260907" })));
 app.get("/api/layout", (c) => c.json(readJson("layout.json", { panels: [], activePanel: "AGENT" })));
 app.get("/api/auth/gh", (c) => c.json(ghAuthStatus()));

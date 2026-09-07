@@ -22,7 +22,8 @@ curl -fsSL https://raw.githubusercontent.com/Dezocode/cockpit/v2.1.2/scripts/ins
 | `packaging/systemd/cockpit-web-heal.sh` | artifact/port heal |
 | `packaging/nginx/cockpit.conf` | TLS + `/api/health` proxy |
 | `scripts/install-hostinger.sh` | full Hostinger install |
-| `scripts/hostinger-grok-build.sh` | grok-build subscription lane |
+| `deploy/hostinger-grok-build-install.sh` | grok-build subscription recipe (canonical) |
+| `scripts/hostinger-grok-build.sh` | thin wrapper → deploy recipe |
 | `scripts/hostinger-health.sh` | GET `/api/health` probe |
 
 ## Health
