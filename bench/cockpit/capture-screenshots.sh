@@ -77,17 +77,17 @@ shot "$ui_base/splash/staging?reset=1" "$out/staging-empty.png"
 # Staging with 3 panels
 shot "$ui_base/splash/staging?demo=3panels" "$out/staging-3-panels.png"
 
-# Graph resize + focus rings (graph panel open) — distinct demo badges
-shot "$ui_base/splash/staging?demo=graph" "$out/graph-resize.png" 3500
+# Graph resize + focus rings — distinct action frames (ghui-cyan, FILES+GRAPH vs FILES-only)
+shot "$ui_base/splash/staging?demo=graph&reset=1" "$out/graph-resize.png" 4000
 
-# Fullscreen staging
-shot "$ui_base/splash/staging?demo=fullscreen" "$out/fullscreen.png" 3000
+# Fullscreen staging — FILES+GRAPH + exit fullscreen chrome
+shot "$ui_base/splash/staging?demo=fullscreen&reset=1" "$out/fullscreen.png" 4000
 
-# Focus rings on theme switcher
-shot "$ui_base/splash/staging?demo=focus" "$out/focus-rings.png" 3000
+# Focus rings — ghui-cyan theme switcher focus on FILES canvas
+shot "$ui_base/splash/staging?demo=focus&reset=1" "$out/focus-rings.png" 4000
 
-# ghui-cyan theme proof (≥3 themes gate)
-shot "$ui_base/splash/staging?demo=theme-ghui-cyan&reset=1" "$out/theme-ghui-cyan.png" 3500
+# ghui-cyan theme proof (≥3 themes gate) — FILES panel, ghui-cyan active
+shot "$ui_base/splash/staging?demo=theme-ghui-cyan&reset=1" "$out/theme-ghui-cyan.png" 4000
 
 # Legacy workspace parity (v2.1.4 baseline)
 shot "$ui_base/workspace#AGENT" "$out/agents-20plus.png" 6000

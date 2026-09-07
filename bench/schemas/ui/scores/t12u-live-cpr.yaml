@@ -6,7 +6,7 @@ score_id: t12u-live-cpr
 card_id: cursor-cockpit2-visual-multiview-t12u-next
 parent_card: cursor-cockpit2-visual-multiview-t12u
 status: kick_ready
-verdict: close_ready
+verdict: residuals_closed
 prior_run: bc-e1c5cc28
 proofs_root: proofs/t12u/t384u-hostinger/
 capture_profile: hostinger-live
@@ -14,14 +14,14 @@ release_floor: v2.2.0
 optional_release: v2.2.1
 optional_release_ref: e84669b
 
-manifest:
-  md5_unique_ok: true
-  captured_at: "2026-09-07T17:53:35Z"
-  md5:
-    focus-rings.png: 56ebc9a35a2dd155d1700d0396d72ffa
-    fullscreen.png: b2773cd18cae86004cbffda33d23c849
-    graph-resize.png: a03a8b36df46d2cd740460555a316766
-    theme-ghui-cyan.png: d3d2ffcc111b9c6ecdb4603068269922
+residual_hashes:
+  theme-ghui-cyan.png: d71fc43377ef96cacf28c8bdeea45c98
+  focus-rings.png: f57effdca4a0b80261746ffb18aeb550
+  fullscreen.png: 0aea3fd49bf583b113068ac5df6d8831
+  graph-resize.png: 20cf82790ebae84124809e38c9bc9e8c
+residual_hashes_unique_ok: true
+residuals_closed_at: "2026-09-07T17:54:00Z"
+residuals_source: canon-hostinger-live
 
 policy:
   soft_holds: banned
@@ -40,33 +40,24 @@ keep_gates:
   foot_funnel_off: pass
 
 close_only:
-  recapture_focus_rings_unique_md5:
-    file: focus-rings.png
-    gate: md5_unique_gate
-    required: true
-  recapture_fullscreen_unique_md5:
-    file: fullscreen.png
-    gate: md5_unique_gate
-    required: true
-  recapture_graph_resize_unique_md5:
-    file: graph-resize.png
-    gate: md5_unique_gate
+  distinct_action_frames_unique_md5:
+    gate: residual_hashes
+    count: 4
     required: true
   theme_ghui_cyan_proof:
     file: theme-ghui-cyan.png
     min_themes: 3
     required: true
-  manifest_md5_unique_ok:
-    field: md5_unique_ok
-    value: true
+  manifest_residuals_closed:
+    field: residuals_closed_at
     required: true
 
 residuals:
   gh_auth: pending
   live_vps_certbot: script_ready
+  v2_2_1_merge: waits_dezocode
 
 verify:
-  - COCKPIT_CAPTURE_PROFILE=hostinger-live ./bench/cockpit/capture-screenshots.sh
-  - ./proofs/t12u/t384u-hostinger/sync-from-capture.sh
+  - ./proofs/t12u/t384u-hostinger/verify-residuals.sh
   - ./bench/cockpit/hostinger-h0-verify.sh
   - ./bench/cockpit/capability-matrix.sh

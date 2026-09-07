@@ -21,6 +21,7 @@ export function ThemeSwitcher({ value, onChange, compact }: ThemeSwitcherProps) 
               saveTheme(t.id);
               onChange(t.id);
             }}
+            data-theme={t.id}
           >
             {t.label}
           </button>

@@ -179,22 +179,10 @@ export function StagingMultiview() {
         });
         syncCount(event.api);
       } else if (demoMode === "graph") {
-        event.api.addPanel({
-          id: newPanelId("GRAPH"),
-          component: "staging",
-          title: "GRAPH",
-          params: { panelType: "GRAPH" },
-        });
-        syncCount(event.api);
-      } else if (demoMode === "fullscreen") {
-        containerRef.current?.setAttribute("data-screenshot-fullscreen", "1");
-        setFullscreen(true);
-      } else if (demoMode === "focus") {
-        window.setTimeout(() => {
-          document.querySelector<HTMLButtonElement>('[aria-label="Theme switcher"] button')?.focus();
-        }, 300);
-      } else if (demoMode === "theme-ghui-cyan") {
-        ["AGENTS", "COMPUTERS", "FILES"].forEach((t) => {
+        saveTheme("ghui-cyan");
+        applyTheme("ghui-cyan");
+        setTheme("ghui-cyan");
+        ["FILES", "GRAPH"].forEach((t) => {
           event.api.addPanel({
             id: newPanelId(t as StagingPanelType),
             component: "staging",
@@ -204,6 +192,51 @@ export function StagingMultiview() {
               ? { referencePanel: event.api.panels[event.api.panels.length - 1].id, direction: "right" }
               : undefined,
           });
+        });
+        syncCount(event.api);
+      } else if (demoMode === "fullscreen") {
+        saveTheme("ghui-cyan");
+        applyTheme("ghui-cyan");
+        setTheme("ghui-cyan");
+        ["FILES", "GRAPH"].forEach((t) => {
+          event.api.addPanel({
+            id: newPanelId(t as StagingPanelType),
+            component: "staging",
+            title: t,
+            params: { panelType: t as StagingPanelType },
+            position: event.api.panels.length
+              ? { referencePanel: event.api.panels[event.api.panels.length - 1].id, direction: "right" }
+              : undefined,
+          });
+        });
+        containerRef.current?.setAttribute("data-screenshot-fullscreen", "1");
+        setFullscreen(true);
+        syncCount(event.api);
+      } else if (demoMode === "focus") {
+        saveTheme("ghui-cyan");
+        applyTheme("ghui-cyan");
+        setTheme("ghui-cyan");
+        event.api.addPanel({
+          id: newPanelId("FILES"),
+          component: "staging",
+          title: "FILES",
+          params: { panelType: "FILES" },
+        });
+        syncCount(event.api);
+        window.setTimeout(() => {
+          document
+            .querySelector<HTMLButtonElement>('[aria-label="Theme switcher"] button[data-theme="ghui-cyan"]')
+            ?.focus();
+        }, 400);
+      } else if (demoMode === "theme-ghui-cyan") {
+        saveTheme("ghui-cyan");
+        applyTheme("ghui-cyan");
+        setTheme("ghui-cyan");
+        event.api.addPanel({
+          id: newPanelId("FILES"),
+          component: "staging",
+          title: "FILES",
+          params: { panelType: "FILES" },
         });
         syncCount(event.api);
       }
@@ -270,7 +303,6 @@ export function StagingMultiview() {
       <AgentBar onChip={onBarChip} providerLabel="AGENT" />
       <div className={styles.toolbar}>
         <span className={styles.brand}>staging multiview</span>
-        {demoMode && <span className={styles.demoBadge} data-demo={demoMode}>{demoMode}</span>}
         <ThemeSwitcher value={theme} onChange={setTheme} compact />
         <button type="button" className={styles.btn} onClick={() => addPanel("GRAPH")}>
           + graph
