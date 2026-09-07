@@ -2,6 +2,8 @@
 
 Terminal console aesthetic — fieldset panels, monospace, token-driven chrome. **Do not copy LMS/course content.**
 
+Style reference: `proofs/t12u/style-ref-fieldset.png` — **STYLE ONLY** (cyan `#00FFFF` hairline fieldsets, magenta `#FF00FF` active/focus, dense tiled multiview).
+
 ## Tokens (`app/src/styles/tokens.css`)
 
 All panel CSS modules MUST reference CSS variables only:

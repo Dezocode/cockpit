@@ -9,6 +9,7 @@ import "./styles/tokens.css";
 import "./styles/themes/fieldset-dark.css";
 import "./styles/themes/ghui-cyan.css";
 import "./styles/themes/high-contrast.css";
+import "./styles/density.css";
 import "./index.css";
 
 const queryClient = new QueryClient();

@@ -239,6 +239,9 @@ check "install.sh cockpit PATH/alias" "$path"
 ls "$root/app/src/panels/"*.module.css >/dev/null 2>&1 && mod=ok || mod=fail
 check "CSS modules per panel" "$mod"
 
+[[ -f "$root/app/src/styles/density.css" ]] && den=ok || den=fail
+check "density.css hairline tables (style-ref chrome)" "$den"
+
 # Emulator registry
 grep -rq 'foot\|ghostty' "$root/app" 2>/dev/null && emu=ok || emu=fail
 check "Ghostty+Foot emulator registry" "$emu"

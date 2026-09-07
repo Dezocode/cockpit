@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../../lib/api";
 import { ModelsView } from "../../pages/ModelsView";
+import { GhuiChip } from "../GhuiChip";
 import styles from "../../panels/ComputersPanel.module.css";
 
 export function ComputersPanelContent() {
@@ -19,7 +20,7 @@ export function ComputersPanelContent() {
   if (showModels) {
     return (
       <div className={styles.root}>
-        <div className={styles.note}>view m · MODELS (inside COMPUTERS)</div>
+        <GhuiChip label="view m · MODELS" tone="magenta" onClick={() => setShowModels(false)} />
         <ModelsView />
       </div>
     );
@@ -27,20 +28,30 @@ export function ComputersPanelContent() {
 
   return (
     <div className={styles.root}>
-      <div className={styles.note}>Hermes = Deck receipt node — NOT AGENT provider</div>
-      <div className={styles.list}>
-        {(data?.computers ?? []).map((c) => (
-          <div key={c.id} className={styles.row}>
-            <span>
-              {c.name}
-              {c.role === "hermes" && <span className={styles.hermes}>Hermes · Deck</span>}
-            </span>
-            <span className={c.status === "online" ? styles.badge : `${styles.badge} ${styles.badgeWarn}`}>
-              {c.status} · {c.latencyMs}ms
-            </span>
-          </div>
-        ))}
+      <div className={styles.toolbar}>
+        <GhuiChip label="view m · nodes" tone="cyan" onClick={() => setShowModels(true)} />
       </div>
+      <table className="denseTable">
+        <thead>
+          <tr>
+            <th>node</th>
+            <th>status</th>
+            <th>ms</th>
+          </tr>
+        </thead>
+        <tbody>
+          {(data?.computers ?? []).map((c) => (
+            <tr key={c.id} className={c.role === "hermes" ? "denseRowActive" : undefined}>
+              <td>
+                {c.name}
+                {c.role === "hermes" && <span className={styles.hermes}> · Deck</span>}
+              </td>
+              <td>{c.status}</td>
+              <td>{c.latencyMs}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }

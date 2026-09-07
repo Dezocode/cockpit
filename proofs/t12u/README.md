@@ -1,12 +1,25 @@
 # t12u style reference (STYLE ONLY)
 
-Canon-attached fieldset terminal console aesthetic reference.
+**File:** `style-ref-fieldset.png` (Canon-attached fieldset terminal aesthetic)
 
-**DENY:** copying LMS/course content (Assignments, Syllabus, course numbers, etc.).  
-**USE:** border treatment, title-in-border, cyan/magenta chrome, monospace density.
+## Match (chrome/palette/density only)
 
-Compare captures against:
+| Element | Rule |
+|---------|------|
+| Fieldset border | 1px cyan hairline (`--cockpit-border` / `#00FFFF`) |
+| Title-in-border | `FieldsetPanel` legend embedded in top border |
+| Active / focus | Magenta (`--cockpit-active` / `#FF00FF`) |
+| Typography | Monospace, `var(--cockpit-font-xs)` dense body |
+| Multiview | Tight tiled dockview panels, minimal padding |
+| Tables | `denseTable` class — hairline cell borders |
+
+## DENY (never from style-ref content)
+
+LMS / course / syllabus / grades / assignment titles / professor names / course numbers.
+
+## Compare captures
+
 - `proofs/t72u/t384u-live-spa/login-splash.png`
 - `proofs/t72u/t384u-live-spa/staging-3-panels.png`
 
-Gospel gap table: `aspects/cockpit2-visual-multiview-t12u.md`
+Gospel: `bench/cursor/reports/t10u-cockpit-visual-multiview-gospel.md`

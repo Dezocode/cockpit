@@ -81,12 +81,16 @@ export function SplashPage() {
         </FieldsetPanel>
       </div>
 
-      {health && (
-        <GhuiChip
-          label={`health ${health.status}`}
-          tone={health.status === "green" ? "cyan" : "warn"}
-        />
-      )}
+      <div className={styles.statusRow}>
+        {health && (
+          <FieldsetPanel title="health">
+            <GhuiChip
+              label={health.status}
+              tone={health.status === "green" ? "cyan" : "warn"}
+            />
+          </FieldsetPanel>
+        )}
+      </div>
 
       <button
         type="button"
@@ -94,7 +98,7 @@ export function SplashPage() {
         disabled={!gh?.authenticated}
         className={styles.enterBtn}
       >
-        Enter staging multiview
+        enter staging multiview
       </button>
     </motion.div>
   );

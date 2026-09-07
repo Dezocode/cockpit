@@ -57,9 +57,9 @@ fi
 pnpm --dir "$root/app" exec playwright install chromium 2>/dev/null || true
 
 shot() {
-  local url=$1 file=$2
-  pnpm --dir "$root/app" exec playwright screenshot "$url" "$file" --wait-for-timeout 2500 2>/dev/null || \
-    npx --yes playwright screenshot "$url" "$file" --wait-for-timeout 2500 2>/dev/null || true
+  local url=$1 file=$2 wait=${3:-2500}
+  pnpm --dir "$root/app" exec playwright screenshot "$url" "$file" --wait-for-timeout "$wait" 2>/dev/null || \
+    npx --yes playwright screenshot "$url" "$file" --wait-for-timeout "$wait" 2>/dev/null || true
 }
 
 # Pre-auth login splash (hold redirect)
@@ -82,9 +82,9 @@ shot "$ui_base/splash/staging?demo=fullscreen" "$out/fullscreen.png"
 shot "$ui_base/splash/staging?demo=focus" "$out/focus-rings.png"
 
 # Legacy workspace parity (v2.1.4 baseline)
-shot "$ui_base/workspace#AGENT" "$out/agents-20plus.png"
-shot "$ui_base/workspace#COMPUTERS" "$out/computers.png"
-shot "$ui_base/workspace#MEMORY" "$out/memory.png"
+shot "$ui_base/workspace#AGENT" "$out/agents-20plus.png" 6000
+shot "$ui_base/workspace#COMPUTERS" "$out/computers.png" 6000
+shot "$ui_base/workspace#MEMORY" "$out/memory.png" 6000
 
 cat >"$out/MANIFEST.json" <<EOF
 {

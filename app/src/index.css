@@ -8,23 +8,13 @@ body,
   background: var(--cockpit-bg);
   color: var(--cockpit-text);
   font-family: var(--cockpit-font);
-}
-
-.ghui-chip-cyan {
-  background: color-mix(in srgb, var(--cockpit-accent) 18%, transparent);
-  border: 1px solid var(--cockpit-accent);
-  color: var(--cockpit-accent);
-}
-
-.ghui-chip-yellow {
-  background: color-mix(in srgb, var(--cockpit-accent-alt) 18%, transparent);
-  border: 1px solid var(--cockpit-accent-alt);
-  color: var(--cockpit-accent-alt);
+  font-size: var(--cockpit-font-sm);
+  line-height: 1.35;
 }
 
 *:focus-visible {
-  outline: 2px solid var(--cockpit-focus-ring);
-  outline-offset: 1px;
+  outline: 1px solid var(--cockpit-focus-ring);
+  outline-offset: 0;
 }
 
 .dockview-theme-cockpit {
@@ -33,8 +23,19 @@ body,
   --dv-activegroup-visiblepanel-tab-background-color: var(--cockpit-panel);
   --dv-activegroup-hiddenpanel-tab-background-color: var(--cockpit-bg);
   --dv-inactivegroup-visiblepanel-tab-background-color: var(--cockpit-bg);
-  --dv-tab-divider-color: var(--cockpit-border-muted);
-  --dv-separator-border: var(--cockpit-border-muted);
+  --dv-tab-divider-color: var(--cockpit-border);
+  --dv-separator-border: var(--cockpit-border);
   --dv-paneview-header-border-color: var(--cockpit-border);
   --dv-activegroup-visiblepanel-tab-color: var(--cockpit-active);
+  --dv-inactivegroup-visiblepanel-tab-color: var(--cockpit-chrome);
+  --dv-tabs-container-scrollbar-color: var(--cockpit-border);
+}
+
+.dockview-theme-cockpit .tabs-container .tab.active-tab {
+  color: var(--cockpit-active) !important;
+  border-bottom-color: var(--cockpit-active) !important;
+}
+
+.dockview-theme-cockpit .splitview-view:not(:first-child)::before {
+  background-color: var(--cockpit-border) !important;
 }

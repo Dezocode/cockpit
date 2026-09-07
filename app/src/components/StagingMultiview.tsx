@@ -264,19 +264,22 @@ export function StagingMultiview() {
         </button>
       </div>
       <div className={styles.body}>
-        <aside className={styles.palette} aria-label="Panel palette">
-          <div className={styles.paletteTitle}>drag → canvas</div>
-          {PALETTE.map((type) => (
-            <div
-              key={type}
-              className={styles.paletteItem}
-              draggable
-              onDragStart={(e) => onDragStart(e, type)}
-              onDoubleClick={() => addPanel(type)}
-            >
-              {type}
+        <aside className={styles.paletteWrap} aria-label="Panel palette">
+          <FieldsetPanel title="palette">
+            <div className={styles.paletteInner}>
+              {PALETTE.map((type) => (
+                <div
+                  key={type}
+                  className={styles.paletteItem}
+                  draggable
+                  onDragStart={(e) => onDragStart(e, type)}
+                  onDoubleClick={() => addPanel(type)}
+                >
+                  {type}
+                </div>
+              ))}
             </div>
-          ))}
+          </FieldsetPanel>
         </aside>
         <div className={styles.canvas} onDrop={onDrop} onDragOver={onDragOver}>
           {panelCount === 0 && (
