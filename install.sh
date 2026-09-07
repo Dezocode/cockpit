@@ -199,17 +199,22 @@ if [[ -d "$root/app" && -f "$root/app/package.json" ]]; then
 fi
 
 if [[ "${COCKPIT_INSTALL_HOSTINGER:-0}" == 1 && "$(id -u)" -eq 0 ]]; then
-  install -d /opt/cockpit
-  cp -a "$root/." /opt/cockpit/
-  chown -R cockpit:cockpit /opt/cockpit 2>/dev/null || true
+  COCKPIT_INSTALL_ROOT="${COCKPIT_INSTALL_ROOT:-/opt/cockpit}"
+  case "$COCKPIT_INSTALL_ROOT" in
+    /root/.grok*|*/saul-go*) printf 'DENY: invalid COCKPIT_INSTALL_ROOT=%s\n' "$COCKPIT_INSTALL_ROOT"; exit 1 ;;
+  esac
+  install -d "$COCKPIT_INSTALL_ROOT"
+  rsync -a --exclude node_modules --exclude .git --exclude app/node_modules "$root/" "$COCKPIT_INSTALL_ROOT/" 2>/dev/null || cp -a "$root/." "$COCKPIT_INSTALL_ROOT/"
   id cockpit &>/dev/null || useradd -r -s /usr/sbin/nologin cockpit
-  install -m 0644 "$root/deploy/cockpit-web.service" /etc/systemd/system/cockpit-web.service
-  install -m 0644 "$root/deploy/nginx-cockpit.conf" /etc/nginx/sites-available/cockpit.conf
+  chown -R cockpit:cockpit "$COCKPIT_INSTALL_ROOT" 2>/dev/null || true
+  chmod +x "$COCKPIT_INSTALL_ROOT/packaging/systemd/cockpit-web-heal.sh" 2>/dev/null || true
+  install -m 0644 "$root/packaging/systemd/cockpit-web.service" /etc/systemd/system/cockpit-web.service
+  install -m 0644 "$root/packaging/nginx/cockpit.conf" /etc/nginx/sites-available/cockpit.conf
   ln -sf /etc/nginx/sites-available/cockpit.conf /etc/nginx/sites-enabled/cockpit.conf 2>/dev/null || true
   systemctl daemon-reload
   systemctl enable cockpit-web.service 2>/dev/null || true
   systemctl restart cockpit-web.service 2>/dev/null || systemctl start cockpit-web.service 2>/dev/null || true
-  printf 'Hostinger H0: systemd cockpit-web + nginx TLS (certbot required for HTTPS)\n'
+  printf 'Hostinger H0: %s + systemd + nginx (certbot for TLS)\n' "$COCKPIT_INSTALL_ROOT"
 fi
 
 printf 'Installed to %s\nRun: cockpit   (workspace)\n      cockpit agent   (jump to live Agent pane)\n      cockpit-web     (GUI API server)\n      codex           (Codex CLI)\nProfile sync: cockpit config push|pull (your gh login, secret gist)\nCanonical config: %s\n' \

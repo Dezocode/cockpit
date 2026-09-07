@@ -22,13 +22,13 @@ printf 'Hostinger H0 verify (cockpit-20260907)\n\n'
 grep -q 'COCKPIT_INSTALL_HOSTINGER' "$root/install.sh" && i=ok || i=fail
 check "install.sh Hostinger gate" "$i"
 
-[[ -f "$root/deploy/cockpit-web.service" ]] && s=ok || s=fail
+[[ -f "$root/packaging/systemd/cockpit-web.service" ]] && s=ok || s=fail
 check "systemd cockpit-web.service" "$s"
 
-[[ -f "$root/deploy/nginx-cockpit.conf" ]] && n=ok || n=fail
-check "nginx TLS config" "$n"
+[[ -f "$root/packaging/nginx/cockpit.conf" ]] && n=ok || n=fail
+check "nginx cockpit.conf" "$n"
 
-[[ -x "$root/deploy/hostinger-grok-build-install.sh" ]] && g=ok || g=fail
+[[ -x "$root/scripts/hostinger-grok-build.sh" ]] && g=ok || g=fail
 check "grok-build install lane" "$g"
 
 [[ -f "$root/app/dist-server/index.js" ]] || (cd "$root/app" && pnpm exec tsc -p tsconfig.server.json) 2>/dev/null
