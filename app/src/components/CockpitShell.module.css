@@ -1,0 +1,35 @@
+.shell {
+  display: flex;
+  height: 100vh;
+  flex-direction: column;
+  background: var(--cockpit-bg);
+  color: var(--cockpit-text);
+  font-family: var(--cockpit-font);
+}
+
+.main {
+  flex: 1;
+}
+
+.dock {
+  height: 100%;
+}
+
+.panelWrap {
+  height: 100%;
+  padding: 0.25rem;
+}
+
+.separator {
+  height: 1px;
+  background: var(--cockpit-border-muted);
+}
+
+.footer {
+  display: flex;
+  height: 100%;
+  align-items: center;
+  padding: 0 0.5rem;
+  font-size: 0.65rem;
+  color: var(--cockpit-muted);
+}

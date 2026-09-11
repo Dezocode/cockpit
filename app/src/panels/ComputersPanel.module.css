@@ -1,0 +1,16 @@
+.root {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cockpit-gap);
+  height: 100%;
+  font-size: var(--cockpit-font-xs);
+}
+
+.toolbar {
+  display: flex;
+  gap: var(--cockpit-gap);
+}
+
+.hermes {
+  color: var(--cockpit-active);
+}

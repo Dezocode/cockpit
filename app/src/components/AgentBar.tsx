@@ -1,38 +1,49 @@
 import { GhuiChip } from "./GhuiChip";
 import { AGENT_BAR_CHIPS, type AgentBarChip, type PageId } from "../lib/types";
 import { useCockpitStore } from "../stores/cockpit";
+import styles from "./AgentBar.module.css";
 
 interface AgentBarProps {
   onChip: (chip: AgentBarChip) => void;
   providerLabel?: string;
 }
 
+function isChipActive(chip: AgentBarChip, activePage: PageId): boolean {
+  switch (chip) {
+    case "PRS":
+      return activePage === "PRS";
+    case "FILES":
+      return activePage === "FILES";
+    case "MEMORY":
+      return activePage === "MEMORY";
+    case "MODEL":
+      return activePage === "COMPUTERS";
+    case "provider":
+      return activePage === "SETUP";
+    default:
+      return false;
+  }
+}
+
 export function AgentBar({ onChip, providerLabel = "AGENT" }: AgentBarProps) {
   const activePage = useCockpitStore((s) => s.activePage);
-
-  const tone = (chip: AgentBarChip): "cyan" | "yellow" => {
-    if (chip === "provider") return "cyan";
-    if (chip === "PRS" && activePage === "PRS") return "cyan";
-    if (chip === "FILES" && activePage === "FILES") return "cyan";
-    if (chip === "MEMORY" && activePage === "MEMORY") return "cyan";
-    if (chip === "MODEL" && activePage === "COMPUTERS") return "cyan";
-    return "yellow";
-  };
-
   const label = (chip: AgentBarChip) => (chip === "provider" ? providerLabel : chip);
 
   return (
-    <div className="flex flex-wrap items-center gap-1 border-b border-slate-700 bg-[#121820] px-2 py-1">
-      <span className="mr-1 text-xs font-bold text-cyan-300">cockpit</span>
-      {AGENT_BAR_CHIPS.map((chip) => (
-        <GhuiChip
-          key={chip}
-          label={label(chip)}
-          tone={tone(chip)}
-          active={tone(chip) === "cyan"}
-          onClick={() => onChip(chip)}
-        />
-      ))}
+    <div className={styles.bar}>
+      <span className={styles.brand}>cockpit</span>
+      {AGENT_BAR_CHIPS.map((chip) => {
+        const active = isChipActive(chip, activePage);
+        return (
+          <GhuiChip
+            key={chip}
+            label={label(chip)}
+            tone={active ? "magenta" : "cyan"}
+            active={active}
+            onClick={() => onChip(chip)}
+          />
+        );
+      })}
     </div>
   );
 }

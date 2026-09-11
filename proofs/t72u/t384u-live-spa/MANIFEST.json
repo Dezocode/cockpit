@@ -1,0 +1,25 @@
+{
+  "seed": "cockpit-20260907",
+  "version": "2.2.0",
+  "agent_count": 24,
+  "files": [
+    "hostinger-health.json",
+    "login-splash.png",
+    "splash.png",
+    "staging-empty.png",
+    "staging-3-panels.png",
+    "graph-resize.png",
+    "fullscreen.png",
+    "focus-rings.png",
+    "agents-20plus.png",
+    "live-term.png",
+    "computers.png",
+    "memory.png",
+    "agents.json",
+    "computers.json",
+    "memory.json",
+    "splash-gh-auth.json"
+  ],
+  "health_url": "http://localhost:8787/api/health",
+  "captured_at": "2026-09-07T17:29:25Z"
+}

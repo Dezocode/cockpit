@@ -1,12 +1,16 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { api } from "../lib/api";
 import { GhuiChip } from "../components/GhuiChip";
+import { FieldsetPanel } from "../components/FieldsetPanel";
+import styles from "./SplashPage.module.css";
 
 export function SplashPage() {
   const nav = useNavigate();
+  const [params] = useSearchParams();
+  const holdLogin = params.get("screenshot") === "login";
   const { data: gh, refetch } = useQuery({ queryKey: ["gh-auth"], queryFn: api.ghAuth });
   const { data: health } = useQuery({ queryKey: ["health"], queryFn: api.health });
   const [deviceCode, setDeviceCode] = useState<string | null>(null);
@@ -34,51 +38,67 @@ export function SplashPage() {
     return () => window.clearInterval(id);
   }, [deviceCode, gh?.authenticated, refetch]);
 
+  useEffect(() => {
+    if (holdLogin) return;
+    if (gh?.authenticated) nav("/splash/staging", { replace: true });
+  }, [gh?.authenticated, nav, holdLogin]);
+
   return (
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
-      className="flex min-h-screen flex-col items-center justify-center gap-6 bg-[#0b0f14] p-8"
+      className={styles.page}
     >
-      <h1 className="text-3xl font-bold text-cyan-300">cockpit</h1>
-      <p className="max-w-md text-center text-slate-400">
+      <h1 className={styles.title}>cockpit</h1>
+      <p className={styles.subtitle}>
         GitHub OAuth device-flow · tokens in OS keyring / Stronghold only
       </p>
 
-      <div className="flex flex-col items-center gap-3 rounded-lg border border-slate-700 bg-slate-900/60 p-6">
-        {gh?.authenticated ? (
-          <GhuiChip label={`gh ✓ ${gh.user ?? "authenticated"}`} tone="cyan" />
-        ) : userCode ? (
-          <>
-            <GhuiChip label={`code ${userCode}`} tone="yellow" />
-            <a className="text-sm text-cyan-400 underline" href={verifyUri ?? "https://github.com/login/device"}>
-              {verifyUri}
-            </a>
-            <p className="text-xs text-slate-500">Polling… token stored via gh keyring</p>
-          </>
-        ) : (
-          <button
-            type="button"
-            className="rounded bg-cyan-700 px-4 py-2 text-sm"
-            onClick={() => startDevice.mutate()}
-            disabled={startDevice.isPending}
-          >
-            Start GitHub device flow
-          </button>
+      <div className={styles.fieldsetWrap}>
+        <FieldsetPanel title="auth">
+          <div className={styles.authBody}>
+            {gh?.authenticated ? (
+              <GhuiChip label={`gh ✓ ${gh.user ?? "authenticated"}`} tone="cyan" />
+            ) : userCode ? (
+              <>
+                <GhuiChip label={`code ${userCode}`} tone="warn" />
+                <a className={styles.link} href={verifyUri ?? "https://github.com/login/device"}>
+                  {verifyUri}
+                </a>
+                <p className={styles.hint}>Polling… token stored via gh keyring</p>
+              </>
+            ) : (
+              <button
+                type="button"
+                className={styles.primaryBtn}
+                onClick={() => startDevice.mutate()}
+                disabled={startDevice.isPending}
+              >
+                Start GitHub device flow
+              </button>
+            )}
+          </div>
+        </FieldsetPanel>
+      </div>
+
+      <div className={styles.statusRow}>
+        {health && (
+          <FieldsetPanel title="health">
+            <GhuiChip
+              label={health.status}
+              tone={health.status === "green" ? "cyan" : "warn"}
+            />
+          </FieldsetPanel>
         )}
       </div>
 
-      {health && (
-        <GhuiChip label={`health ${health.status}`} tone={health.status === "green" ? "cyan" : "yellow"} />
-      )}
-
       <button
         type="button"
-        onClick={() => nav("/workspace")}
+        onClick={() => nav("/splash/staging")}
         disabled={!gh?.authenticated}
-        className="rounded bg-cyan-600 px-6 py-2 text-sm disabled:opacity-40"
+        className={styles.enterBtn}
       >
-        Enter workspace
+        enter staging multiview
       </button>
     </motion.div>
   );

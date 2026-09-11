@@ -1,0 +1,39 @@
+card_id: cursor-cockpit2-visual-multiview-t12u
+task_id: cursor-cockpit2-visual-multiview-t12u
+receiver: cursor_cloud
+model: composer-2.5
+envelope: frontier_subscription
+schema_ids:
+  - process/inspect-prior-before-rework
+  - process/final-outlook-legacy-clean
+  - process/live-proof-required
+  - process/done-line-screenshot
+  - harness/keep-what-benches
+  - runtime/frontier-vs-local-envelope
+gospel:
+  authority: bench/cursor/reports/t10u-cockpit-visual-multiview-gospel.md
+  aspect: aspects/cockpit2-visual-multiview-t12u.md
+  kick_packet: bench/cursor/reports/t12u-cockpit-visual-multiview-kick-packet.md
+  forge_mirror: forge/cockpit-visual-multiview-t10u.md
+style_ref: proofs/t12u/style-ref-fieldset.png
+baseline_proofs: proofs/t72u/t384u-live-spa/
+release_floor: v2.2.0
+baseline: v2.1.4
+done_line:
+  - github_release_gte_v2_2_0
+  - fresh_hostinger_after_release
+  - install_sh_cockpit_path_alias
+  - pre_auth_splash_post_auth_staging
+  - themes_gte_3_token_only
+  - t384u_screenshots
+  - zero_capability_regression
+denylist:
+  - funnel
+  - serve
+  - secrets_in_shots
+  - force_push
+  - product_socket_kill
+  - local_qwen_sol
+  - lms_copy
+  - electron_default
+  - seventh_chip

@@ -164,6 +164,17 @@ if [[ -f "$shellrc" ]] &&
     '}' >>"$shellrc"
 fi
 
+# Ensure ~/.local/bin is on PATH and `cockpit` resolves (2.2 alias verify)
+path_marker='# Cockpit PATH'
+if [[ -f "$shellrc" ]] && ! grep -Fqx "$path_marker" "$shellrc"; then
+  printf '\n%s\n' "$path_marker" >>"$shellrc"
+  printf '%s\n' \
+    'export PATH="$HOME/.local/bin:$PATH"' \
+    'if command -v cockpit >/dev/null 2>&1; then' \
+    '  alias cockpit="cockpit"' \
+    'fi' >>"$shellrc"
+fi
+
 # Upgrade an active installation in place. Renaming the old session keeps
 # Agent/FILES alive; only derived views are refreshed afterward so their old
 # command-line session argument cannot strand the toolbar.

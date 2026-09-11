@@ -1,0 +1,45 @@
+.root {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-size: 0.75rem;
+}
+
+.label {
+  color: var(--cockpit-muted);
+}
+
+.select {
+  background: var(--cockpit-bg);
+  color: var(--cockpit-text);
+  border: 1px solid var(--cockpit-border);
+  font-family: var(--cockpit-font);
+  font-size: 0.7rem;
+  padding: 0.25rem 0.5rem;
+}
+
+.select:focus-visible {
+  outline: 2px solid var(--cockpit-focus-ring);
+  outline-offset: 1px;
+}
+
+.options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+
+.option {
+  border: 1px solid var(--cockpit-border-muted);
+  background: var(--cockpit-bg);
+  color: var(--cockpit-text);
+  font-family: var(--cockpit-font);
+  font-size: 0.65rem;
+  padding: 0.2rem 0.45rem;
+  cursor: pointer;
+}
+
+.optionActive {
+  border-color: var(--cockpit-active);
+  color: var(--cockpit-active);
+}

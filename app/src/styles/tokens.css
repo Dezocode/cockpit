@@ -1,0 +1,63 @@
+/* Cockpit 2.2 design tokens — panels MUST use var() only (no hardcoded accent hex in modules). */
+
+:root,
+[data-theme="fieldset-dark"] {
+  --cockpit-bg: #000000;
+  --cockpit-panel: #050508;
+  --cockpit-surface: #08080c;
+  --cockpit-border: #00ffff;
+  --cockpit-border-muted: #006666;
+  --cockpit-chrome: #00ffff;
+  --cockpit-active: #ff00ff;
+  --cockpit-text: #e8e8e8;
+  --cockpit-muted: #66cccc;
+  --cockpit-accent: #00ffff;
+  --cockpit-accent-alt: #ffcc00;
+  --cockpit-focus-ring: #ff00ff;
+  --cockpit-fieldset-title-bg: var(--cockpit-bg);
+  --cockpit-font: "JetBrains Mono", "SF Mono", ui-monospace, monospace;
+  --cockpit-pad: 0.3rem;
+  --cockpit-gap: 0.2rem;
+  --cockpit-font-xs: 0.62rem;
+  --cockpit-font-sm: 0.68rem;
+}
+
+[data-theme="ghui-cyan"] {
+  --cockpit-bg: #0b1117;
+  --cockpit-panel: #101820;
+  --cockpit-surface: #152028;
+  --cockpit-border: #06b6d4;
+  --cockpit-border-muted: #164e63;
+  --cockpit-chrome: #06b6d4;
+  --cockpit-active: #f472b6;
+  --cockpit-text: #ecfeff;
+  --cockpit-muted: #67e8f9;
+  --cockpit-accent: #06b6d4;
+  --cockpit-accent-alt: #fbbf24;
+  --cockpit-focus-ring: #f472b6;
+  --cockpit-fieldset-title-bg: var(--cockpit-bg);
+  --cockpit-pad: 0.3rem;
+  --cockpit-gap: 0.2rem;
+  --cockpit-font-xs: 0.62rem;
+  --cockpit-font-sm: 0.68rem;
+}
+
+[data-theme="high-contrast"] {
+  --cockpit-bg: #000000;
+  --cockpit-panel: #0a0a0a;
+  --cockpit-surface: #111111;
+  --cockpit-border: #00ffff;
+  --cockpit-border-muted: #666666;
+  --cockpit-chrome: #00ffff;
+  --cockpit-active: #ff00ff;
+  --cockpit-text: #ffffff;
+  --cockpit-muted: #cccccc;
+  --cockpit-accent: #00ffff;
+  --cockpit-accent-alt: #ffff00;
+  --cockpit-focus-ring: #ff00ff;
+  --cockpit-fieldset-title-bg: var(--cockpit-bg);
+  --cockpit-pad: 0.3rem;
+  --cockpit-gap: 0.2rem;
+  --cockpit-font-xs: 0.62rem;
+  --cockpit-font-sm: 0.68rem;
+}

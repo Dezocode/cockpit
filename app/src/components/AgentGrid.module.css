@@ -1,0 +1,70 @@
+.root {
+  display: flex;
+  height: 100%;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--cockpit-border-muted);
+  padding-bottom: 0.35rem;
+  font-size: 0.75rem;
+  color: var(--cockpit-chrome);
+}
+
+.grid {
+  display: grid;
+  flex: 1;
+  grid-template-columns: repeat(auto-fill, minmax(8rem, 1fr));
+  gap: 0.35rem;
+  overflow: auto;
+}
+
+.card {
+  border: 1px solid var(--cockpit-border-muted);
+  background: color-mix(in srgb, var(--cockpit-panel) 90%, transparent);
+  padding: 0.35rem;
+  text-align: left;
+  font-size: 0.65rem;
+  color: var(--cockpit-text);
+  cursor: pointer;
+  font-family: var(--cockpit-font);
+}
+
+.card:hover {
+  border-color: var(--cockpit-chrome);
+}
+
+.cardActive {
+  border-color: var(--cockpit-active);
+  box-shadow: 0 0 0 1px var(--cockpit-active);
+}
+
+.cardHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.25rem;
+  margin-bottom: 0.15rem;
+}
+
+.name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.meta {
+  color: var(--cockpit-muted);
+}
+
+.branch {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--cockpit-muted);
+  font-size: 0.6rem;
+}

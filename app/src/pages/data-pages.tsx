@@ -10,7 +10,7 @@ export function MemoryPage() {
     <div className="flex h-full flex-col p-3 text-sm">
       <header className="mb-2 flex items-center gap-2">
         <h2 className="text-cyan-300">MEMORY</h2>
-        {data?.failClosed && <GhuiChip label="fail-closed" tone="yellow" />}
+        {data?.failClosed && <GhuiChip label="fail-closed" tone="warn" />}
       </header>
       <ul className="flex-1 space-y-2 overflow-auto">
         {(data?.entries ?? []).map((e) => (
@@ -46,7 +46,7 @@ export function ComputersPage() {
         <h2 className="text-cyan-300">COMPUTERS</h2>
         <GhuiChip
           label={showModels ? "view m · MODELS" : "view m · nodes"}
-          tone={showModels ? "cyan" : "yellow"}
+          tone={showModels ? "magenta" : "cyan"}
           onClick={() => setShowModels((v) => !v)}
         />
       </header>
@@ -66,12 +66,12 @@ export function ComputersPage() {
                 <span>
                   {c.name}
                   {c.role === "hermes" && (
-                    <span className="ml-2 text-xs text-yellow-400">Hermes · Deck receipt</span>
+                    <span className="ml-2 text-xs" style={{ color: "var(--cockpit-active)" }}>Hermes · Deck receipt</span>
                   )}
                 </span>
                 <div className="flex gap-2">
-                  <GhuiChip label={c.status} tone={c.status === "online" ? "cyan" : "yellow"} />
-                  <GhuiChip label={`${c.latencyMs}ms`} tone="yellow" />
+                  <GhuiChip label={c.status} tone={c.status === "online" ? "cyan" : "warn"} />
+                  <GhuiChip label={`${c.latencyMs}ms`} tone="warn" />
                 </div>
               </li>
             ))}

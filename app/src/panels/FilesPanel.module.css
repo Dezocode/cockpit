@@ -1,0 +1,19 @@
+.root {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  height: 100%;
+  font-size: 0.75rem;
+}
+
+.list {
+  list-style: disc inside;
+  color: var(--cockpit-muted);
+  margin: 0;
+  padding: 0;
+}
+
+.code {
+  font-family: var(--cockpit-font);
+  color: var(--cockpit-chrome);
+}
