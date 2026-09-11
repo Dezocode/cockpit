@@ -1,0 +1,2681 @@
+{
+  "generator": "generate-arch-docs.sh",
+  "generator_version": "1.0.0",
+  "source_commit": "20868a70d507b04d52ba1a9451d87df15077ab6f",
+  "generated_at": "2026-09-11T05:19:11Z",
+  "repo": "cockpit",
+  "functions": [
+    {
+      "name": "readJson",
+      "file": "app/server/index.ts",
+      "line": 15,
+      "signature": "function readJson<T>(name: string, fallback: T): T {",
+      "calls": [],
+      "tags": ["network", "user-input"]
+    },
+    {
+      "name": "ghAuthStatus",
+      "file": "app/server/index.ts",
+      "line": 21,
+      "signature": "function ghAuthStatus(): { authenticated: boolean; user?: string; host: string } {",
+      "calls": [],
+      "tags": ["network", "auth"]
+    },
+    {
+      "name": "healthCheck",
+      "file": "app/server/index.ts",
+      "line": 34,
+      "signature": "function healthCheck() {",
+      "calls": ["ghAuthStatus", "label", "log", "readJson"],
+      "tags": ["network", "validation"]
+    },
+    {
+      "name": "health_check",
+      "file": "app/src-tauri/src/lib.rs",
+      "line": 20,
+      "signature": "fn health_check() -> HealthStatus {",
+      "calls": [],
+      "tags": ["validation"]
+    },
+    {
+      "name": "gh_auth_status",
+      "file": "app/src-tauri/src/lib.rs",
+      "line": 31,
+      "signature": "fn gh_auth_status() -> GhAuthStatus {",
+      "calls": [],
+      "tags": ["auth"]
+    },
+    {
+      "name": "run",
+      "file": "app/src-tauri/src/lib.rs",
+      "line": 60,
+      "signature": "pub fn run() {",
+      "calls": ["gh_auth_status", "health_check"],
+      "tags": ["process-spawn"]
+    },
+    {
+      "name": "main",
+      "file": "app/src-tauri/src/main.rs",
+      "line": 4,
+      "signature": "fn main() {",
+      "calls": ["run"],
+      "tags": ["entrypoint"]
+    },
+    {
+      "name": "App",
+      "file": "app/src/App.tsx",
+      "line": 9,
+      "signature": "function App() {",
+      "calls": ["CockpitShell", "SplashPage"],
+      "tags": ["logic"]
+    },
+    {
+      "name": "AgentBar",
+      "file": "app/src/components/AgentBar.tsx",
+      "line": 10,
+      "signature": "export function AgentBar({ onChip, providerLabel = \"AGENT\" }: AgentBarProps) {",
+      "calls": [],
+      "tags": ["logic"]
+    },
+    {
+      "name": "tone",
+      "file": "app/src/components/AgentBar.tsx",
+      "line": 13,
+      "signature": "const tone = (chip: AgentBarChip): \"cyan\" | \"yellow\" => {",
+      "calls": [],
+      "tags": ["logic"]
+    },
+    {
+      "name": "label",
+      "file": "app/src/components/AgentBar.tsx",
+      "line": 22,
+      "signature": "const label = (chip: AgentBarChip) => (chip === \"provider\" ? providerLabel : chip);",
+      "calls": ["GhuiChip", "center", "tone"],
+      "tags": ["logic"]
+    },
+    {
+      "name": "chipToPage",
+      "file": "app/src/components/AgentBar.tsx",
+      "line": 40,
+      "signature": "export function chipToPage(chip: AgentBarChip): PageId | null {",
+      "calls": [],
+      "tags": ["logic"]
+    },
+    {
+      "name": "statusTone",
+      "file": "app/src/components/AgentGrid.tsx",
+      "line": 7,
+      "signature": "function statusTone(status: Agent[\"status\"]): \"cyan\" | \"yellow\" {",
+      "calls": [],
+      "tags": ["logic"]
+    },
+    {
+      "name": "AgentGrid",
+      "file": "app/src/components/AgentGrid.tsx",
+      "line": 11,
+      "signature": "export function AgentGrid() {",
+      "calls": ["GhuiChip", "center", "header", "label", "statusTone", "tone"],
+      "tags": ["logic"]
+    },
+    {
+      "name": "panelFactory",
+      "file": "app/src/components/CockpitShell.tsx",
+      "line": 25,
+      "signature": "function panelFactory(id: PageId) {",
+      "calls": ["AgentPage", "BenchPage", "ComputersPage", "DiffPage", "FilesPage", "MapPage", "MemoryPage", "PrsPage", "SetupPage"],
+      "tags": ["logic"]
+    },
+    {
+      "name": "PagePanel",
+      "file": "app/src/components/CockpitShell.tsx",
+      "line": 50,
+      "signature": "function PagePanel(props: IDockviewPanelProps<{ title: string }>) {",
+      "calls": ["panelFactory"],
+      "tags": ["rendering"]
+    },
+    {
+      "name": "CockpitShell",
+      "file": "app/src/components/CockpitShell.tsx",
+      "line": 62,
+      "signature": "export function CockpitShell() {",
+      "calls": [],
+      "tags": ["logic"]
+    },
+    {
+      "name": "onBarChip",
+      "file": "app/src/components/CockpitShell.tsx",
+      "line": 106,
+      "signature": "const onBarChip = (chip: AgentBarChip) => {",
+      "calls": ["AgentBar", "center", "chipToPage"],
+      "tags": ["logic"]
+    },
+    {
+      "name": "GhuiChip",
+      "file": "app/src/components/GhuiChip.tsx",
+      "line": 12,
+      "signature": "export function GhuiChip({ label, tone = \"cyan\", onClick, active }: GhuiChipProps) {",
+      "calls": ["label", "tone"],
+      "tags": ["rendering"]
+    },
+    {
+      "name": "TerminalPane",
+      "file": "app/src/components/TerminalPane.tsx",
+      "line": 15,
+      "signature": "export function TerminalPane({ agentId }: TerminalPaneProps) {",
+      "calls": ["ptyWebSocketUrl"],
+      "tags": ["logic"]
+    },
+    {
+      "name": "launchShellOut",
+      "file": "app/src/components/TerminalPane.tsx",
+      "line": 63,
+      "signature": "const launchShellOut = (id: string) => {",
+      "calls": ["GhuiChip", "label", "tone"],
+      "tags": ["logic"]
+    },
+    {
+      "name": "fetchJson",
+      "file": "app/src/lib/api.ts",
+      "line": 6,
+      "signature": "async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {",
+      "calls": ["label"],
+      "tags": ["network"]
+    },
+    {
+      "name": "ptyWebSocketUrl",
+      "file": "app/src/lib/api.ts",
+      "line": 47,
+      "signature": "export function ptyWebSocketUrl(): string {",
+      "calls": [],
+      "tags": ["ipc"]
+    },
+    {
+      "name": "ModelsView",
+      "file": "app/src/pages/ModelsView.tsx",
+      "line": 2,
+      "signature": "export function ModelsView() {",
+      "calls": [],
+      "tags": ["rendering"]
+    },
+    {
+      "name": "SplashPage",
+      "file": "app/src/pages/SplashPage.tsx",
+      "line": 8,
+      "signature": "export function SplashPage() {",
+      "calls": ["GhuiChip", "center", "label", "tone"],
+      "tags": ["logic"]
+    },
+    {
+      "name": "MemoryPage",
+      "file": "app/src/pages/data-pages.tsx",
+      "line": 7,
+      "signature": "export function MemoryPage() {",
+      "calls": ["GhuiChip", "center", "header", "label", "tone"],
+      "tags": ["logic"]
+    },
+    {
+      "name": "ComputersPage",
+      "file": "app/src/pages/data-pages.tsx",
+      "line": 27,
+      "signature": "export function ComputersPage() {",
+      "calls": [],
+      "tags": ["logic"]
+    },
+    {
+      "name": "onKey",
+      "file": "app/src/pages/data-pages.tsx",
+      "line": 32,
+      "signature": "const onKey = (e: KeyboardEvent) => {",
+      "calls": ["GhuiChip", "ModelsView", "center", "header", "label", "tone"],
+      "tags": ["logic"]
+    },
+    {
+      "name": "AgentPage",
+      "file": "app/src/pages/static-pages.tsx",
+      "line": 5,
+      "signature": "export function AgentPage() {",
+      "calls": ["AgentGrid", "TerminalPane"],
+      "tags": ["logic"]
+    },
+    {
+      "name": "FilesPage",
+      "file": "app/src/pages/static-pages.tsx",
+      "line": 15,
+      "signature": "export function FilesPage() {",
+      "calls": [],
+      "tags": ["logic"]
+    },
+    {
+      "name": "DiffPage",
+      "file": "app/src/pages/static-pages.tsx",
+      "line": 28,
+      "signature": "export function DiffPage() {",
+      "calls": [],
+      "tags": ["logic"]
+    },
+    {
+      "name": "MapPage",
+      "file": "app/src/pages/static-pages.tsx",
+      "line": 37,
+      "signature": "export function MapPage() {",
+      "calls": [],
+      "tags": ["logic"]
+    },
+    {
+      "name": "SetupPage",
+      "file": "app/src/pages/static-pages.tsx",
+      "line": 46,
+      "signature": "export function SetupPage() {",
+      "calls": [],
+      "tags": ["logic"]
+    },
+    {
+      "name": "PrsPage",
+      "file": "app/src/pages/static-pages.tsx",
+      "line": 55,
+      "signature": "export function PrsPage() {",
+      "calls": [],
+      "tags": ["logic"]
+    },
+    {
+      "name": "BenchPage",
+      "file": "app/src/pages/static-pages.tsx",
+      "line": 64,
+      "signature": "export function BenchPage() {",
+      "calls": [],
+      "tags": ["logic"]
+    },
+    {
+      "name": "check",
+      "file": "bench/cockpit/capability-matrix.sh",
+      "line": 10,
+      "signature": "check() {",
+      "calls": ["App", "GhuiChip", "ModelsView", "main"],
+      "tags": ["entrypoint", "validation"]
+    },
+    {
+      "name": "cleanup",
+      "file": "bench/cockpit/capture-screenshots.sh",
+      "line": 14,
+      "signature": "cleanup() {",
+      "calls": [],
+      "tags": ["entrypoint"]
+    },
+    {
+      "name": "start_api",
+      "file": "bench/cockpit/capture-screenshots.sh",
+      "line": 20,
+      "signature": "start_api() {",
+      "calls": [],
+      "tags": ["entrypoint"]
+    },
+    {
+      "name": "start_ui",
+      "file": "bench/cockpit/capture-screenshots.sh",
+      "line": 31,
+      "signature": "start_ui() {",
+      "calls": ["start_api"],
+      "tags": ["entrypoint", "rendering"]
+    },
+    {
+      "name": "shot",
+      "file": "bench/cockpit/capture-screenshots.sh",
+      "line": 61,
+      "signature": "shot() {",
+      "calls": [],
+      "tags": ["entrypoint"]
+    },
+    {
+      "name": "need",
+      "file": "bench/cockpit/doctor.sh",
+      "line": 12,
+      "signature": "need() {",
+      "calls": ["run"],
+      "tags": ["entrypoint"]
+    },
+    {
+      "name": "check",
+      "file": "bench/cockpit/hostinger-h0-verify.sh",
+      "line": 9,
+      "signature": "check() {",
+      "calls": ["gate"],
+      "tags": ["entrypoint", "validation"]
+    },
+    {
+      "name": "check",
+      "file": "bench/cockpit/input-matrix.sh",
+      "line": 9,
+      "signature": "check() {",
+      "calls": ["main"],
+      "tags": ["entrypoint", "user-input", "validation"]
+    },
+    {
+      "name": "check",
+      "file": "bench/cockpit/surface-matrix.sh",
+      "line": 9,
+      "signature": "check() {",
+      "calls": ["ModelsView", "main", "open_model"],
+      "tags": ["entrypoint", "validation"]
+    },
+    {
+      "name": "prepare_session",
+      "file": "bin/cockpit",
+      "line": 13,
+      "signature": "prepare_session() {",
+      "calls": ["cockpit_migrate_legacy_session", "main"],
+      "tags": ["entrypoint"]
+    },
+    {
+      "name": "pane_for",
+      "file": "bin/cockpit-adapt",
+      "line": 95,
+      "signature": "pane_for() {",
+      "calls": [],
+      "tags": ["entrypoint"]
+    },
+    {
+      "name": "window_for",
+      "file": "bin/cockpit-adapt",
+      "line": 101,
+      "signature": "window_for() {",
+      "calls": [],
+      "tags": ["entrypoint"]
+    },
+    {
+      "name": "tmux_fg",
+      "file": "bin/cockpit-adapt",
+      "line": 107,
+      "signature": "tmux_fg() {",
+      "calls": ["cockpit_theme_hex"],
+      "tags": ["entrypoint", "ipc"]
+    },
+    {
+      "name": "refresh_display_labels",
+      "file": "bin/cockpit-adapt",
+      "line": 114,
+      "signature": "refresh_display_labels() {",
+      "calls": [],
+      "tags": ["entrypoint", "rendering"]
+    },
+    {
+      "name": "update_git_chrome",
+      "file": "bin/cockpit-adapt",
+      "line": 129,
+      "signature": "update_git_chrome() {",
+      "calls": ["label", "pane_for", "tmux_fg"],
+      "tags": ["entrypoint"]
+    },
+    {
+      "name": "apply_hush",
+      "file": "bin/cockpit-adapt",
+      "line": 160,
+      "signature": "apply_hush() {",
+      "calls": [],
+      "tags": ["entrypoint"]
+    },
+    {
+      "name": "apply_keyboard_chrome",
+      "file": "bin/cockpit-adapt",
+      "line": 181,
+      "signature": "apply_keyboard_chrome() {",
+      "calls": ["apply_hush"],
+      "tags": ["entrypoint"]
+    },
+    {
+      "name": "apply_touch_chrome",
+      "file": "bin/cockpit-adapt",
+      "line": 201,
+      "signature": "apply_touch_chrome() {",
+      "calls": ["apply_hush"],
+      "tags": ["entrypoint"]
+    },
+    {
+      "name": "layout_tabs",
+      "file": "bin/cockpit-adapt",
+      "line": 227,
+      "signature": "layout_tabs() {",
+      "calls": ["pane_for"],
+      "tags": ["entrypoint"]
+    },
+    {
+      "name": "layout_pad",
+      "file": "bin/cockpit-adapt",
+      "line": 246,
+      "signature": "layout_pad() {",
+      "calls": ["window_for"],
+      "tags": ["entrypoint"]
+    },
+    {
+      "name": "hide_auxiliary_tabs",
+      "file": "bin/cockpit-adapt",
+      "line": 287,
+      "signature": "hide_auxiliary_tabs() {",
+      "calls": ["window_for"],
+      "tags": ["entrypoint"]
+    },
+    {
+      "name": "normalize_primary_tabs",
+      "file": "bin/cockpit-adapt",
+      "line": 325,
+      "signature": "normalize_primary_tabs() {",
+      "calls": ["apply_hush", "apply_keyboard_chrome", "apply_touch_chrome", "cockpit_config_home", "hide_auxiliary_tabs", "layout_pad", "layout_tabs", "pane_for", "refresh_display_labels", "update_git_chrome", "window_for"],
+      "tags": ["entrypoint"]
+    },
+    {
+      "name": "usage",
+      "file": "bin/cockpit-agent-config",
+      "line": 14,
+      "signature": "usage() {",
+      "calls": ["run", "runtime_pane"],
+      "tags": ["entrypoint", "config"]
+    },
+    {
+      "name": "print_report",
+      "file": "bin/cockpit-agent-config",
+      "line": 94,
+      "signature": "print_report() {",
+      "calls": ["cockpit_agent_inspect", "cockpit_agent_target_state_label", "cockpit_auth_label", "label"],
+      "tags": ["entrypoint", "config"]
+    },
+    {
+      "name": "print_profile",
+      "file": "bin/cockpit-agent-config",
+      "line": 119,
+      "signature": "print_profile() {",
+      "calls": ["cockpit_agent_apply_profile", "cockpit_agent_profile_enabled", "cockpit_agent_profile_skills_dir", "cockpit_agent_skill_files", "cockpit_agent_skill_id", "print_report", "run"],
+      "tags": ["entrypoint", "config"]
+    },
+    {
+      "name": "cockpit_agent_trim",
+      "file": "bin/cockpit-agent-lib",
+      "line": 23,
+      "signature": "cockpit_agent_trim() {",
+      "calls": [],
+      "tags": ["logic"]
+    },
+    {
+      "name": "cockpit_agent_profile_field",
+      "file": "bin/cockpit-agent-lib",
+      "line": 30,
+      "signature": "cockpit_agent_profile_field() {",
+      "calls": ["cockpit_agent_trim"],
+      "tags": ["logic"]
+    },
+    {
+      "name": "cockpit_agent_expand_path",
+      "file": "bin/cockpit-agent-lib",
+      "line": 55,
+      "signature": "cockpit_agent_expand_path() {",
+      "calls": [],
+      "tags": ["logic"]
+    },
+    {
+      "name": "cockpit_agent_profile_skills_dir",
+      "file": "bin/cockpit-agent-lib",
+      "line": 65,
+      "signature": "cockpit_agent_profile_skills_dir() {",
+      "calls": ["cockpit_agent_expand_path", "cockpit_agent_profile_field"],
+      "tags": ["logic"]
+    },
+    {
+      "name": "cockpit_agent_profile_enabled",
+      "file": "bin/cockpit-agent-lib",
+      "line": 79,
+      "signature": "cockpit_agent_profile_enabled() {",
+      "calls": ["cockpit_agent_profile_field"],
+      "tags": ["logic"]
+    },
+    {
+      "name": "cockpit_agent_skill_id",
+      "file": "bin/cockpit-agent-lib",
+      "line": 88,
+      "signature": "cockpit_agent_skill_id() {",
+      "calls": [],
+      "tags": ["logic"]
+    },
+    {
+      "name": "cockpit_agent_skill_allowed",
+      "file": "bin/cockpit-agent-lib",
+      "line": 96,
+      "signature": "cockpit_agent_skill_allowed() {",
+      "calls": ["cockpit_agent_profile_field", "cockpit_agent_trim"],
+      "tags": ["logic"]
+    },
+    {
+      "name": "cockpit_agent_skill_files",
+      "file": "bin/cockpit-agent-lib",
+      "line": 114,
+      "signature": "cockpit_agent_skill_files() {",
+      "calls": ["cockpit_agent_profile_skills_dir", "cockpit_agent_skill_allowed", "cockpit_agent_skill_id"],
+      "tags": ["logic"]
+    },
+    {
+      "name": "cockpit_agent_skill_count",
+      "file": "bin/cockpit-agent-lib",
+      "line": 125,
+      "signature": "cockpit_agent_skill_count() {",
+      "calls": ["cockpit_agent_profile_skills_dir", "cockpit_agent_skill_files"],
+      "tags": ["logic"]
+    },
+    {
+      "name": "cockpit_agent_provider_family",
+      "file": "bin/cockpit-agent-lib",
+      "line": 130,
+      "signature": "cockpit_agent_provider_family() {",
+      "calls": [],
+      "tags": ["logic"]
+    },
+    {
+      "name": "cockpit_agent_default_paths",
+      "file": "bin/cockpit-agent-lib",
+      "line": 141,
+      "signature": "cockpit_agent_default_paths() {",
+      "calls": ["cockpit_agent_provider_family"],
+      "tags": ["logic"]
+    },
+    {
+      "name": "cockpit_agent_configured_paths",
+      "file": "bin/cockpit-agent-lib",
+      "line": 163,
+      "signature": "cockpit_agent_configured_paths() {",
+      "calls": ["cockpit_agent_default_paths", "cockpit_agent_trim", "cockpit_auth_field"],
+      "tags": ["config"]
+    },
+    {
+      "name": "cockpit_agent_paths_are_configured",
+      "file": "bin/cockpit-agent-lib",
+      "line": 179,
+      "signature": "cockpit_agent_paths_are_configured() {",
+      "calls": ["cockpit_auth_field"],
+      "tags": ["config"]
+    },
+    {
+      "name": "cockpit_agent_root",
+      "file": "bin/cockpit-agent-lib",
+      "line": 188,
+      "signature": "cockpit_agent_root() {",
+      "calls": [],
+      "tags": ["privileged"]
+    },
+    {
+      "name": "cockpit_agent_home_scope",
+      "file": "bin/cockpit-agent-lib",
+      "line": 194,
+      "signature": "cockpit_agent_home_scope() {",
+      "calls": ["cockpit_agent_root"],
+      "tags": ["logic"]
+    },
+    {
+      "name": "cockpit_agent_safe_spec",
+      "file": "bin/cockpit-agent-lib",
+      "line": 199,
+      "signature": "cockpit_agent_safe_spec() {",
+      "calls": [],
+      "tags": ["logic"]
+    },
+    {
+      "name": "cockpit_agent_relpath",
+      "file": "bin/cockpit-agent-lib",
+      "line": 207,
+      "signature": "cockpit_agent_relpath() {",
+      "calls": ["cockpit_agent_root"],
+      "tags": ["logic"]
+    },
+    {
+      "name": "cockpit_agent_candidate_for_spec",
+      "file": "bin/cockpit-agent-lib",
+      "line": 222,
+      "signature": "cockpit_agent_candidate_for_spec() {",
+      "calls": ["cockpit_agent_relpath", "cockpit_agent_root", "cockpit_agent_safe_spec"],
+      "tags": ["logic"]
+    },
+    {
+      "name": "cockpit_agent_is_home_hidden_target",
+      "file": "bin/cockpit-agent-lib",
+      "line": 249,
+      "signature": "cockpit_agent_is_home_hidden_target() {",
+      "calls": ["cockpit_agent_home_scope"],
+      "tags": ["logic"]
+    },
+    {
+      "name": "cockpit_agent_marker_list",
+      "file": "bin/cockpit-agent-lib",
+      "line": 259,
+      "signature": "cockpit_agent_marker_list() {",
+      "calls": ["cockpit_agent_is_home_hidden_target"],
+      "tags": ["logic"]
+    },
+    {
+      "name": "cockpit_agent_file_style",
+      "file": "bin/cockpit-agent-lib",
+      "line": 271,
+      "signature": "cockpit_agent_file_style() {",
+      "calls": [],
+      "tags": ["logic"]
+    },
+    {
+      "name": "cockpit_agent_managed_present",
+      "file": "bin/cockpit-agent-lib",
+      "line": 288,
+      "signature": "cockpit_agent_managed_present() {",
+      "calls": [],
+      "tags": ["logic"]
+    },
+    {
+      "name": "cockpit_agent_skill_present",
+      "file": "bin/cockpit-agent-lib",
+      "line": 293,
+      "signature": "cockpit_agent_skill_present() {",
+      "calls": [],
+      "tags": ["logic"]
+    },
+    {
+      "name": "cockpit_agent_inspect",
+      "file": "bin/cockpit-agent-lib",
+      "line": 298,
+      "signature": "cockpit_agent_inspect() {",
+      "calls": ["cockpit_agent_candidate_for_spec", "cockpit_agent_configured_paths", "cockpit_agent_file_style", "cockpit_agent_home_scope", "cockpit_agent_is_home_hidden_target", "cockpit_agent_managed_present", "cockpit_agent_marker_list", "cockpit_agent_paths_are_configured", "cockpit_agent_profile_enabled", "cockpit_agent_provider_family", "cockpit_agent_relpath", "cockpit_agent_root", "cockpit_agent_skill_files", "cockpit_agent_skill_id", "cockpit_agent_skill_present"],
+      "tags": ["logic"]
+    },
+    {
+      "name": "cockpit_agent_target_state_label",
+      "file": "bin/cockpit-agent-lib",
+      "line": 405,
+      "signature": "cockpit_agent_target_state_label() {",
+      "calls": [],
+      "tags": ["persistence"]
+    },
+    {
+      "name": "cockpit_agent_render_block",
+      "file": "bin/cockpit-agent-lib",
+      "line": 417,
+      "signature": "cockpit_agent_render_block() {",
+      "calls": ["cockpit_agent_file_style", "cockpit_agent_profile_skills_dir", "cockpit_agent_skill_files", "cockpit_agent_skill_id"],
+      "tags": ["rendering"]
+    },
+    {
+      "name": "cockpit_agent_remove_managed_block",
+      "file": "bin/cockpit-agent-lib",
+      "line": 450,
+      "signature": "cockpit_agent_remove_managed_block() {",
+      "calls": [],
+      "tags": ["logic"]
+    },
+    {
+      "name": "cockpit_agent_apply_profile",
+      "file": "bin/cockpit-agent-lib",
+      "line": 459,
+      "signature": "cockpit_agent_apply_profile() {",
+      "calls": ["cockpit_agent_inspect", "cockpit_agent_remove_managed_block", "cockpit_agent_render_block"],
+      "tags": ["logic"]
+    },
+    {
+      "name": "pass_check",
+      "file": "bin/cockpit-audit",
+      "line": 37,
+      "signature": "pass_check() {",
+      "calls": [],
+      "tags": ["entrypoint", "validation"]
+    },
+    {
+      "name": "warn_check",
+      "file": "bin/cockpit-audit",
+      "line": 42,
+      "signature": "warn_check() {",
+      "calls": [],
+      "tags": ["entrypoint", "validation"]
+    },
+    {
+      "name": "fail_check",
+      "file": "bin/cockpit-audit",
+      "line": 47,
+      "signature": "fail_check() {",
+      "calls": [],
+      "tags": ["entrypoint", "validation"]
+    },
+    {
+      "name": "has_command",
+      "file": "bin/cockpit-audit",
+      "line": 52,
+      "signature": "has_command() {",
+      "calls": [],
+      "tags": ["entrypoint", "process-spawn", "validation"]
+    },
+    {
+      "name": "plugin_catalog_health",
+      "file": "bin/cockpit-audit",
+      "line": 56,
+      "signature": "plugin_catalog_health() {",
+      "calls": ["has_command", "pass_check", "warn_check"],
+      "tags": ["entrypoint", "validation"]
+    },
+    {
+      "name": "cockpit_plugin_health",
+      "file": "bin/cockpit-audit",
+      "line": 85,
+      "signature": "cockpit_plugin_health() {",
+      "calls": ["fail_check", "has_command", "pass_check", "warn_check"],
+      "tags": ["entrypoint", "validation"]
+    },
+    {
+      "name": "agent_target_health",
+      "file": "bin/cockpit-audit",
+      "line": 99,
+      "signature": "agent_target_health() {",
+      "calls": ["cockpit_agent_inspect", "cockpit_auth_ensure_config", "cockpit_auth_label", "cockpit_auth_state", "cockpit_plugin_health", "fail_check", "has_command", "pass_check", "plugin_catalog_health", "runtime_pane", "warn_check"],
+      "tags": ["entrypoint", "validation"]
+    },
+    {
+      "name": "open_popup",
+      "file": "bin/cockpit-auth",
+      "line": 21,
+      "signature": "open_popup() {",
+      "calls": ["cockpit_auth_label", "cockpit_popup", "label", "run"],
+      "tags": ["entrypoint", "auth"]
+    },
+    {
+      "name": "run_login",
+      "file": "bin/cockpit-auth",
+      "line": 32,
+      "signature": "run_login() {",
+      "calls": ["cockpit_auth_login_cmd", "cockpit_auth_signed_in"],
+      "tags": ["entrypoint", "auth", "process-spawn"]
+    },
+    {
+      "name": "draw_gate",
+      "file": "bin/cockpit-auth",
+      "line": 53,
+      "signature": "draw_gate() {",
+      "calls": ["label"],
+      "tags": ["entrypoint", "auth"]
+    },
+    {
+      "name": "gate",
+      "file": "bin/cockpit-auth",
+      "line": 64,
+      "signature": "gate() {",
+      "calls": ["cockpit_auth_ensure_config", "cockpit_auth_label", "cockpit_auth_ready_cmd", "cockpit_auth_signed_in", "draw_gate", "label", "open_popup"],
+      "tags": ["entrypoint", "auth"]
+    },
+    {
+      "name": "pick",
+      "file": "bin/cockpit-auth",
+      "line": 117,
+      "signature": "pick() {",
+      "calls": ["check", "cockpit_auth_check", "cockpit_auth_ensure_config", "cockpit_auth_ids", "cockpit_auth_kind", "cockpit_auth_label", "cockpit_auth_signed_in", "gate", "open_popup", "run", "run_login"],
+      "tags": ["entrypoint", "auth"]
+    },
+    {
+      "name": "cockpit_auth_ensure_config",
+      "file": "bin/cockpit-auth-lib",
+      "line": 15,
+      "signature": "cockpit_auth_ensure_config() {",
+      "calls": ["check", "cockpit_legacy_config_home", "label"],
+      "tags": ["auth", "config"]
+    },
+    {
+      "name": "cockpit_auth_files",
+      "file": "bin/cockpit-auth-lib",
+      "line": 42,
+      "signature": "cockpit_auth_files() {",
+      "calls": ["cockpit_auth_ensure_config"],
+      "tags": ["auth"]
+    },
+    {
+      "name": "cockpit_auth_kind",
+      "file": "bin/cockpit-auth-lib",
+      "line": 52,
+      "signature": "cockpit_auth_kind() {",
+      "calls": ["cockpit_auth_field"],
+      "tags": ["auth"]
+    },
+    {
+      "name": "cockpit_auth_ids",
+      "file": "bin/cockpit-auth-lib",
+      "line": 56,
+      "signature": "cockpit_auth_ids() {",
+      "calls": ["cockpit_auth_files", "cockpit_auth_kind"],
+      "tags": ["auth"]
+    },
+    {
+      "name": "cockpit_auth_field",
+      "file": "bin/cockpit-auth-lib",
+      "line": 71,
+      "signature": "cockpit_auth_field() {",
+      "calls": ["cockpit_auth_files"],
+      "tags": ["auth"]
+    },
+    {
+      "name": "cockpit_auth_run_probe",
+      "file": "bin/cockpit-auth-lib",
+      "line": 99,
+      "signature": "cockpit_auth_run_probe() {",
+      "calls": [],
+      "tags": ["auth", "process-spawn"]
+    },
+    {
+      "name": "cockpit_auth_grok_cache_ready",
+      "file": "bin/cockpit-auth-lib",
+      "line": 114,
+      "signature": "cockpit_auth_grok_cache_ready() {",
+      "calls": [],
+      "tags": ["auth", "user-input"]
+    },
+    {
+      "name": "cockpit_auth_probe_configured",
+      "file": "bin/cockpit-auth-lib",
+      "line": 188,
+      "signature": "cockpit_auth_probe_configured() {",
+      "calls": ["cockpit_auth_field"],
+      "tags": ["auth", "config"]
+    },
+    {
+      "name": "cockpit_auth_probe",
+      "file": "bin/cockpit-auth-lib",
+      "line": 195,
+      "signature": "cockpit_auth_probe() {",
+      "calls": ["cockpit_auth_field", "cockpit_auth_grok_cache_ready", "cockpit_auth_run_probe"],
+      "tags": ["auth"]
+    },
+    {
+      "name": "cockpit_auth_check",
+      "file": "bin/cockpit-auth-lib",
+      "line": 228,
+      "signature": "cockpit_auth_check() {",
+      "calls": ["check", "cockpit_auth_field", "cockpit_auth_run_probe"],
+      "tags": ["auth", "validation"]
+    },
+    {
+      "name": "cockpit_auth_signed_in",
+      "file": "bin/cockpit-auth-lib",
+      "line": 237,
+      "signature": "cockpit_auth_signed_in() {",
+      "calls": ["cockpit_auth_check", "cockpit_auth_probe"],
+      "tags": ["auth"]
+    },
+    {
+      "name": "cockpit_auth_state",
+      "file": "bin/cockpit-auth-lib",
+      "line": 243,
+      "signature": "cockpit_auth_state() {",
+      "calls": ["cockpit_auth_check", "cockpit_auth_signed_in", "main"],
+      "tags": ["auth", "persistence"]
+    },
+    {
+      "name": "cockpit_popup_use_window",
+      "file": "bin/cockpit-auth-lib",
+      "line": 259,
+      "signature": "cockpit_popup_use_window() {",
+      "calls": [],
+      "tags": ["auth"]
+    },
+    {
+      "name": "cockpit_popup_slug",
+      "file": "bin/cockpit-auth-lib",
+      "line": 276,
+      "signature": "cockpit_popup_slug() {",
+      "calls": [],
+      "tags": ["auth"]
+    },
+    {
+      "name": "cockpit_popup_any",
+      "file": "bin/cockpit-auth-lib",
+      "line": 283,
+      "signature": "cockpit_popup_any() {",
+      "calls": ["cockpit_popup"],
+      "tags": ["auth"]
+    },
+    {
+      "name": "cockpit_popup_home",
+      "file": "bin/cockpit-auth-lib",
+      "line": 287,
+      "signature": "cockpit_popup_home() {",
+      "calls": [],
+      "tags": ["auth"]
+    },
+    {
+      "name": "cockpit_popup_dismiss",
+      "file": "bin/cockpit-auth-lib",
+      "line": 302,
+      "signature": "cockpit_popup_dismiss() {",
+      "calls": ["cockpit_popup", "cockpit_popup_home"],
+      "tags": ["auth"]
+    },
+    {
+      "name": "cockpit_popup_gc",
+      "file": "bin/cockpit-auth-lib",
+      "line": 311,
+      "signature": "cockpit_popup_gc() {",
+      "calls": ["cockpit_popup", "cockpit_popup_any", "cockpit_popup_dismiss"],
+      "tags": ["auth"]
+    },
+    {
+      "name": "cockpit_popup",
+      "file": "bin/cockpit-auth-lib",
+      "line": 325,
+      "signature": "cockpit_popup() {",
+      "calls": ["cockpit_popup_slug", "cockpit_popup_use_window", "run"],
+      "tags": ["auth"]
+    },
+    {
+      "name": "cockpit_auth_ensure",
+      "file": "bin/cockpit-auth-lib",
+      "line": 348,
+      "signature": "cockpit_auth_ensure() {",
+      "calls": ["cockpit_auth_check", "cockpit_auth_ensure_config", "cockpit_auth_label", "cockpit_auth_login_cmd", "cockpit_auth_signed_in", "cockpit_popup", "run"],
+      "tags": ["auth"]
+    },
+    {
+      "name": "cockpit_auth_login_cmd",
+      "file": "bin/cockpit-auth-lib",
+      "line": 365,
+      "signature": "cockpit_auth_login_cmd() {",
+      "calls": ["cockpit_auth_field"],
+      "tags": ["auth"]
+    },
+    {
+      "name": "cockpit_auth_ready_cmd",
+      "file": "bin/cockpit-auth-lib",
+      "line": 379,
+      "signature": "cockpit_auth_ready_cmd() {",
+      "calls": ["cockpit_auth_field"],
+      "tags": ["auth", "user-input"]
+    },
+    {
+      "name": "cockpit_auth_label",
+      "file": "bin/cockpit-auth-lib",
+      "line": 383,
+      "signature": "cockpit_auth_label() {",
+      "calls": ["cockpit_auth_field", "label"],
+      "tags": ["auth"]
+    },
+    {
+      "name": "rid",
+      "file": "bin/cockpit-bar",
+      "line": 28,
+      "signature": "rid() {",
+      "calls": [],
+      "tags": ["entrypoint"]
+    },
+    {
+      "name": "label",
+      "file": "bin/cockpit-bar",
+      "line": 32,
+      "signature": "label() {",
+      "calls": ["cockpit_auth_label"],
+      "tags": ["entrypoint"]
+    },
+    {
+      "name": "pane_size",
+      "file": "bin/cockpit-bar",
+      "line": 41,
+      "signature": "pane_size() {",
+      "calls": [],
+      "tags": ["entrypoint"]
+    },
+    {
+      "name": "chip_gap",
+      "file": "bin/cockpit-bar",
+      "line": 59,
+      "signature": "chip_gap() {",
+      "calls": [],
+      "tags": ["entrypoint"]
+    },
+    {
+      "name": "center",
+      "file": "bin/cockpit-bar",
+      "line": 72,
+      "signature": "center() {",
+      "calls": ["label"],
+      "tags": ["entrypoint"]
+    },
+    {
+      "name": "chip_row",
+      "file": "bin/cockpit-bar",
+      "line": 87,
+      "signature": "chip_row() {",
+      "calls": ["center"],
+      "tags": ["entrypoint"]
+    },
+    {
+      "name": "draw",
+      "file": "bin/cockpit-bar",
+      "line": 98,
+      "signature": "draw() {",
+      "calls": ["chip_gap", "chip_row", "label", "pane_size", "rid"],
+      "tags": ["entrypoint"]
+    },
+    {
+      "name": "open_prs",
+      "file": "bin/cockpit-bar",
+      "line": 137,
+      "signature": "open_prs() {",
+      "calls": ["run"],
+      "tags": ["entrypoint"]
+    },
+    {
+      "name": "open_runtime",
+      "file": "bin/cockpit-bar",
+      "line": 151,
+      "signature": "open_runtime() {",
+      "calls": [],
+      "tags": ["entrypoint", "process-spawn"]
+    },
+    {
+      "name": "open_model",
+      "file": "bin/cockpit-bar",
+      "line": 157,
+      "signature": "open_model() {",
+      "calls": [],
+      "tags": ["entrypoint"]
+    },
+    {
+      "name": "restart_runtime",
+      "file": "bin/cockpit-bar",
+      "line": 161,
+      "signature": "restart_runtime() {",
+      "calls": [],
+      "tags": ["entrypoint", "process-spawn"]
+    },
+    {
+      "name": "which_btn",
+      "file": "bin/cockpit-bar",
+      "line": 165,
+      "signature": "which_btn() {",
+      "calls": ["chip_gap"],
+      "tags": ["entrypoint"]
+    },
+    {
+      "name": "now_ms",
+      "file": "bin/cockpit-bar",
+      "line": 186,
+      "signature": "now_ms() {",
+      "calls": [],
+      "tags": ["entrypoint"]
+    },
+    {
+      "name": "tap_debounce",
+      "file": "bin/cockpit-bar",
+      "line": 198,
+      "signature": "tap_debounce() {",
+      "calls": ["cockpit_runtime_home", "now_ms"],
+      "tags": ["entrypoint"]
+    },
+    {
+      "name": "handle_sgr",
+      "file": "bin/cockpit-bar",
+      "line": 217,
+      "signature": "handle_sgr() {",
+      "calls": ["draw", "pane_size", "run_btn", "tap_debounce", "which_btn"],
+      "tags": ["entrypoint"]
+    },
+    {
+      "name": "run_btn",
+      "file": "bin/cockpit-bar",
+      "line": 244,
+      "signature": "run_btn() {",
+      "calls": ["draw", "handle_sgr", "open_model", "open_prs", "open_runtime", "pane_pid", "restart_runtime", "which_btn"],
+      "tags": ["entrypoint", "process-spawn"]
+    },
+    {
+      "name": "draw",
+      "file": "bin/cockpit-bench",
+      "line": 8,
+      "signature": "draw() {",
+      "calls": [],
+      "tags": ["entrypoint"]
+    },
+    {
+      "name": "draw",
+      "file": "bin/cockpit-computers",
+      "line": 8,
+      "signature": "draw() {",
+      "calls": [],
+      "tags": ["entrypoint"]
+    },
+    {
+      "name": "need_gh",
+      "file": "bin/cockpit-config",
+      "line": 14,
+      "signature": "need_gh() {",
+      "calls": ["run"],
+      "tags": ["entrypoint", "config"]
+    },
+    {
+      "name": "safe_copy",
+      "file": "bin/cockpit-config",
+      "line": 25,
+      "signature": "safe_copy() {",
+      "calls": ["need_gh", "usage"],
+      "tags": ["entrypoint", "config"]
+    },
+    {
+      "name": "tmux_fg",
+      "file": "bin/cockpit-diff",
+      "line": 39,
+      "signature": "tmux_fg() {",
+      "calls": ["cockpit_theme_hex"],
+      "tags": ["entrypoint", "ipc"]
+    },
+    {
+      "name": "update_git_chrome",
+      "file": "bin/cockpit-diff",
+      "line": 44,
+      "signature": "update_git_chrome() {",
+      "calls": ["cockpit_theme_hex", "label", "tmux_fg"],
+      "tags": ["entrypoint"]
+    },
+    {
+      "name": "refresh_git_chrome",
+      "file": "bin/cockpit-diff",
+      "line": 67,
+      "signature": "refresh_git_chrome() {",
+      "calls": ["update_git_chrome"],
+      "tags": ["entrypoint"]
+    },
+    {
+      "name": "clear_screen",
+      "file": "bin/cockpit-diff",
+      "line": 75,
+      "signature": "clear_screen() {",
+      "calls": [],
+      "tags": ["entrypoint"]
+    },
+    {
+      "name": "remember",
+      "file": "bin/cockpit-diff",
+      "line": 79,
+      "signature": "remember() {",
+      "calls": ["cockpit_is_noise_path"],
+      "tags": ["entrypoint"]
+    },
+    {
+      "name": "render",
+      "file": "bin/cockpit-diff",
+      "line": 93,
+      "signature": "render() {",
+      "calls": ["clear_screen", "cockpit_diff_colorize", "cockpit_diff_status_colorize", "cockpit_theme_add", "cockpit_theme_delete", "cockpit_theme_heading", "cockpit_theme_muted", "cockpit_theme_reset", "cockpit_theme_style", "update_git_chrome"],
+      "tags": ["entrypoint", "rendering"]
+    },
+    {
+      "name": "maybe_render",
+      "file": "bin/cockpit-diff",
+      "line": 163,
+      "signature": "maybe_render() {",
+      "calls": ["cockpit_event_close", "cockpit_event_drain", "cockpit_event_open", "cockpit_event_read", "cockpit_event_watch", "cockpit_theme_heading", "cockpit_theme_reset", "cockpit_view_visible", "cockpit_wake_dir", "refresh_git_chrome", "remember", "render"],
+      "tags": ["entrypoint", "rendering"]
+    },
+    {
+      "name": "window_of",
+      "file": "bin/cockpit-ensure-bar",
+      "line": 35,
+      "signature": "window_of() {",
+      "calls": [],
+      "tags": ["entrypoint"]
+    },
+    {
+      "name": "tag_bar",
+      "file": "bin/cockpit-ensure-bar",
+      "line": 39,
+      "signature": "tag_bar() {",
+      "calls": [],
+      "tags": ["entrypoint"]
+    },
+    {
+      "name": "hide_from_tabs",
+      "file": "bin/cockpit-ensure-bar",
+      "line": 47,
+      "signature": "hide_from_tabs() {",
+      "calls": ["pane_pid", "tag_bar", "window_of"],
+      "tags": ["entrypoint"]
+    },
+    {
+      "name": "cleanup",
+      "file": "bin/cockpit-files",
+      "line": 27,
+      "signature": "cleanup() {",
+      "calls": ["cockpit_event_close", "cockpit_event_open", "cockpit_event_read", "cockpit_theme_heading", "cockpit_theme_reset", "cockpit_view_visible", "cockpit_wake_dir"],
+      "tags": ["entrypoint"]
+    },
+    {
+      "name": "open_in_nvim",
+      "file": "bin/cockpit-files",
+      "line": 48,
+      "signature": "open_in_nvim() {",
+      "calls": [],
+      "tags": ["entrypoint"]
+    },
+    {
+      "name": "follow_edits",
+      "file": "bin/cockpit-files",
+      "line": 58,
+      "signature": "follow_edits() {",
+      "calls": ["cockpit_event_drain", "cockpit_event_read", "cockpit_event_watch", "cockpit_is_noise_path", "cockpit_is_text_ext", "cockpit_view_visible", "open_in_nvim"],
+      "tags": ["entrypoint"]
+    },
+    {
+      "name": "cleanup",
+      "file": "bin/cockpit-gate",
+      "line": 28,
+      "signature": "cleanup() {",
+      "calls": [],
+      "tags": ["entrypoint"]
+    },
+    {
+      "name": "draw",
+      "file": "bin/cockpit-gate",
+      "line": 34,
+      "signature": "draw() {",
+      "calls": [],
+      "tags": ["entrypoint"]
+    },
+    {
+      "name": "read_byte",
+      "file": "bin/cockpit-gate",
+      "line": 52,
+      "signature": "read_byte() {",
+      "calls": [],
+      "tags": ["entrypoint", "user-input"]
+    },
+    {
+      "name": "enable_mouse",
+      "file": "bin/cockpit-gate",
+      "line": 63,
+      "signature": "enable_mouse() {",
+      "calls": [],
+      "tags": ["entrypoint"]
+    },
+    {
+      "name": "parse_idle_event",
+      "file": "bin/cockpit-gate",
+      "line": 67,
+      "signature": "parse_idle_event() {",
+      "calls": ["cleanup", "draw", "enable_mouse", "read_byte"],
+      "tags": ["entrypoint"]
+    },
+    {
+      "name": "cockpit_config_home",
+      "file": "bin/cockpit-lib",
+      "line": 12,
+      "signature": "cockpit_config_home() {",
+      "calls": [],
+      "tags": ["config"]
+    },
+    {
+      "name": "cockpit_legacy_config_home",
+      "file": "bin/cockpit-lib",
+      "line": 22,
+      "signature": "cockpit_legacy_config_home() {",
+      "calls": [],
+      "tags": ["config"]
+    },
+    {
+      "name": "cockpit_config_read_path",
+      "file": "bin/cockpit-lib",
+      "line": 26,
+      "signature": "cockpit_config_read_path() {",
+      "calls": ["cockpit_config_home", "cockpit_legacy_config_home"],
+      "tags": ["user-input", "config"]
+    },
+    {
+      "name": "cockpit_overlay_path",
+      "file": "bin/cockpit-lib",
+      "line": 37,
+      "signature": "cockpit_overlay_path() {",
+      "calls": [],
+      "tags": ["logic"]
+    },
+    {
+      "name": "cockpit_session_name",
+      "file": "bin/cockpit-lib",
+      "line": 52,
+      "signature": "cockpit_session_name() {",
+      "calls": [],
+      "tags": ["logic"]
+    },
+    {
+      "name": "cockpit_session_is_managed",
+      "file": "bin/cockpit-lib",
+      "line": 56,
+      "signature": "cockpit_session_is_managed() {",
+      "calls": [],
+      "tags": ["logic"]
+    },
+    {
+      "name": "cockpit_migrate_legacy_session",
+      "file": "bin/cockpit-lib",
+      "line": 62,
+      "signature": "cockpit_migrate_legacy_session() {",
+      "calls": ["cockpit_session_name"],
+      "tags": ["logic"]
+    },
+    {
+      "name": "cockpit_runtime_home",
+      "file": "bin/cockpit-lib",
+      "line": 71,
+      "signature": "cockpit_runtime_home() {",
+      "calls": [],
+      "tags": ["process-spawn"]
+    },
+    {
+      "name": "cockpit_legacy_runtime_home",
+      "file": "bin/cockpit-lib",
+      "line": 75,
+      "signature": "cockpit_legacy_runtime_home() {",
+      "calls": [],
+      "tags": ["process-spawn"]
+    },
+    {
+      "name": "cockpit_shell_quote",
+      "file": "bin/cockpit-lib",
+      "line": 81,
+      "signature": "cockpit_shell_quote() {",
+      "calls": [],
+      "tags": ["logic"]
+    },
+    {
+      "name": "cockpit_resolve_codex_bin",
+      "file": "bin/cockpit-lib",
+      "line": 93,
+      "signature": "cockpit_resolve_codex_bin() {",
+      "calls": [],
+      "tags": ["logic"]
+    },
+    {
+      "name": "cockpit_codex_runtime_command",
+      "file": "bin/cockpit-lib",
+      "line": 122,
+      "signature": "cockpit_codex_runtime_command() {",
+      "calls": ["cockpit_shell_quote"],
+      "tags": ["process-spawn"]
+    },
+    {
+      "name": "cockpit_runtime_color_setup",
+      "file": "bin/cockpit-lib",
+      "line": 133,
+      "signature": "cockpit_runtime_color_setup() {",
+      "calls": [],
+      "tags": ["process-spawn"]
+    },
+    {
+      "name": "cockpit_theme_colors_file",
+      "file": "bin/cockpit-lib",
+      "line": 144,
+      "signature": "cockpit_theme_colors_file() {",
+      "calls": [],
+      "tags": ["logic"]
+    },
+    {
+      "name": "cockpit_theme_hex",
+      "file": "bin/cockpit-lib",
+      "line": 149,
+      "signature": "cockpit_theme_hex() {",
+      "calls": ["cockpit_theme_colors_file"],
+      "tags": ["logic"]
+    },
+    {
+      "name": "cockpit_theme_load_cache",
+      "file": "bin/cockpit-lib",
+      "line": 178,
+      "signature": "cockpit_theme_load_cache() {",
+      "calls": ["cockpit_theme_colors_file"],
+      "tags": ["logic"]
+    },
+    {
+      "name": "cockpit_theme_color_is_saturated",
+      "file": "bin/cockpit-lib",
+      "line": 199,
+      "signature": "cockpit_theme_color_is_saturated() {",
+      "calls": [],
+      "tags": ["logic"]
+    },
+    {
+      "name": "cockpit_theme_contrast_key",
+      "file": "bin/cockpit-lib",
+      "line": 213,
+      "signature": "cockpit_theme_contrast_key() {",
+      "calls": [],
+      "tags": ["logic"]
+    },
+    {
+      "name": "cockpit_theme_load_diff_cache",
+      "file": "bin/cockpit-lib",
+      "line": 229,
+      "signature": "cockpit_theme_load_diff_cache() {",
+      "calls": ["cockpit_theme_color_is_saturated", "cockpit_theme_contrast_key", "cockpit_theme_hex"],
+      "tags": ["logic"]
+    },
+    {
+      "name": "cockpit_theme_style",
+      "file": "bin/cockpit-lib",
+      "line": 269,
+      "signature": "cockpit_theme_style() {",
+      "calls": ["cockpit_theme_hex"],
+      "tags": ["logic"]
+    },
+    {
+      "name": "cockpit_theme_reset",
+      "file": "bin/cockpit-lib",
+      "line": 323,
+      "signature": "cockpit_theme_reset() {",
+      "calls": [],
+      "tags": ["logic"]
+    },
+    {
+      "name": "cockpit_theme_heading",
+      "file": "bin/cockpit-lib",
+      "line": 327,
+      "signature": "cockpit_theme_heading() {",
+      "calls": ["cockpit_theme_style"],
+      "tags": ["logic"]
+    },
+    {
+      "name": "cockpit_theme_muted",
+      "file": "bin/cockpit-lib",
+      "line": 331,
+      "signature": "cockpit_theme_muted() {",
+      "calls": ["cockpit_theme_style"],
+      "tags": ["logic"]
+    },
+    {
+      "name": "cockpit_theme_add",
+      "file": "bin/cockpit-lib",
+      "line": 335,
+      "signature": "cockpit_theme_add() {",
+      "calls": ["cockpit_theme_style"],
+      "tags": ["logic"]
+    },
+    {
+      "name": "cockpit_theme_delete",
+      "file": "bin/cockpit-lib",
+      "line": 339,
+      "signature": "cockpit_theme_delete() {",
+      "calls": ["cockpit_theme_style"],
+      "tags": ["logic"]
+    },
+    {
+      "name": "cockpit_theme_change",
+      "file": "bin/cockpit-lib",
+      "line": 343,
+      "signature": "cockpit_theme_change() {",
+      "calls": ["cockpit_theme_style"],
+      "tags": ["logic"]
+    },
+    {
+      "name": "cockpit_diff_colorize",
+      "file": "bin/cockpit-lib",
+      "line": 347,
+      "signature": "cockpit_diff_colorize() {",
+      "calls": ["cockpit_theme_add", "cockpit_theme_change", "cockpit_theme_delete", "cockpit_theme_reset", "cockpit_theme_style"],
+      "tags": ["logic"]
+    },
+    {
+      "name": "cockpit_diff_status_colorize",
+      "file": "bin/cockpit-lib",
+      "line": 369,
+      "signature": "cockpit_diff_status_colorize() {",
+      "calls": ["cockpit_theme_add", "cockpit_theme_change", "cockpit_theme_delete", "cockpit_theme_muted", "cockpit_theme_reset"],
+      "tags": ["logic"]
+    },
+    {
+      "name": "cockpit_is_text_ext",
+      "file": "bin/cockpit-lib",
+      "line": 390,
+      "signature": "cockpit_is_text_ext() {",
+      "calls": [],
+      "tags": ["logic"]
+    },
+    {
+      "name": "cockpit_is_noise_path",
+      "file": "bin/cockpit-lib",
+      "line": 404,
+      "signature": "cockpit_is_noise_path() {",
+      "calls": [],
+      "tags": ["logic"]
+    },
+    {
+      "name": "cockpit_view_visible",
+      "file": "bin/cockpit-lib",
+      "line": 415,
+      "signature": "cockpit_view_visible() {",
+      "calls": [],
+      "tags": ["rendering"]
+    },
+    {
+      "name": "cockpit_wake_dir",
+      "file": "bin/cockpit-lib",
+      "line": 429,
+      "signature": "cockpit_wake_dir() {",
+      "calls": ["cockpit_runtime_home"],
+      "tags": ["logic"]
+    },
+    {
+      "name": "cockpit_legacy_wake_dir",
+      "file": "bin/cockpit-lib",
+      "line": 434,
+      "signature": "cockpit_legacy_wake_dir() {",
+      "calls": ["cockpit_legacy_runtime_home"],
+      "tags": ["logic"]
+    },
+    {
+      "name": "cockpit_install_wake",
+      "file": "bin/cockpit-lib",
+      "line": 439,
+      "signature": "cockpit_install_wake() {",
+      "calls": ["cockpit_wake_dir"],
+      "tags": ["logic"]
+    },
+    {
+      "name": "cockpit_event_open",
+      "file": "bin/cockpit-lib",
+      "line": 448,
+      "signature": "cockpit_event_open() {",
+      "calls": ["cockpit_wake_dir"],
+      "tags": ["logic"]
+    },
+    {
+      "name": "cockpit_event_watch",
+      "file": "bin/cockpit-lib",
+      "line": 464,
+      "signature": "cockpit_event_watch() {",
+      "calls": [],
+      "tags": ["logic"]
+    },
+    {
+      "name": "cockpit_event_read",
+      "file": "bin/cockpit-lib",
+      "line": 473,
+      "signature": "cockpit_event_read() {",
+      "calls": [],
+      "tags": ["user-input"]
+    },
+    {
+      "name": "cockpit_event_drain",
+      "file": "bin/cockpit-lib",
+      "line": 477,
+      "signature": "cockpit_event_drain() {",
+      "calls": [],
+      "tags": ["logic"]
+    },
+    {
+      "name": "cockpit_event_close",
+      "file": "bin/cockpit-lib",
+      "line": 488,
+      "signature": "cockpit_event_close() {",
+      "calls": [],
+      "tags": ["logic"]
+    },
+    {
+      "name": "cockpit_hush_session",
+      "file": "bin/cockpit-lib",
+      "line": 497,
+      "signature": "cockpit_hush_session() {",
+      "calls": [],
+      "tags": ["logic"]
+    },
+    {
+      "name": "cockpit_coalesce",
+      "file": "bin/cockpit-lib",
+      "line": 517,
+      "signature": "cockpit_coalesce() {",
+      "calls": [],
+      "tags": ["logic"]
+    },
+    {
+      "name": "cockpit_state_file",
+      "file": "bin/cockpit-lib",
+      "line": 525,
+      "signature": "cockpit_state_file() {",
+      "calls": ["cockpit_config_home"],
+      "tags": ["persistence"]
+    },
+    {
+      "name": "cockpit_state_write",
+      "file": "bin/cockpit-lib",
+      "line": 529,
+      "signature": "cockpit_state_write() {",
+      "calls": ["cockpit_state_file"],
+      "tags": ["persistence"]
+    },
+    {
+      "name": "cockpit_fingerprint_files",
+      "file": "bin/cockpit-lib",
+      "line": 539,
+      "signature": "cockpit_fingerprint_files() {",
+      "calls": [],
+      "tags": ["logic"]
+    },
+    {
+      "name": "attach_client",
+      "file": "bin/cockpit-main",
+      "line": 15,
+      "signature": "attach_client() {",
+      "calls": ["cockpit_migrate_legacy_session", "cockpit_session_name"],
+      "tags": ["entrypoint"]
+    },
+    {
+      "name": "is_project_dir",
+      "file": "bin/cockpit-main",
+      "line": 83,
+      "signature": "is_project_dir() {",
+      "calls": [],
+      "tags": ["entrypoint"]
+    },
+    {
+      "name": "usable_git_root",
+      "file": "bin/cockpit-main",
+      "line": 93,
+      "signature": "usable_git_root() {",
+      "calls": ["cockpit_session_name", "header", "is_project_dir"],
+      "tags": ["entrypoint", "privileged"]
+    },
+    {
+      "name": "reap_ghost_sessions",
+      "file": "bin/cockpit-main",
+      "line": 146,
+      "signature": "reap_ghost_sessions() {",
+      "calls": ["cockpit_session_is_managed"],
+      "tags": ["entrypoint"]
+    },
+    {
+      "name": "quote_sh",
+      "file": "bin/cockpit-main",
+      "line": 157,
+      "signature": "quote_sh() {",
+      "calls": ["attach_client", "cockpit_auth_check", "cockpit_auth_ensure", "cockpit_auth_ensure_config", "cockpit_auth_field", "cockpit_auth_signed_in", "cockpit_codex_runtime_command", "cockpit_config_read_path", "cockpit_migrate_legacy_session", "cockpit_overlay_path", "cockpit_resolve_codex_bin", "cockpit_runtime_color_setup", "cockpit_shell_quote", "gate", "reap_ghost_sessions"],
+      "tags": ["entrypoint"]
+    },
+    {
+      "name": "tag",
+      "file": "bin/cockpit-main",
+      "line": 266,
+      "signature": "tag() {",
+      "calls": ["attach_client", "run"],
+      "tags": ["entrypoint"]
+    },
+    {
+      "name": "draw",
+      "file": "bin/cockpit-memory",
+      "line": 13,
+      "signature": "draw() {",
+      "calls": [],
+      "tags": ["entrypoint"]
+    },
+    {
+      "name": "find_diagram",
+      "file": "bin/cockpit-mermaid-watch",
+      "line": 19,
+      "signature": "find_diagram() {",
+      "calls": [],
+      "tags": ["entrypoint"]
+    },
+    {
+      "name": "write_canon_diagram",
+      "file": "bin/cockpit-mermaid-watch",
+      "line": 39,
+      "signature": "write_canon_diagram() {",
+      "calls": [],
+      "tags": ["entrypoint", "persistence"]
+    },
+    {
+      "name": "ensure_diagram",
+      "file": "bin/cockpit-mermaid-watch",
+      "line": 58,
+      "signature": "ensure_diagram() {",
+      "calls": ["find_diagram", "write_canon_diagram"],
+      "tags": ["entrypoint"]
+    },
+    {
+      "name": "clear_screen",
+      "file": "bin/cockpit-mermaid-watch",
+      "line": 73,
+      "signature": "clear_screen() {",
+      "calls": [],
+      "tags": ["entrypoint"]
+    },
+    {
+      "name": "header",
+      "file": "bin/cockpit-mermaid-watch",
+      "line": 77,
+      "signature": "header() {",
+      "calls": ["cockpit_theme_heading", "cockpit_theme_muted", "cockpit_theme_reset", "cockpit_theme_style"],
+      "tags": ["entrypoint"]
+    },
+    {
+      "name": "file_fp",
+      "file": "bin/cockpit-mermaid-watch",
+      "line": 84,
+      "signature": "file_fp() {",
+      "calls": [],
+      "tags": ["entrypoint"]
+    },
+    {
+      "name": "render_graph",
+      "file": "bin/cockpit-mermaid-watch",
+      "line": 90,
+      "signature": "render_graph() {",
+      "calls": ["cockpit_theme_muted", "cockpit_theme_reset", "render"],
+      "tags": ["entrypoint", "rendering"]
+    },
+    {
+      "name": "render",
+      "file": "bin/cockpit-mermaid-watch",
+      "line": 128,
+      "signature": "render() {",
+      "calls": ["clear_screen", "ensure_diagram", "file_fp", "header", "render_graph"],
+      "tags": ["entrypoint", "rendering"]
+    },
+    {
+      "name": "maybe_render",
+      "file": "bin/cockpit-mermaid-watch",
+      "line": 151,
+      "signature": "maybe_render() {",
+      "calls": ["cockpit_event_close", "cockpit_event_drain", "cockpit_event_open", "cockpit_event_read", "cockpit_event_watch", "cockpit_theme_heading", "cockpit_theme_reset", "cockpit_view_visible", "cockpit_wake_dir", "ensure_diagram", "render"],
+      "tags": ["entrypoint", "rendering"]
+    },
+    {
+      "name": "usage",
+      "file": "bin/cockpit-plugin",
+      "line": 13,
+      "signature": "usage() {",
+      "calls": ["run"],
+      "tags": ["entrypoint"]
+    },
+    {
+      "name": "manifest_field",
+      "file": "bin/cockpit-plugin",
+      "line": 26,
+      "signature": "manifest_field() {",
+      "calls": [],
+      "tags": ["entrypoint"]
+    },
+    {
+      "name": "plugin_dir",
+      "file": "bin/cockpit-plugin",
+      "line": 44,
+      "signature": "plugin_dir() {",
+      "calls": [],
+      "tags": ["entrypoint"]
+    },
+    {
+      "name": "validate_plugin",
+      "file": "bin/cockpit-plugin",
+      "line": 60,
+      "signature": "validate_plugin() {",
+      "calls": ["manifest_field"],
+      "tags": ["entrypoint", "validation"]
+    },
+    {
+      "name": "list_plugins",
+      "file": "bin/cockpit-plugin",
+      "line": 70,
+      "signature": "list_plugins() {",
+      "calls": ["manifest_field", "validate_plugin"],
+      "tags": ["entrypoint"]
+    },
+    {
+      "name": "run_plugin",
+      "file": "bin/cockpit-plugin",
+      "line": 88,
+      "signature": "run_plugin() {",
+      "calls": ["list_plugins", "manifest_field", "plugin_dir", "run", "usage", "validate_plugin"],
+      "tags": ["entrypoint", "process-spawn"]
+    },
+    {
+      "name": "now_ms",
+      "file": "bin/cockpit-pointer",
+      "line": 15,
+      "signature": "now_ms() {",
+      "calls": [],
+      "tags": ["entrypoint"]
+    },
+    {
+      "name": "debounce",
+      "file": "bin/cockpit-pointer",
+      "line": 28,
+      "signature": "debounce() {",
+      "calls": ["cockpit_runtime_home", "now_ms"],
+      "tags": ["entrypoint"]
+    },
+    {
+      "name": "session_of",
+      "file": "bin/cockpit-pointer",
+      "line": 42,
+      "signature": "session_of() {",
+      "calls": ["cockpit_session_is_managed", "cockpit_session_name"],
+      "tags": ["entrypoint"]
+    },
+    {
+      "name": "role_of",
+      "file": "bin/cockpit-pointer",
+      "line": 51,
+      "signature": "role_of() {",
+      "calls": [],
+      "tags": ["entrypoint"]
+    },
+    {
+      "name": "window_of",
+      "file": "bin/cockpit-pointer",
+      "line": 57,
+      "signature": "window_of() {",
+      "calls": [],
+      "tags": ["entrypoint"]
+    },
+    {
+      "name": "mouse_target",
+      "file": "bin/cockpit-pointer",
+      "line": 67,
+      "signature": "mouse_target() {",
+      "calls": [],
+      "tags": ["entrypoint"]
+    },
+    {
+      "name": "is_pane_id",
+      "file": "bin/cockpit-pointer",
+      "line": 72,
+      "signature": "is_pane_id() {",
+      "calls": [],
+      "tags": ["entrypoint"]
+    },
+    {
+      "name": "trim",
+      "file": "bin/cockpit-pointer",
+      "line": 76,
+      "signature": "trim() {",
+      "calls": [],
+      "tags": ["entrypoint"]
+    },
+    {
+      "name": "bar_click",
+      "file": "bin/cockpit-pointer",
+      "line": 83,
+      "signature": "bar_click() {",
+      "calls": ["cockpit_popup_any", "cockpit_popup_dismiss", "debounce", "is_pane_id", "mouse_target", "role_of", "session_of", "trim"],
+      "tags": ["entrypoint"]
+    },
+    {
+      "name": "cleanup",
+      "file": "bin/cockpit-popup",
+      "line": 55,
+      "signature": "cleanup() {",
+      "calls": ["cockpit_popup", "usage"],
+      "tags": ["entrypoint"]
+    },
+    {
+      "name": "emit",
+      "file": "bin/cockpit-probe-install",
+      "line": 16,
+      "signature": "emit() {",
+      "calls": ["run"],
+      "tags": ["entrypoint"]
+    },
+    {
+      "name": "usage",
+      "file": "bin/cockpit-profile",
+      "line": 6,
+      "signature": "usage() {",
+      "calls": [],
+      "tags": ["entrypoint"]
+    },
+    {
+      "name": "in_tailscale_cgnat",
+      "file": "bin/cockpit-profile",
+      "line": 11,
+      "signature": "in_tailscale_cgnat() {",
+      "calls": [],
+      "tags": ["entrypoint"]
+    },
+    {
+      "name": "pid_comm",
+      "file": "bin/cockpit-profile",
+      "line": 18,
+      "signature": "pid_comm() {",
+      "calls": [],
+      "tags": ["entrypoint"]
+    },
+    {
+      "name": "pid_env",
+      "file": "bin/cockpit-profile",
+      "line": 23,
+      "signature": "pid_env() {",
+      "calls": [],
+      "tags": ["entrypoint", "config"]
+    },
+    {
+      "name": "pid_ppid",
+      "file": "bin/cockpit-profile",
+      "line": 28,
+      "signature": "pid_ppid() {",
+      "calls": [],
+      "tags": ["entrypoint"]
+    },
+    {
+      "name": "env_val",
+      "file": "bin/cockpit-profile",
+      "line": 33,
+      "signature": "env_val() {",
+      "calls": [],
+      "tags": ["entrypoint", "config"]
+    },
+    {
+      "name": "fingerprint_pid",
+      "file": "bin/cockpit-profile",
+      "line": 38,
+      "signature": "fingerprint_pid() {",
+      "calls": ["env_val", "pid_comm", "pid_env", "pid_ppid"],
+      "tags": ["entrypoint"]
+    },
+    {
+      "name": "classify_fp",
+      "file": "bin/cockpit-profile",
+      "line": 68,
+      "signature": "classify_fp() {",
+      "calls": ["in_tailscale_cgnat"],
+      "tags": ["entrypoint"]
+    },
+    {
+      "name": "classify_pid",
+      "file": "bin/cockpit-profile",
+      "line": 105,
+      "signature": "classify_pid() {",
+      "calls": ["classify_fp", "fingerprint_pid"],
+      "tags": ["entrypoint"]
+    },
+    {
+      "name": "session_profile",
+      "file": "bin/cockpit-profile",
+      "line": 110,
+      "signature": "session_profile() {",
+      "calls": ["classify_pid", "fingerprint_pid", "usage"],
+      "tags": ["entrypoint"]
+    },
+    {
+      "name": "shell_quote",
+      "file": "bin/cockpit-reload-views",
+      "line": 22,
+      "signature": "shell_quote() {",
+      "calls": [],
+      "tags": ["entrypoint", "network", "rendering"]
+    },
+    {
+      "name": "pane_for",
+      "file": "bin/cockpit-reload-views",
+      "line": 29,
+      "signature": "pane_for() {",
+      "calls": [],
+      "tags": ["entrypoint", "network", "rendering"]
+    },
+    {
+      "name": "setup_has_editor",
+      "file": "bin/cockpit-reload-views",
+      "line": 48,
+      "signature": "setup_has_editor() {",
+      "calls": ["pane_pid"],
+      "tags": ["entrypoint", "network", "rendering"]
+    },
+    {
+      "name": "normalize_setup_edit_windows",
+      "file": "bin/cockpit-reload-views",
+      "line": 55,
+      "signature": "normalize_setup_edit_windows() {",
+      "calls": [],
+      "tags": ["entrypoint", "network", "rendering"]
+    },
+    {
+      "name": "reload_bar",
+      "file": "bin/cockpit-reload-views",
+      "line": 81,
+      "signature": "reload_bar() {",
+      "calls": [],
+      "tags": ["entrypoint", "network", "rendering"]
+    },
+    {
+      "name": "ensure_setup",
+      "file": "bin/cockpit-reload-views",
+      "line": 96,
+      "signature": "ensure_setup() {",
+      "calls": ["normalize_setup_edit_windows", "pane_for", "setup_has_editor", "shell_quote"],
+      "tags": ["entrypoint", "network", "rendering"]
+    },
+    {
+      "name": "reload_view",
+      "file": "bin/cockpit-reload-views",
+      "line": 164,
+      "signature": "reload_view() {",
+      "calls": ["ensure_setup", "pane_for", "reload_bar", "shell_quote"],
+      "tags": ["entrypoint", "network", "rendering"]
+    },
+    {
+      "name": "runtime_pane",
+      "file": "bin/cockpit-runtime",
+      "line": 27,
+      "signature": "runtime_pane() {",
+      "calls": [],
+      "tags": ["entrypoint", "process-spawn"]
+    },
+    {
+      "name": "pane_for_id",
+      "file": "bin/cockpit-runtime",
+      "line": 32,
+      "signature": "pane_for_id() {",
+      "calls": [],
+      "tags": ["entrypoint", "process-spawn"]
+    },
+    {
+      "name": "pane_pid",
+      "file": "bin/cockpit-runtime",
+      "line": 38,
+      "signature": "pane_pid() {",
+      "calls": [],
+      "tags": ["entrypoint", "process-spawn"]
+    },
+    {
+      "name": "pause_pane",
+      "file": "bin/cockpit-runtime",
+      "line": 42,
+      "signature": "pause_pane() {",
+      "calls": ["pane_pid"],
+      "tags": ["entrypoint", "process-spawn"]
+    },
+    {
+      "name": "resume_pane",
+      "file": "bin/cockpit-runtime",
+      "line": 49,
+      "signature": "resume_pane() {",
+      "calls": ["pane_pid"],
+      "tags": ["entrypoint", "process-spawn"]
+    },
+    {
+      "name": "hide_rt_window",
+      "file": "bin/cockpit-runtime",
+      "line": 56,
+      "signature": "hide_rt_window() {",
+      "calls": ["hush_window"],
+      "tags": ["entrypoint", "process-spawn"]
+    },
+    {
+      "name": "show_rt_window",
+      "file": "bin/cockpit-runtime",
+      "line": 65,
+      "signature": "show_rt_window() {",
+      "calls": [],
+      "tags": ["entrypoint", "process-spawn"]
+    },
+    {
+      "name": "root_path",
+      "file": "bin/cockpit-runtime",
+      "line": 71,
+      "signature": "root_path() {",
+      "calls": ["runtime_pane"],
+      "tags": ["entrypoint", "privileged", "process-spawn"]
+    },
+    {
+      "name": "hush_window",
+      "file": "bin/cockpit-runtime",
+      "line": 76,
+      "signature": "hush_window() {",
+      "calls": [],
+      "tags": ["entrypoint", "process-spawn"]
+    },
+    {
+      "name": "ensure_runtime_auth",
+      "file": "bin/cockpit-runtime",
+      "line": 82,
+      "signature": "ensure_runtime_auth() {",
+      "calls": ["cockpit_auth_ensure", "cockpit_auth_signed_in"],
+      "tags": ["entrypoint", "auth", "process-spawn"]
+    },
+    {
+      "name": "spawn_runtime",
+      "file": "bin/cockpit-runtime",
+      "line": 90,
+      "signature": "spawn_runtime() {",
+      "calls": ["cockpit_auth_field", "cockpit_auth_label", "cockpit_codex_runtime_command", "cockpit_resolve_codex_bin", "cockpit_runtime_color_setup", "ensure_runtime_auth", "hush_window", "label", "root_path"],
+      "tags": ["entrypoint", "process-spawn"]
+    },
+    {
+      "name": "save_runtime",
+      "file": "bin/cockpit-runtime",
+      "line": 112,
+      "signature": "save_runtime() {",
+      "calls": ["cockpit_config_home"],
+      "tags": ["entrypoint", "persistence", "process-spawn"]
+    },
+    {
+      "name": "refresh_agent_target",
+      "file": "bin/cockpit-runtime",
+      "line": 127,
+      "signature": "refresh_agent_target() {",
+      "calls": [],
+      "tags": ["entrypoint", "process-spawn"]
+    },
+    {
+      "name": "parallel_to",
+      "file": "bin/cockpit-runtime",
+      "line": 133,
+      "signature": "parallel_to() {",
+      "calls": ["cockpit_auth_label", "label", "pane_for_id", "refresh_agent_target", "resume_pane", "show_rt_window", "spawn_runtime"],
+      "tags": ["entrypoint", "process-spawn"]
+    },
+    {
+      "name": "switch_to",
+      "file": "bin/cockpit-runtime",
+      "line": 151,
+      "signature": "switch_to() {",
+      "calls": ["cockpit_auth_label", "hide_rt_window", "pane_for_id", "pause_pane", "refresh_agent_target", "resume_pane", "runtime_pane", "save_runtime", "show_rt_window", "spawn_runtime"],
+      "tags": ["entrypoint", "process-spawn"]
+    },
+    {
+      "name": "send_model",
+      "file": "bin/cockpit-runtime",
+      "line": 190,
+      "signature": "send_model() {",
+      "calls": ["cockpit_auth_field", "rid", "runtime_pane"],
+      "tags": ["entrypoint", "process-spawn"]
+    },
+    {
+      "name": "ask_mode",
+      "file": "bin/cockpit-runtime",
+      "line": 202,
+      "signature": "ask_mode() {",
+      "calls": ["cockpit_auth_label", "label", "parallel_to", "switch_to"],
+      "tags": ["entrypoint", "process-spawn"]
+    },
+    {
+      "name": "open_omarchy_agent_switcher",
+      "file": "bin/cockpit-runtime",
+      "line": 222,
+      "signature": "open_omarchy_agent_switcher() {",
+      "calls": ["pick"],
+      "tags": ["entrypoint", "process-spawn"]
+    },
+    {
+      "name": "pick",
+      "file": "bin/cockpit-runtime",
+      "line": 234,
+      "signature": "pick() {",
+      "calls": ["ask_mode", "cockpit_auth_check", "cockpit_auth_ensure", "cockpit_auth_ensure_config", "cockpit_auth_ids", "cockpit_auth_label", "cockpit_auth_signed_in", "cockpit_popup", "open_omarchy_agent_switcher", "pane_for_id", "parallel_to", "pause_pane", "resume_pane", "runtime_pane", "send_model", "switch_to"],
+      "tags": ["entrypoint", "process-spawn"]
+    },
+    {
+      "name": "refresh_agent_state",
+      "file": "bin/cockpit-setup",
+      "line": 44,
+      "signature": "refresh_agent_state() {",
+      "calls": ["cockpit_agent_inspect"],
+      "tags": ["entrypoint", "persistence"]
+    },
+    {
+      "name": "shell_quote",
+      "file": "bin/cockpit-setup",
+      "line": 49,
+      "signature": "shell_quote() {",
+      "calls": [],
+      "tags": ["entrypoint"]
+    },
+    {
+      "name": "agent_pane",
+      "file": "bin/cockpit-setup",
+      "line": 56,
+      "signature": "agent_pane() {",
+      "calls": [],
+      "tags": ["entrypoint"]
+    },
+    {
+      "name": "project_root",
+      "file": "bin/cockpit-setup",
+      "line": 61,
+      "signature": "project_root() {",
+      "calls": ["agent_pane"],
+      "tags": ["entrypoint", "privileged"]
+    },
+    {
+      "name": "active_provider",
+      "file": "bin/cockpit-setup",
+      "line": 71,
+      "signature": "active_provider() {",
+      "calls": ["agent_pane"],
+      "tags": ["entrypoint"]
+    },
+    {
+      "name": "provider_cli_ready",
+      "file": "bin/cockpit-setup",
+      "line": 77,
+      "signature": "provider_cli_ready() {",
+      "calls": ["cockpit_auth_check"],
+      "tags": ["entrypoint", "user-input"]
+    },
+    {
+      "name": "provider_auth_command",
+      "file": "bin/cockpit-setup",
+      "line": 81,
+      "signature": "provider_auth_command() {",
+      "calls": ["cockpit_auth_field"],
+      "tags": ["entrypoint", "auth", "process-spawn"]
+    },
+    {
+      "name": "provider_auth_configured",
+      "file": "bin/cockpit-setup",
+      "line": 85,
+      "signature": "provider_auth_configured() {",
+      "calls": ["cockpit_auth_probe_configured"],
+      "tags": ["entrypoint", "auth", "config"]
+    },
+    {
+      "name": "provider_oauth_ready",
+      "file": "bin/cockpit-setup",
+      "line": 89,
+      "signature": "provider_oauth_ready() {",
+      "calls": ["cockpit_auth_signed_in"],
+      "tags": ["entrypoint", "auth", "user-input"]
+    },
+    {
+      "name": "provider_status",
+      "file": "bin/cockpit-setup",
+      "line": 93,
+      "signature": "provider_status() {",
+      "calls": ["provider_auth_configured", "provider_cli_ready", "provider_oauth_ready"],
+      "tags": ["entrypoint"]
+    },
+    {
+      "name": "invalidate_status_cache",
+      "file": "bin/cockpit-setup",
+      "line": 112,
+      "signature": "invalidate_status_cache() {",
+      "calls": [],
+      "tags": ["entrypoint", "validation"]
+    },
+    {
+      "name": "provider_label",
+      "file": "bin/cockpit-setup",
+      "line": 116,
+      "signature": "provider_label() {",
+      "calls": ["cockpit_auth_label"],
+      "tags": ["entrypoint"]
+    },
+    {
+      "name": "plugin_json",
+      "file": "bin/cockpit-setup",
+      "line": 120,
+      "signature": "plugin_json() {",
+      "calls": [],
+      "tags": ["entrypoint"]
+    },
+    {
+      "name": "plugin_summary",
+      "file": "bin/cockpit-setup",
+      "line": 131,
+      "signature": "plugin_summary() {",
+      "calls": ["plugin_json"],
+      "tags": ["entrypoint"]
+    },
+    {
+      "name": "build_plugin_catalog",
+      "file": "bin/cockpit-setup",
+      "line": 151,
+      "signature": "build_plugin_catalog() {",
+      "calls": ["plugin_json"],
+      "tags": ["entrypoint", "rendering"]
+    },
+    {
+      "name": "current_target",
+      "file": "bin/cockpit-setup",
+      "line": 176,
+      "signature": "current_target() {",
+      "calls": ["project_root"],
+      "tags": ["entrypoint"]
+    },
+    {
+      "name": "git_summary",
+      "file": "bin/cockpit-setup",
+      "line": 187,
+      "signature": "git_summary() {",
+      "calls": [],
+      "tags": ["entrypoint"]
+    },
+    {
+      "name": "draw",
+      "file": "bin/cockpit-setup",
+      "line": 205,
+      "signature": "draw() {",
+      "calls": ["active_provider", "agent_pane", "cockpit_agent_target_state_label", "cockpit_auth_ensure_config", "cockpit_auth_ids", "current_target", "git_summary", "plugin_summary", "project_root", "provider_label", "provider_status", "refresh_agent_state"],
+      "tags": ["entrypoint"]
+    },
+    {
+      "name": "pause_flow",
+      "file": "bin/cockpit-setup",
+      "line": 278,
+      "signature": "pause_flow() {",
+      "calls": [],
+      "tags": ["entrypoint"]
+    },
+    {
+      "name": "choose_provider",
+      "file": "bin/cockpit-setup",
+      "line": 283,
+      "signature": "choose_provider() {",
+      "calls": ["cockpit_auth_ids", "provider_label", "provider_status"],
+      "tags": ["entrypoint"]
+    },
+    {
+      "name": "native_login_command",
+      "file": "bin/cockpit-setup",
+      "line": 312,
+      "signature": "native_login_command() {",
+      "calls": ["cockpit_auth_login_cmd"],
+      "tags": ["entrypoint", "auth", "process-spawn"]
+    },
+    {
+      "name": "auth_flow",
+      "file": "bin/cockpit-setup",
+      "line": 323,
+      "signature": "auth_flow() {",
+      "calls": ["check", "choose_provider", "invalidate_status_cache", "native_login_command", "pause_flow", "provider_auth_configured", "provider_cli_ready", "provider_label", "provider_oauth_ready"],
+      "tags": ["entrypoint", "auth"]
+    },
+    {
+      "name": "provider_flow",
+      "file": "bin/cockpit-setup",
+      "line": 370,
+      "signature": "provider_flow() {",
+      "calls": ["invalidate_status_cache", "pick", "run"],
+      "tags": ["entrypoint"]
+    },
+    {
+      "name": "trim_value",
+      "file": "bin/cockpit-setup",
+      "line": 387,
+      "signature": "trim_value() {",
+      "calls": [],
+      "tags": ["entrypoint"]
+    },
+    {
+      "name": "provider_models",
+      "file": "bin/cockpit-setup",
+      "line": 394,
+      "signature": "provider_models() {",
+      "calls": ["cockpit_auth_field"],
+      "tags": ["entrypoint"]
+    },
+    {
+      "name": "build_model_catalog",
+      "file": "bin/cockpit-setup",
+      "line": 422,
+      "signature": "build_model_catalog() {",
+      "calls": ["cockpit_auth_ids", "provider_label", "provider_models", "trim_value"],
+      "tags": ["entrypoint", "rendering"]
+    },
+    {
+      "name": "open_native_model_picker",
+      "file": "bin/cockpit-setup",
+      "line": 453,
+      "signature": "open_native_model_picker() {",
+      "calls": ["agent_pane", "cockpit_auth_field", "provider_label"],
+      "tags": ["entrypoint"]
+    },
+    {
+      "name": "switch_model_provider",
+      "file": "bin/cockpit-setup",
+      "line": 468,
+      "signature": "switch_model_provider() {",
+      "calls": ["active_provider", "invalidate_status_cache", "provider_label"],
+      "tags": ["entrypoint"]
+    },
+    {
+      "name": "select_catalog_model",
+      "file": "bin/cockpit-setup",
+      "line": 481,
+      "signature": "select_catalog_model() {",
+      "calls": ["cockpit_auth_field", "open_native_model_picker", "pause_flow", "provider_label", "switch_model_provider"],
+      "tags": ["entrypoint"]
+    },
+    {
+      "name": "model_flow",
+      "file": "bin/cockpit-setup",
+      "line": 505,
+      "signature": "model_flow() {",
+      "calls": ["active_provider", "build_model_catalog", "pause_flow", "select_catalog_model"],
+      "tags": ["entrypoint"]
+    },
+    {
+      "name": "plugin_flow",
+      "file": "bin/cockpit-setup",
+      "line": 537,
+      "signature": "plugin_flow() {",
+      "calls": ["build_plugin_catalog", "pause_flow"],
+      "tags": ["entrypoint"]
+    },
+    {
+      "name": "audit_flow",
+      "file": "bin/cockpit-setup",
+      "line": 601,
+      "signature": "audit_flow() {",
+      "calls": ["pause_flow"],
+      "tags": ["entrypoint", "validation"]
+    },
+    {
+      "name": "agent_target_flow",
+      "file": "bin/cockpit-setup",
+      "line": 617,
+      "signature": "agent_target_flow() {",
+      "calls": ["active_provider", "cockpit_agent_target_state_label", "pause_flow", "project_root", "provider_label", "refresh_agent_state"],
+      "tags": ["entrypoint"]
+    },
+    {
+      "name": "profile_skill_flow",
+      "file": "bin/cockpit-setup",
+      "line": 645,
+      "signature": "profile_skill_flow() {",
+      "calls": ["active_provider", "cockpit_agent_apply_profile", "cockpit_agent_profile_skills_dir", "cockpit_agent_target_state_label", "pause_flow", "project_root", "provider_label", "refresh_agent_state"],
+      "tags": ["entrypoint"]
+    },
+    {
+      "name": "choose_target",
+      "file": "bin/cockpit-setup",
+      "line": 717,
+      "signature": "choose_target() {",
+      "calls": ["header", "project_root"],
+      "tags": ["entrypoint"]
+    },
+    {
+      "name": "init_target",
+      "file": "bin/cockpit-setup",
+      "line": 744,
+      "signature": "init_target() {",
+      "calls": ["current_target"],
+      "tags": ["entrypoint"]
+    },
+    {
+      "name": "edit_config",
+      "file": "bin/cockpit-setup",
+      "line": 770,
+      "signature": "edit_config() {",
+      "calls": ["cockpit_auth_ensure_config", "invalidate_status_cache", "project_root", "shell_quote"],
+      "tags": ["entrypoint", "config"]
+    },
+    {
+      "name": "edit_cockpit_config",
+      "file": "bin/cockpit-setup",
+      "line": 804,
+      "signature": "edit_cockpit_config() {",
+      "calls": ["cockpit_auth_ensure_config", "cockpit_config_home", "project_root", "shell_quote"],
+      "tags": ["entrypoint", "config"]
+    },
+    {
+      "name": "shell_command",
+      "file": "bin/cockpit-setup",
+      "line": 849,
+      "signature": "shell_command() {",
+      "calls": ["pause_flow"],
+      "tags": ["entrypoint", "process-spawn"]
+    },
+    {
+      "name": "run_action",
+      "file": "bin/cockpit-setup",
+      "line": 861,
+      "signature": "run_action() {",
+      "calls": ["agent_target_flow", "audit_flow", "auth_flow", "choose_target", "draw", "edit_cockpit_config", "edit_config", "init_target", "invalidate_status_cache", "model_flow", "plugin_flow", "profile_skill_flow", "provider_flow", "shell_command"],
+      "tags": ["entrypoint", "process-spawn"]
+    },
+    {
+      "name": "lazy_window",
+      "file": "bin/cockpit-touch",
+      "line": 58,
+      "signature": "lazy_window() {",
+      "calls": [],
+      "tags": ["entrypoint"]
+    },
+    {
+      "name": "add_path",
+      "file": "bin/cockpit-vimdiff",
+      "line": 59,
+      "signature": "add_path() {",
+      "calls": ["cockpit_config_home"],
+      "tags": ["entrypoint"]
+    },
+    {
+      "name": "seed_legacy_file",
+      "file": "install.sh",
+      "line": 27,
+      "signature": "seed_legacy_file() {",
+      "calls": [],
+      "tags": ["entrypoint"]
+    },
+    {
+      "name": "normalize_canonical_namespace",
+      "file": "install.sh",
+      "line": 48,
+      "signature": "normalize_canonical_namespace() {",
+      "calls": [],
+      "tags": ["entrypoint"]
+    },
+    {
+      "name": "normalize_canonical_commands",
+      "file": "install.sh",
+      "line": 66,
+      "signature": "normalize_canonical_commands() {",
+      "calls": [],
+      "tags": ["entrypoint", "process-spawn"]
+    },
+    {
+      "name": "log",
+      "file": "scripts/generate-arch-docs.sh",
+      "line": 37,
+      "signature": "log() { printf 'generate-arch-docs.sh: %s\\n' \"$*\"; }",
+      "calls": [],
+      "tags": ["entrypoint"]
+    },
+    {
+      "name": "err",
+      "file": "scripts/generate-arch-docs.sh",
+      "line": 38,
+      "signature": "err() { printf 'generate-arch-docs.sh: ERROR: %s\\n' \"$*\" >&2; }",
+      "calls": ["log", "tag"],
+      "tags": ["entrypoint"]
+    },
+    {
+      "name": "compute_tags",
+      "file": "scripts/generate-arch-docs.sh",
+      "line": 205,
+      "signature": "compute_tags() {",
+      "calls": ["check", "emit", "main", "render", "run"],
+      "tags": ["entrypoint"]
+    },
+    {
+      "name": "json_escape",
+      "file": "scripts/generate-arch-docs.sh",
+      "line": 276,
+      "signature": "json_escape() {",
+      "calls": [],
+      "tags": ["entrypoint"]
+    },
+    {
+      "name": "json_str_array",
+      "file": "scripts/generate-arch-docs.sh",
+      "line": 286,
+      "signature": "json_str_array() { # space-separated words -> JSON array of strings on one line",
+      "calls": ["err", "json_escape"],
+      "tags": ["entrypoint"]
+    },
+    {
+      "name": "component_of",
+      "file": "scripts/generate-arch-docs.sh",
+      "line": 324,
+      "signature": "component_of() {",
+      "calls": [],
+      "tags": ["entrypoint"]
+    },
+    {
+      "name": "md_escape_sig",
+      "file": "scripts/generate-arch-docs.sh",
+      "line": 329,
+      "signature": "md_escape_sig() { printf '`%s`' \"$1\"; }",
+      "calls": ["component_of", "log"],
+      "tags": ["entrypoint"]
+    },
+    {
+      "name": "need_root",
+      "file": "scripts/install-hostinger.sh",
+      "line": 21,
+      "signature": "need_root() {",
+      "calls": [],
+      "tags": ["entrypoint", "privileged"]
+    },
+    {
+      "name": "cleanup",
+      "file": "tests/test-agent-profile.sh",
+      "line": 10,
+      "signature": "cleanup() { rm -rf \"$test_root\"; }",
+      "calls": ["label"],
+      "tags": ["entrypoint", "privileged"]
+    },
+    {
+      "name": "cleanup",
+      "file": "tests/test-auth-setup.sh",
+      "line": 12,
+      "signature": "cleanup() {",
+      "calls": ["check", "cockpit_auth_login_cmd", "cockpit_auth_state", "label"],
+      "tags": ["entrypoint", "auth"]
+    },
+    {
+      "name": "cleanup",
+      "file": "tests/test-cpr-plugin.sh",
+      "line": 11,
+      "signature": "cleanup() { rm -rf \"$test_root\"; }",
+      "calls": ["pane_pid"],
+      "tags": ["entrypoint", "privileged"]
+    },
+    {
+      "name": "cleanup",
+      "file": "tests/test-setup-agent-flow.sh",
+      "line": 11,
+      "signature": "cleanup() { rm -rf \"$test_root\"; }",
+      "calls": ["check", "label"],
+      "tags": ["entrypoint", "privileged"]
+    },
+    {
+      "name": "cleanup",
+      "file": "tests/test-setup-flows.sh",
+      "line": 13,
+      "signature": "cleanup() {",
+      "calls": ["check", "label"],
+      "tags": ["entrypoint", "network"]
+    },
+    {
+      "name": "tmux_test",
+      "file": "tests/test-termius-touch.sh",
+      "line": 26,
+      "signature": "tmux_test() {",
+      "calls": [],
+      "tags": ["entrypoint", "ipc"]
+    },
+    {
+      "name": "cleanup",
+      "file": "tests/test-termius-touch.sh",
+      "line": 30,
+      "signature": "cleanup() {",
+      "calls": ["check", "pane_pid", "run", "tmux_test"],
+      "tags": ["entrypoint"]
+    }
+  ]
+}
