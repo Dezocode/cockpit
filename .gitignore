@@ -24,3 +24,4 @@ app/dist-server/
 dist/release/
 marketing/output/
 bench/cockpit/screenshots/
+.gitnexus/

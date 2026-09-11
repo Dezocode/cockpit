@@ -1,0 +1,67 @@
+# Architecture docs: deterministic data-baseline, informational only.
+#
+# This workflow must NEVER block merges: every job runs with
+# continue-on-error so a stale doc or a failed index can only warn.
+# See scripts/generate-arch-docs.sh for the generator contract.
+
+name: Arch docs
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: write
+
+jobs:
+  docs:
+    runs-on: ubuntu-latest
+    # Informational data-baseline: never turns a PR red.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Generate architecture docs
+        run: bash scripts/generate-arch-docs.sh
+
+      - name: Check docs freshness (PR, informational)
+        if: github.event_name == 'pull_request'
+        continue-on-error: true
+        run: |
+          if ! git diff --quiet docs/architecture/; then
+            echo "::warning::Architecture docs are stale — run 'bash scripts/generate-arch-docs.sh' and commit the result."
+            git diff --stat docs/architecture/
+          else
+            echo "Architecture docs are up to date."
+          fi
+
+      - name: Auto-commit regenerated docs (push to main)
+        if: github.event_name == 'push'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add docs/architecture
+          if ! git diff --cached --quiet; then
+            git commit -m "docs: regenerate architecture docs [skip ci]"
+            git push
+          else
+            echo "Architecture docs already up to date; nothing to commit."
+          fi
+
+  gitnexus-index:
+    runs-on: ubuntu-latest
+    # Informational index: never turns a PR red.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install GitNexus
+        run: npm i -g gitnexus@1.6.11
+
+      - name: Analyze repository with GitNexus
+        run: gitnexus analyze
