@@ -1,8 +1,8 @@
 {
   "generator": "generate-arch-docs.sh",
   "generator_version": "1.0.0",
-  "source_commit": "20868a70d507b04d52ba1a9451d87df15077ab6f",
-  "generated_at": "2026-09-11T05:19:11Z",
+  "source_commit": "627d978039ade628360d5a54a1bf03eb7c39787a",
+  "generated_at": "2026-09-11T10:31:50Z",
   "repo": "cockpit",
   "functions": [
     {
