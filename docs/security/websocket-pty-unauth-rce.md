@@ -1,5 +1,11 @@
 # Vulnerability: unauthenticated RCE via /ws/pty
 
+> **Status: FIXED** — PR [#22](https://github.com/Dezocode/cockpit/pull/22)
+> (merged 2026-09-15), deployed to production the same day. `/ws/pty` now
+> requires a GitHub-OAuth-tied signed session; unauthenticated connections are
+> refused (close 4401, verified live). Operator setup:
+> [docs/terminal-auth.md](../terminal-auth.md).
+
 Issue: https://github.com/Dezocode/cockpit/issues/16 — **CRITICAL**
 
 ## Problem

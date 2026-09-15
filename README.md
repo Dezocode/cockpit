@@ -24,7 +24,11 @@ Hostinger + grok-build subscription lane (install root `/opt/cockpit`, ≠ Saul)
 
 Health probe: `GET /api/health` — see [deploy/README.md](deploy/README.md)
 
-Release: [v2.1.4](RELEASE_NOTES_v2.1.4.md) · matrix: `./bench/cockpit/capability-matrix.sh` · Canon map: `tmp/t847u/README.md`
+The browser terminal (`/ws/pty`) requires GitHub sign-in — no shared tokens.
+Operator setup (OAuth app + allowlist): [docs/terminal-auth.md](docs/terminal-auth.md).
+Until it is configured, the terminal refuses all connections (fail-closed).
+
+Release: [v2.2.2](RELEASE_NOTES_v2.2.2.md) · matrix: `./bench/cockpit/capability-matrix.sh` · Canon map: `tmp/t847u/README.md`
 
 ## New machine (for a human or an agent)
 
