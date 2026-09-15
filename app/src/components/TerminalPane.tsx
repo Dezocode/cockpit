@@ -4,7 +4,7 @@ import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import "@xterm/xterm/css/xterm.css";
-import { api, ptyWebSocketUrl } from "../lib/api";
+import { api, ptyWebSocketUrl, authApi, githubLoginUrl } from "../lib/api";
 import { GhuiChip } from "./GhuiChip";
 
 interface TerminalPaneProps {
@@ -16,9 +16,10 @@ export function TerminalPane({ agentId }: TerminalPaneProps) {
   const ref = useRef<HTMLDivElement>(null);
   const [shellOut, setShellOut] = useState<string | null>(null);
   const { data: emulators } = useQuery({ queryKey: ["emulators"], queryFn: api.emulators });
+  const { data: me } = useQuery({ queryKey: ["auth-me"], queryFn: authApi.me });
 
   useEffect(() => {
-    if (!ref.current) return;
+    if (!ref.current || !me?.authenticated || !me?.terminal) return;
     const term = new Terminal({
       cursorBlink: true,
       fontFamily: "JetBrains Mono, monospace",
@@ -35,8 +36,14 @@ export function TerminalPane({ agentId }: TerminalPaneProps) {
 
     let ws: WebSocket | null = null;
     try {
-      ws = new WebSocket(ptyWebSocketUrl());
+      // Session cookie rides the WS upgrade automatically (same-origin).
+      // agent= is audit-only: agents act inside the owning user's session.
+      const wsUrl = agentId ? `${ptyWebSocketUrl()}?agent=${encodeURIComponent(agentId)}` : ptyWebSocketUrl();
+      ws = new WebSocket(wsUrl);
       ws.onopen = () => term.writeln("\x1b[32mPTY ws connected\x1b[0m");
+      ws.onclose = (ev) => {
+        if (ev.code === 4401) term.writeln("\x1b[31mterminal: session not authorized\x1b[0m");
+      };
       ws.onmessage = (ev) => {
         try {
           const msg = JSON.parse(String(ev.data)) as { type: string; data?: string };
@@ -58,7 +65,34 @@ export function TerminalPane({ agentId }: TerminalPaneProps) {
       ws?.close();
       term.dispose();
     };
-  }, [agentId]);
+  }, [agentId, me?.authenticated, me?.terminal]);
+
+  if (!me?.authenticated) {
+    return (
+      <div className="flex h-full flex-col items-center justify-center gap-3 p-4">
+        <div className="text-sm text-slate-300">Terminal is locked</div>
+        <a
+          href={githubLoginUrl}
+          className="rounded border border-slate-700 px-3 py-1 text-sm text-slate-200"
+        >
+          Sign in with GitHub
+        </a>
+      </div>
+    );
+  }
+  if (!me?.terminal) {
+    return (
+      <div className="flex h-full flex-col items-center justify-center gap-2 p-4">
+        <div className="text-sm text-slate-300">Signed in as {me?.login} — no terminal access</div>
+        <button
+          onClick={() => authApi.logout().then(() => window.location.reload())}
+          className="rounded border border-slate-700 px-3 py-1 text-sm text-slate-200"
+        >
+          Sign out
+        </button>
+      </div>
+    );
+  }
 
   const launchShellOut = (id: string) => {
     setShellOut(id);

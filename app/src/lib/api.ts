@@ -49,3 +49,17 @@ export function ptyWebSocketUrl(): string {
   const host = window.location.port === "1420" ? "localhost:8787" : window.location.host;
   return `${proto}//${host}/ws/pty`;
 }
+// --- cockpit#16: GitHub-OAuth-tied terminal auth ---
+// The signed session cookie rides the WS upgrade automatically (same-origin),
+// so no token ever appears in the URL.
+export const githubLoginUrl = "/api/auth/github/start";
+export interface AuthMe {
+  authenticated: boolean;
+  login?: string;
+  teams?: string[];
+  terminal?: boolean;
+}
+export const authApi = {
+  me: () => fetchJson<AuthMe>("/api/auth/me"),
+  logout: () => fetchJson<{ ok: boolean }>("/api/auth/logout", { method: "POST" }),
+};
