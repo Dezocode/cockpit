@@ -1,14 +1,14 @@
 {
   "generator": "generate-arch-docs.sh",
   "generator_version": "1.0.0",
-  "source_commit": "627d978039ade628360d5a54a1bf03eb7c39787a",
-  "generated_at": "2026-09-11T10:31:50Z",
+  "source_commit": "62b44f371b4fba30f5184a48a0aa9bf49237f5e8",
+  "generated_at": "2026-09-15T10:12:37Z",
   "repo": "cockpit",
   "functions": [
     {
       "name": "readJson",
       "file": "app/server/index.ts",
-      "line": 15,
+      "line": 16,
       "signature": "function readJson<T>(name: string, fallback: T): T {",
       "calls": [],
       "tags": ["network", "user-input"]
@@ -16,7 +16,7 @@
     {
       "name": "ghAuthStatus",
       "file": "app/server/index.ts",
-      "line": 21,
+      "line": 22,
       "signature": "function ghAuthStatus(): { authenticated: boolean; user?: string; host: string } {",
       "calls": [],
       "tags": ["network", "auth"]
@@ -24,10 +24,74 @@
     {
       "name": "healthCheck",
       "file": "app/server/index.ts",
-      "line": 34,
+      "line": 35,
       "signature": "function healthCheck() {",
-      "calls": ["ghAuthStatus", "label", "log", "readJson"],
+      "calls": ["ghAuthStatus", "label", "readJson", "trim"],
       "tags": ["network", "validation"]
+    },
+    {
+      "name": "b64url",
+      "file": "app/server/index.ts",
+      "line": 182,
+      "signature": "function b64url(buf: Buffer): string {",
+      "calls": [],
+      "tags": ["network"]
+    },
+    {
+      "name": "signSession",
+      "file": "app/server/index.ts",
+      "line": 185,
+      "signature": "function signSession(payload: string): string {",
+      "calls": ["b64url"],
+      "tags": ["network"]
+    },
+    {
+      "name": "verifySession",
+      "file": "app/server/index.ts",
+      "line": 190,
+      "signature": "function verifySession(token: string): TerminalSession | null {",
+      "calls": [],
+      "tags": ["network", "auth", "validation"]
+    },
+    {
+      "name": "signState",
+      "file": "app/server/index.ts",
+      "line": 203,
+      "signature": "function signState(ts: number): string {",
+      "calls": [],
+      "tags": ["network", "persistence"]
+    },
+    {
+      "name": "verifyState",
+      "file": "app/server/index.ts",
+      "line": 208,
+      "signature": "function verifyState(token: string, maxAgeMs = 600_000): boolean {",
+      "calls": [],
+      "tags": ["network", "auth", "persistence", "validation"]
+    },
+    {
+      "name": "terminalGranted",
+      "file": "app/server/index.ts",
+      "line": 216,
+      "signature": "function terminalGranted(sess: TerminalSession): boolean {",
+      "calls": [],
+      "tags": ["network"]
+    },
+    {
+      "name": "readSessionCookie",
+      "file": "app/server/index.ts",
+      "line": 220,
+      "signature": "function readSessionCookie(c: { req: { header: (n: string) => string | undefined } }): TerminalSession | null {",
+      "calls": ["header", "verifySession"],
+      "tags": ["network", "user-input"]
+    },
+    {
+      "name": "registerDevice",
+      "file": "app/server/index.ts",
+      "line": 225,
+      "signature": "function registerDevice(did: string, user: string, ua: string): void {",
+      "calls": ["header", "log", "readSessionCookie", "signSession", "signState", "terminalGranted", "verifySession", "verifyState"],
+      "tags": ["network"]
     },
     {
       "name": "health_check",
@@ -162,13 +226,13 @@
       "file": "app/src/components/TerminalPane.tsx",
       "line": 15,
       "signature": "export function TerminalPane({ agentId }: TerminalPaneProps) {",
-      "calls": ["ptyWebSocketUrl"],
+      "calls": ["center", "ptyWebSocketUrl"],
       "tags": ["logic"]
     },
     {
       "name": "launchShellOut",
       "file": "app/src/components/TerminalPane.tsx",
-      "line": 63,
+      "line": 97,
       "signature": "const launchShellOut = (id: string) => {",
       "calls": ["GhuiChip", "label", "tone"],
       "tags": ["logic"]
@@ -186,7 +250,7 @@
       "file": "app/src/lib/api.ts",
       "line": 47,
       "signature": "export function ptyWebSocketUrl(): string {",
-      "calls": [],
+      "calls": ["fetchJson"],
       "tags": ["ipc"]
     },
     {
