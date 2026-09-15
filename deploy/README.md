@@ -11,9 +11,9 @@ Install root: **`/opt/cockpit`** — separate from Saul `/root/.grok` and `saul-
 Curl one-liner (same recipe via gospel path name):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Dezocode/cockpit/v2.1.2/deploy/hostinger-grok-build-install.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/Dezocode/cockpit/v2.2.2/deploy/hostinger-grok-build-install.sh | sudo bash
 # or
-curl -fsSL https://raw.githubusercontent.com/Dezocode/cockpit/v2.1.2/scripts/hostinger-grok-build.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/Dezocode/cockpit/v2.2.2/scripts/hostinger-grok-build.sh | sudo bash
 ```
 
 Envelope: **frontier_subscription** only — DENY local Qwen/sol-v1.7.1, Funnel OFF, no secrets bake.
@@ -21,13 +21,13 @@ Envelope: **frontier_subscription** only — DENY local Qwen/sol-v1.7.1, Funnel 
 ## Install without grok auth step
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Dezocode/cockpit/v2.1.2/scripts/install-hostinger.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/Dezocode/cockpit/v2.2.2/scripts/install-hostinger.sh | sudo bash
 ```
 
 Or via `install.sh`:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Dezocode/cockpit/v2.1.2/install.sh | COCKPIT_INSTALL_HOSTINGER=1 COCKPIT_INSTALL_WEB_BUILD=1 sudo bash
+curl -fsSL https://raw.githubusercontent.com/Dezocode/cockpit/v2.2.2/install.sh | COCKPIT_INSTALL_HOSTINGER=1 COCKPIT_INSTALL_WEB_BUILD=1 sudo bash
 ```
 
 ## Packaging on disk
@@ -76,3 +76,12 @@ curl -sf https://cockpit.example.com/api/health | jq .
 - `status` must be `"green"` for done-line pass
 - `checks.hostinger` is `"configured"` when `COCKPIT_HOSTINGER=1`
 - Implemented in `app/server/index.ts` (`GET /api/health`)
+
+## Web terminal auth
+
+The browser terminal (`/ws/pty`) is gated behind GitHub sign-in — no shared
+tokens. Setup, env vars, and verification:
+[docs/terminal-auth.md](../docs/terminal-auth.md).
+
+Fail-closed: without the OAuth env vars, every terminal connection is refused
+(close 4401). The API and health checks are unaffected.
