@@ -26,15 +26,30 @@ Set the Authorization callback URL to:
 https://<your-cockpit-host>/api/auth/github/callback
 ```
 
-**2. Set the environment** (e.g. `/etc/systemd/system/cockpit-web.service.d/oauth.conf`):
+**2. Create the systemd drop-in.** These values have to reach the system
+service — exporting them in your own shell is not enough. Generate a session
+secret, then write the drop-in:
+
+```bash
+SESSION_SECRET=$(openssl rand -hex 32)
+sudo mkdir -p /etc/systemd/system/cockpit-web.service.d
+sudo tee /etc/systemd/system/cockpit-web.service.d/oauth.conf > /dev/null <<EOF
+[Service]
+Environment=GITHUB_CLIENT_ID=<from the OAuth app>
+Environment=GITHUB_CLIENT_SECRET=<from the OAuth app>
+Environment=GITHUB_REDIRECT_URI=https://<your-cockpit-host>/api/auth/github/callback
+Environment=COCKPIT_SESSION_SECRET=$SESSION_SECRET
+Environment=COCKPIT_TERMINAL_USERS=dezcode,monaecode
+Environment=COCKPIT_TERMINAL_TEAMS=
+EOF
+sudo chmod 600 /etc/systemd/system/cockpit-web.service.d/oauth.conf
+```
 
 | Variable | Value |
 | --- | --- |
-| `GITHUB_CLIENT_ID` | from the OAuth app |
-| `GITHUB_CLIENT_SECRET` | from the OAuth app |
-| `GITHUB_REDIRECT_URI` | the callback URL from step 1 |
-| `COCKPIT_SESSION_SECRET` | random 32+ bytes (`openssl rand -hex 32`) |
-| `COCKPIT_TERMINAL_USERS` | comma-separated GitHub usernames, e.g. `dezcode,monaecode` |
+| `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` / `GITHUB_REDIRECT_URI` | from the OAuth app (step 1) |
+| `COCKPIT_SESSION_SECRET` | random 32+ bytes |
+| `COCKPIT_TERMINAL_USERS` | comma-separated GitHub usernames |
 | `COCKPIT_TERMINAL_TEAMS` | comma-separated `org:team` slugs (optional) |
 
 **3. Restart the service.**

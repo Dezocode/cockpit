@@ -11,9 +11,9 @@ Install root: **`/opt/cockpit`** — separate from Saul `/root/.grok` and `saul-
 Curl one-liner (same recipe via gospel path name):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Dezocode/cockpit/v2.2.2/deploy/hostinger-grok-build-install.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/Dezocode/cockpit/v2.2.1/deploy/hostinger-grok-build-install.sh | sudo bash
 # or
-curl -fsSL https://raw.githubusercontent.com/Dezocode/cockpit/v2.2.2/scripts/hostinger-grok-build.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/Dezocode/cockpit/v2.2.1/scripts/hostinger-grok-build.sh | sudo bash
 ```
 
 Envelope: **frontier_subscription** only — DENY local Qwen/sol-v1.7.1, Funnel OFF, no secrets bake.
@@ -21,13 +21,13 @@ Envelope: **frontier_subscription** only — DENY local Qwen/sol-v1.7.1, Funnel 
 ## Install without grok auth step
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Dezocode/cockpit/v2.2.2/scripts/install-hostinger.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/Dezocode/cockpit/v2.2.1/scripts/install-hostinger.sh | sudo bash
 ```
 
 Or via `install.sh`:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Dezocode/cockpit/v2.2.2/install.sh | COCKPIT_INSTALL_HOSTINGER=1 COCKPIT_INSTALL_WEB_BUILD=1 sudo bash
+curl -fsSL https://raw.githubusercontent.com/Dezocode/cockpit/v2.2.1/install.sh | COCKPIT_INSTALL_HOSTINGER=1 COCKPIT_INSTALL_WEB_BUILD=1 sudo bash
 ```
 
 ## Packaging on disk
