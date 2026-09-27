@@ -49,14 +49,14 @@ cp -a "$root/install.sh" "$staging/"
 cp -a "$root/LICENSE" "$staging/"
 cp -a "$root/README.md" "$staging/"
 cp -a "$root/plugins" "$staging/"
-cp -a "$root/stage" "$staging/stage"
-cp -a "$root/fixtures" "$staging/fixtures"
+cp -a "$root/stage/." "$staging/stage/"
+cp -a "$root/fixtures/." "$staging/fixtures/"
 cp -a "$root/packaging" "$staging/packaging" 2>/dev/null || true
-cp -a "$root/tmp/t847u" "$staging/tmp/t847u" 2>/dev/null || true
+cp -a "$root/tmp/t847u/." "$staging/tmp/t847u/" 2>/dev/null || true
 cp -a "$root/scripts/install-hostinger.sh" \
   "$root/scripts/hostinger-health.sh" "$staging/scripts/" 2>/dev/null || true
-cp -a "$root/bench/cockpit" "$staging/bench/cockpit"
-cp -a "$root/marketing" "$staging/marketing"
+cp -a "$root/bench/cockpit/." "$staging/bench/cockpit/"
+cp -a "$root/marketing/." "$staging/marketing/"
 
 # Web GUI
 if [[ -d "$root/app" ]]; then
@@ -69,6 +69,25 @@ if [[ -d "$root/app" ]]; then
   cp -a "$root/app/package.json" "$root/app/pnpm-lock.yaml" "$staging/app/"
   cp -a "$root/app/server" "$staging/app/server"
 fi
+
+# The staging dirs above exist before the copies, so a `cp -a src dst` into
+# them nests (stage/stage/...) and install.sh from the tarball breaks.
+for required in install.sh bin/cockpit stage/shell/cockpit.bashrc stage/tmux/cockpit.conf \
+  stage/profile/profile.conf stage/auth/providers.conf stage/notify/notify.conf \
+  plugins/cockpit-cpr/cpr fixtures/agents.json bench/cockpit/capability-matrix.sh \
+  marketing/pipeline.sh packaging/systemd/cockpit-web-heal.sh app/dist-server/index.js \
+  app/dist-server/fleet/tz-centroids.json; do
+  [[ -e "$staging/$required" ]] || {
+    printf 'release-bundle: FAIL staged bundle lacks %s\n' "$required" >&2
+    exit 1
+  }
+done
+for nested in stage/stage fixtures/fixtures bench/cockpit/cockpit marketing/marketing tmp/t847u/t847u; do
+  [[ ! -e "$staging/$nested" ]] || {
+    printf 'release-bundle: FAIL nested copy %s in the staged bundle\n' "$nested" >&2
+    exit 1
+  }
+done
 
 cat >"$staging/RELEASE.txt" <<EOF
 cockpit ${version}
