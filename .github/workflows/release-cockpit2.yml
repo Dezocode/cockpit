@@ -21,7 +21,6 @@ jobs:
           COCKPIT_VERSION: ${{ github.ref_name }}
         run: |
           export COCKPIT_VERSION="${COCKPIT_VERSION#v}"
-          chmod +x scripts/release-bundle.sh scripts/*.sh packaging/systemd/*.sh bench/cockpit/*.sh marketing/*.sh
           bash scripts/release-bundle.sh
 
       - name: Capability matrix

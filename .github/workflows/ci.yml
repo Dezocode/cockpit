@@ -147,6 +147,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # By path, so a lost exec bit fails here with rc 126; nothing repairs modes.
+      - name: Committed tree (exec bits, run by path)
+        run: ./scripts/check-exec-bits.sh
+
       - name: Install OS deps
         run: |
           set -euxo pipefail
