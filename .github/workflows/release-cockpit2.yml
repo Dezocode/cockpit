@@ -276,6 +276,7 @@ jobs:
         run: |
           ./scripts/verify-release-assets.sh --write-sums release-assets
           ./scripts/verify-release-assets.sh release-assets "$VERSION" | tee "$RUNNER_TEMP/verify.txt"
+          echo "::notice title=verify-assets::$(head -n 1 "$RUNNER_TEMP/verify.txt")"
 
       - name: Upload release assets (9)
         uses: actions/upload-artifact@v4
@@ -302,6 +303,13 @@ jobs:
               echo "| ${n} | $(wc -c <"$f" | tr -d ' ') | ${sum:-(this file)} |"
             done
           } >>"$GITHUB_STEP_SUMMARY"
+          # Step summaries need a signed-in viewer; notices also show on the
+          # public run page (one per asset, within the 10-per-step limit).
+          for f in release-assets/*; do
+            n="${f##*/}"
+            sum="$(awk -v n="$n" '$2 == n { print $1 }' release-assets/SHA256SUMS)"
+            echo "::notice title=release asset::${n} $(wc -c <"$f" | tr -d ' ') bytes${sum:+ sha256 ${sum}}"
+          done
 
   publish:
     needs: [versions, verify-assets]
