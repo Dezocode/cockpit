@@ -14,13 +14,22 @@ mkdir -p "$bindir" "$tmuxdir" \
   "$legacy_config_home/providers.d" "$legacy_config_home/nvim" \
   "$legacy_config_home/plugins/cockpit-cpr" "$legacy_config_home/skills.d"
 
-# The public command and every helper use the cockpit namespace. The old
-# codex-cockpit-* files are installed alongside them as compatibility shims.
-install -m 0755 "$root/bin/"cockpit* "$bindir/"
-install -m 0755 "$root/bin/"codex-cockpit* "$root/bin/codex-mermaid-watch" "$bindir/" 2>/dev/null || true
+# The public command and every helper use the cockpit namespace. Legacy
+# codex-cockpit-* names are symlinked to the single alias dispatcher at install time.
+shopt -s nullglob
+for cockpit_bin in "$root/bin"/cockpit*; do
+  [[ "$cockpit_bin" == *.list ]] && continue
+  install -m 0755 "$cockpit_bin" "$bindir/"
+done
+shopt -u nullglob
+install -m 0755 "$root/bin/cockpit-legacy-alias" "$bindir/cockpit-legacy-alias"
+while IFS= read -r legacy_name || [[ -n "$legacy_name" ]]; do
+  [[ -n "$legacy_name" ]] || continue
+  [[ "$legacy_name" =~ ^# ]] && continue
+  ln -sf cockpit-legacy-alias "$bindir/$legacy_name"
+done <"$root/bin/cockpit-legacy-names.list"
 install -m 0644 "$root/bin/cockpit-lib" "$root/bin/cockpit-auth-lib" \
-  "$root/bin/cockpit-agent-lib" "$root/bin/codex-cockpit-lib" \
-  "$root/bin/codex-cockpit-auth-lib" "$root/bin/codex-cockpit-agent-lib" \
+  "$root/bin/cockpit-agent-lib" \
   "$bindir/"
 install -m 0755 "$root/bin/cpr" "$bindir/cpr"
 
@@ -199,7 +208,7 @@ fi
 if [[ -d "$root/app" && -f "$root/app/package.json" ]]; then
   if command -v pnpm >/dev/null 2>&1; then
     (cd "$root/app" && pnpm install --frozen-lockfile 2>/dev/null || pnpm install) || true
-    if [[ "${COCKPIT_INSTALL_WEB_BUILD:-0}" == 1 || "${COCKPIT_INSTALL_HOSTINGER:-0}" == 1 ]]; then
+    if [[ "${COCKPIT_INSTALL_WEB_BUILD:-0}" == 1 ]]; then
       (cd "$root/app" && pnpm build && pnpm build:server) || true
     fi
   fi
@@ -207,25 +216,6 @@ if [[ -d "$root/app" && -f "$root/app/package.json" ]]; then
   for helper in cockpit-memory cockpit-computers cockpit-bench; do
     [[ -x "$root/bin/$helper" ]] && install -m 0755 "$root/bin/$helper" "$bindir/$helper" 2>/dev/null || true
   done
-fi
-
-if [[ "${COCKPIT_INSTALL_HOSTINGER:-0}" == 1 && "$(id -u)" -eq 0 ]]; then
-  COCKPIT_INSTALL_ROOT="${COCKPIT_INSTALL_ROOT:-/opt/cockpit}"
-  case "$COCKPIT_INSTALL_ROOT" in
-    /root/.grok*|*/saul-go*) printf 'DENY: invalid COCKPIT_INSTALL_ROOT=%s\n' "$COCKPIT_INSTALL_ROOT"; exit 1 ;;
-  esac
-  install -d "$COCKPIT_INSTALL_ROOT"
-  rsync -a --exclude node_modules --exclude .git --exclude app/node_modules "$root/" "$COCKPIT_INSTALL_ROOT/" 2>/dev/null || cp -a "$root/." "$COCKPIT_INSTALL_ROOT/"
-  id cockpit &>/dev/null || useradd -r -s /usr/sbin/nologin cockpit
-  chown -R cockpit:cockpit "$COCKPIT_INSTALL_ROOT" 2>/dev/null || true
-  chmod +x "$COCKPIT_INSTALL_ROOT/packaging/systemd/cockpit-web-heal.sh" 2>/dev/null || true
-  install -m 0644 "$root/packaging/systemd/cockpit-web.service" /etc/systemd/system/cockpit-web.service
-  install -m 0644 "$root/packaging/nginx/cockpit.conf" /etc/nginx/sites-available/cockpit.conf
-  ln -sf /etc/nginx/sites-available/cockpit.conf /etc/nginx/sites-enabled/cockpit.conf 2>/dev/null || true
-  systemctl daemon-reload
-  systemctl enable cockpit-web.service 2>/dev/null || true
-  systemctl restart cockpit-web.service 2>/dev/null || systemctl start cockpit-web.service 2>/dev/null || true
-  printf 'Hostinger H0: %s + systemd + nginx (certbot for TLS)\n' "$COCKPIT_INSTALL_ROOT"
 fi
 
 printf 'Installed to %s\nRun: cockpit   (workspace)\n      cockpit agent   (jump to live Agent pane)\n      cockpit-web     (GUI API server)\n      codex           (Codex CLI)\nProfile sync: cockpit config push|pull (your gh login, secret gist)\nCanonical config: %s\n' \

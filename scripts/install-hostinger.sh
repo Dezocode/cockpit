@@ -1,11 +1,15 @@
 #!/usr/bin/env bash
-# Hostinger install — separate Cockpit root at /opt/cockpit
+# Canonical Hostinger install — separate Cockpit root at /opt/cockpit.
 # Subscription envelope only. DENY /root/.grok · saul-go · local Qwen/sol-v1.7.1
+#
+# Deploy semantics (single path):
+#   rsync: -a --delete (mirror tree, drop removed files)
+#   systemd: packaging/systemd/cockpit-web.service → restart (fail if unit missing)
+#   nginx: packaging/nginx/cockpit.conf
 set -euo pipefail
 
 root="$(cd -- "$(dirname -- "$0")/.." && pwd)"
 COCKPIT_INSTALL_ROOT="${COCKPIT_INSTALL_ROOT:-/opt/cockpit}"
-export COCKPIT_INSTALL_HOSTINGER=1
 export COCKPIT_INSTALL_WEB_BUILD=1
 export COCKPIT_HOSTINGER=1
 
@@ -22,11 +26,9 @@ need_root() {
   [[ "$(id -u)" -eq 0 ]] || { printf 'Run as root for systemd/nginx: sudo %s\n' "$0"; exit 1; }
 }
 
-# User + TUI helpers (non-destructive to Surface tmux)
-export COCKPIT_INSTALL_WEB_BUILD=1
+# User-level helpers + web build (no COCKPIT_INSTALL_HOSTINGER — deploy runs once below).
 "$root/install.sh"
 
-# Web build
 if [[ -d "$root/app" ]]; then
   command -v pnpm >/dev/null 2>&1 || { printf 'pnpm required\n'; exit 1; }
   (cd "$root/app" && pnpm install && pnpm build && pnpm exec tsc -p tsconfig.server.json)
@@ -42,7 +44,6 @@ rsync -a --delete \
   --exclude app/node_modules \
   "$root/" "$COCKPIT_INSTALL_ROOT/"
 
-# Production node_modules for dist-server (no Saul / local Qwen paths)
 printf '  → pnpm install --prod in %s/app\n' "$COCKPIT_INSTALL_ROOT"
 (cd "$COCKPIT_INSTALL_ROOT/app" && pnpm install --prod --frozen-lockfile)
 
@@ -65,16 +66,9 @@ else
   printf '  ~ nginx: configure certbot then reload\n'
 fi
 
-port="${COCKPIT_WEB_PORT:-8787}"
-for _ in $(seq 1 30); do
-  if curl -sf "http://127.0.0.1:$port/api/health" >/dev/null 2>&1; then
-    curl -s "http://127.0.0.1:$port/api/health" | python3 -m json.tool
-    printf 'Hostinger install: health green\n'
-    exit 0
-  fi
-  sleep 0.5
-done
-
-journalctl -u cockpit-web -n 20 --no-pager 2>/dev/null || true
-printf 'Hostinger install: /api/health not green\n'
-exit 1
+"$root/scripts/hostinger-health.sh" --wait 30 || {
+  journalctl -u cockpit-web -n 20 --no-pager 2>/dev/null || true
+  printf 'Hostinger install: /api/health not green\n'
+  exit 1
+}
+printf 'Hostinger install: health green\n'

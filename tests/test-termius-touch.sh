@@ -4,37 +4,31 @@
 set -euo pipefail
 
 repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
-test_root="$(mktemp -d /tmp/cockpit-termius-test.XXXXXX)"
-test_home="$test_root/home"
+# shellcheck source=lib/fixture.sh
+source "$repo_root/tests/lib/fixture.sh"
+fixture_init termius-touch
+test_root="$FIXTURE_TEST_ROOT"
+test_home="$FIXTURE_HOME"
 install_tmux_root="$test_root/install-tmux"
 test_tmux_root="$test_root/test-tmux"
 session=cockpit-test
 bar_pid=""
-mkdir -p "$test_home" "$install_tmux_root" "$test_tmux_root"
+mkdir -p "$install_tmux_root" "$test_tmux_root"
 
-export HOME="$test_home"
 export TMUX_TMPDIR="$install_tmux_root"
-export PATH="$test_home/.local/bin:$repo_root/bin:/usr/local/bin:/usr/bin:/bin"
-
-# This regression test creates its own tmux server. When it is launched from
-# a Cockpit pane, an inherited TMUX socket would otherwise make subsequent
-# commands (and cleanup) operate on the live parent server instead of the
-# test server. That turns a missing test session into `tmux kill-server` on
-# the real Cockpit session and leaves Termius showing `[server exited]`.
-unset TMUX TMUX_PANE
 
 tmux_test() {
   env -u TMUX -u TMUX_PANE tmux "$@"
 }
 
-cleanup() {
-  if [[ "$bar_pid" =~ ^[0-9]+$ ]]; then
+termius_cleanup() {
+  if [[ "${bar_pid:-}" =~ ^[0-9]+$ ]]; then
     kill "$bar_pid" >/dev/null 2>&1 || true
   fi
   tmux_test kill-server >/dev/null 2>&1 || true
-  rm -rf "$test_root"
+  fixture_cleanup
 }
-trap cleanup EXIT
+trap termius_cleanup EXIT
 
 "$repo_root/install.sh" >/dev/null
 mkdir -p "$test_home/.config/cockpit/providers.d"
