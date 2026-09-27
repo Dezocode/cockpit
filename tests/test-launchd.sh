@@ -41,4 +41,8 @@ launchctl bootout "gui/$uid" "$plist" 2>/dev/null || launchctl bootout "user/$ui
 PATH="$repo_root/bin:$PATH" COCKPIT_INSTALL_SERVICE=1 SHELL=/bin/bash \
   /bin/bash "$repo_root/install.sh" </dev/null >/dev/null 2>&1
 
+uid="$(id -u)"
+launchctl bootout "gui/$uid" "$plist" 2>/dev/null || launchctl bootout "user/$uid" "$plist" 2>/dev/null || true
+pkill -f 'app/dist-server/index.js' 2>/dev/null || true
+
 printf 'launchd: ok (plist lint, bootstrap, /api/health)\n'
