@@ -100,11 +100,8 @@ cockpit_auth_run_probe() {
   local command=$1 timeout_value
   [[ -n "$command" ]] || return 1
   timeout_value="${COCKPIT_AUTH_TIMEOUT:-1.5s}"
-  if command -v timeout >/dev/null 2>&1; then
-    timeout "$timeout_value" bash -lc "$command" >/dev/null 2>&1
-  else
-    bash -lc "$command" >/dev/null 2>&1
-  fi
+  timeout_value="${timeout_value%s}"
+  cockpit_timeout "$timeout_value" bash -lc "$command" >/dev/null 2>&1
 }
 
 # Grok has a login command but no `login status` subcommand. Its documented

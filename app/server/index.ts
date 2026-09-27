@@ -341,6 +341,7 @@ wss.on("connection", (ws, req) => {
   ws.on("close", () => pty?.kill());
 });
 
-nodeServer.listen(port, () => {
-  console.log(`cockpit-web listening on http://localhost:${port}`);
+const host = process.env.COCKPIT_WEB_HOST ?? "127.0.0.1";
+nodeServer.listen(port, host, () => {
+  console.log(`cockpit-web listening on http://${host}:${port}`);
 });

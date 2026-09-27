@@ -6,9 +6,8 @@ set -euo pipefail
 lib="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/cockpit-auth-lib"
 # shellcheck source=cockpit-auth-lib
 source "$lib"
-theme_lib="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/cockpit-lib"
 # shellcheck source=cockpit-lib
-source "$theme_lib"
+source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/cockpit-lib"
 
 blue="$(cockpit_theme_style accent '' 0)"
 muted="$(cockpit_theme_muted)"

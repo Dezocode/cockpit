@@ -3,6 +3,8 @@
 set -euo pipefail
 
 repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=../bin/cockpit-portable-lib
+source "$repo_root/bin/cockpit-portable-lib"
 test_root="$(mktemp -d /tmp/cockpit-setup-agent.XXXXXX)"
 test_home="$test_root/home"
 project="$test_root/project"
@@ -51,7 +53,7 @@ esac
 EOF
 chmod +x "$fakebin/codex"
 
-output="$(cd "$project" && printf 'y\nx\nq\n' | timeout 8s "$repo_root/bin/cockpit-setup" profile 2>&1)"
+output="$(cd "$project" && printf 'y\nx\nq\n' | cockpit_timeout 8 "$repo_root/bin/cockpit-setup" profile 2>&1)"
 grep -q 'COCKPIT PROFILE' <<<"$output"
 grep -q 'Profile skills synced' <<<"$output"
 grep -Fq 'cockpit-profile:begin' "$project/.agent"

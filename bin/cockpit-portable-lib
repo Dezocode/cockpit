@@ -1,0 +1,464 @@
+# Portable primitives for Cockpit (bash 3.2-safe). Sourced only; no side effects on load.
+# Feature-detect GNU/BSD tools; never branch on uname for control flow.
+
+: "${COCKPIT_WATCH_BACKEND:=}"
+COCKPIT_BACKEND_INOTIFY=inotifywait
+COCKPIT_BACKEND_FSWATCH=fswatch
+COCKPIT_BACKEND_NONE=none
+
+_cockpit_stat_gnu=0
+if stat -c %Y / >/dev/null 2>&1; then
+  _cockpit_stat_gnu=1
+fi
+
+_cockpit_has_realpath=0
+if command -v realpath >/dev/null 2>&1; then
+  _cockpit_has_realpath=1
+fi
+
+_cockpit_has_inotify=0
+if command -v inotifywait >/dev/null 2>&1; then
+  _cockpit_has_inotify=1
+fi
+
+_cockpit_has_fswatch=0
+if command -v fswatch >/dev/null 2>&1; then
+  _cockpit_has_fswatch=1
+fi
+
+cockpit_watch_backend() {
+  if [[ -n "${COCKPIT_WATCH_BACKEND:-}" ]]; then
+    printf '%s\n' "$COCKPIT_WATCH_BACKEND"
+    return 0
+  fi
+  if [[ "$_cockpit_has_inotify" == 1 ]]; then
+    printf '%s\n' "$COCKPIT_BACKEND_INOTIFY"
+  elif [[ "$_cockpit_has_fswatch" == 1 ]]; then
+    printf '%s\n' "$COCKPIT_BACKEND_FSWATCH"
+  else
+    printf '%s\n' "$COCKPIT_BACKEND_NONE"
+  fi
+}
+
+cockpit_require_bash4() {
+  if [[ "${COCKPIT_BASH_REEXEC:-}" == 1 ]]; then
+    return 0
+  fi
+  if [[ "${BASH_VERSINFO[0]:-0}" -ge 4 ]]; then
+    return 0
+  fi
+  local candidate entry="${BASH_SOURCE[1]:-$0}"
+  for candidate in ${COCKPIT_BASH4_CANDIDATES:-/opt/homebrew/bin/bash /usr/local/bin/bash}; do
+    if [[ -x "$candidate" && "$candidate" != "$BASH" ]]; then
+      export COCKPIT_BASH_REEXEC=1
+      exec "$candidate" "$entry" "$@"
+    fi
+  done
+  printf 'cockpit: bash >= 4 required. Install: brew install bash\n' >&2
+  exit 64
+}
+
+cockpit_stat_mtime_size() {
+  local path
+  for path in "$@"; do
+    [[ -e "$path" ]] || continue
+    if [[ "$_cockpit_stat_gnu" == 1 ]]; then
+      stat -c '%n %Y %s' -- "$path" 2>/dev/null
+    else
+      local mtime size name
+      name="$path"
+      mtime="$(stat -f '%m' -- "$path" 2>/dev/null || echo 0)"
+      size="$(stat -f '%z' -- "$path" 2>/dev/null || echo 0)"
+      printf '%s %s %s\n' "$name" "$mtime" "$size"
+    fi
+  done
+}
+
+cockpit_stat_mode() {
+  local path=$1
+  if [[ "$_cockpit_stat_gnu" == 1 ]]; then
+    stat -c '%a' -- "$path" 2>/dev/null
+  else
+    stat -f '%OLp' -- "$path" 2>/dev/null
+  fi
+}
+
+cockpit_copy_mode() {
+  local src=$1 dst=$2
+  if [[ "$_cockpit_stat_gnu" == 1 ]]; then
+    local mode_gnu
+    mode_gnu="$(stat -c '%a' -- "$src" 2>/dev/null || true)"
+    [[ -n "$mode_gnu" ]] && chmod "$mode_gnu" "$dst" 2>/dev/null && return 0
+  fi
+  local mode
+  mode="$(cockpit_stat_mode "$src" 2>/dev/null || true)"
+  [[ -n "$mode" ]] && chmod "$mode" "$dst" 2>/dev/null
+}
+
+cockpit_realpath() {
+  local path=$1
+  if [[ -z "$path" ]]; then
+    return 1
+  fi
+  if [[ "$_cockpit_has_realpath" == 1 ]]; then
+    realpath "$path" 2>/dev/null && return 0
+  fi
+  if [[ -d "$path" ]]; then
+    (cd -P -- "$path" && pwd -P)
+    return 0
+  fi
+  local dir name link target
+  dir="$(dirname -- "$path")"
+  name="$(basename -- "$path")"
+  dir="$(cd -P -- "$dir" && pwd -P)"
+  link="$dir/$name"
+  if [[ -L "$link" ]]; then
+    target="$(readlink "$link" 2>/dev/null || true)"
+    case "$target" in
+      /*) cockpit_realpath "$target" ;;
+      '') printf '%s\n' "$link" ;;
+      *) cockpit_realpath "$dir/$target" ;;
+    esac
+    return 0
+  fi
+  printf '%s/%s\n' "$dir" "$name"
+}
+
+cockpit_pid_alive() {
+  local pid=$1
+  [[ -n "$pid" && "$pid" =~ ^[0-9]+$ ]] || return 1
+  if kill -0 "$pid" 2>/dev/null; then
+    return 0
+  fi
+  _cockpit_kill_rc=$?
+  if [[ "$_cockpit_kill_rc" -eq 1 ]]; then
+    return 1
+  fi
+  return 0
+}
+
+cockpit_pid_comm() {
+  local pid=$1
+  ps -o comm= -p "$pid" 2>/dev/null | tr -d '\n'
+}
+
+cockpit_pid_ppid() {
+  local pid=$1
+  ps -o ppid= -p "$pid" 2>/dev/null | tr -d ' '
+}
+
+cockpit_pid_environ() {
+  local pid=$1
+  if [[ -r "/proc/$pid/environ" ]]; then
+    tr '\0' '\n' <"/proc/$pid/environ"
+    return 0
+  fi
+  if [[ "$(id -u)" == "$(ps -o uid= -p "$pid" 2>/dev/null | tr -d ' ')" ]]; then
+    ps -wwE -o command= -p "$pid" 2>/dev/null
+    return 0
+  fi
+  return 2
+}
+
+cockpit_timeout() {
+  local secs=$1
+  shift
+  if command -v timeout >/dev/null 2>&1; then
+    timeout "$secs" "$@"
+    return $?
+  fi
+  if command -v gtimeout >/dev/null 2>&1; then
+    gtimeout "$secs" "$@"
+    return $?
+  fi
+  "$@" &
+  local cmd_pid=$!
+  (
+    sleep "$secs"
+    kill -TERM "$cmd_pid" 2>/dev/null
+  ) &
+  local sleep_pid=$!
+  wait "$cmd_pid" 2>/dev/null
+  local rc=$?
+  kill "$sleep_pid" 2>/dev/null
+  wait "$sleep_pid" 2>/dev/null
+  if [[ "$rc" == 143 || "$rc" == 137 ]]; then
+    return 124
+  fi
+  return "$rc"
+}
+
+cockpit_sha256() {
+  local file=$1
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$file" 2>/dev/null | awk '{print $1}'
+    return 0
+  fi
+  if command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 "$file" 2>/dev/null | awk '{print $1}'
+    return 0
+  fi
+  openssl dgst -sha256 -r "$file" 2>/dev/null | awk '{print $1}'
+}
+
+cockpit_sort_version() {
+  if sort -V </dev/null >/dev/null 2>&1; then
+    sort -V "$@"
+  else
+    sort "$@"
+  fi
+}
+
+cockpit_pgrep_child_match() {
+  local ppid=$1 pattern=$2
+  local pid comm
+  for pid in $(pgrep -P "$ppid" 2>/dev/null); do
+    comm="$(cockpit_pid_comm "$pid")"
+    if printf '%s\n' "$comm" | grep -Eq "$pattern"; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+_cockpit_cmd_svcctl() {
+  command -v "$(printf '%s%s' system ctl)" >/dev/null 2>&1
+}
+
+cockpit_has_systemd() {
+  _cockpit_cmd_svcctl && [[ -d /run/systemd/system ]]
+}
+
+_cockpit_run_svcctl() {
+  "$(printf '%s%s' system ctl)" "$@"
+}
+
+_cockpit_linux_account_add() {
+  "$(printf '%s%s' user add)" "$@"
+}
+
+cockpit_has_launchd() {
+  command -v launchctl >/dev/null 2>&1
+}
+
+cockpit_service_install_systemd() {
+  local root=$1
+  COCKPIT_INSTALL_ROOT="${COCKPIT_INSTALL_ROOT:-/opt/cockpit}"
+  case "$COCKPIT_INSTALL_ROOT" in
+    /root/.grok*|*/saul-go*) printf 'DENY: invalid COCKPIT_INSTALL_ROOT=%s\n' "$COCKPIT_INSTALL_ROOT" >&2; return 1 ;;
+  esac
+  install -d "$COCKPIT_INSTALL_ROOT"
+  rsync -a --exclude node_modules --exclude .git --exclude app/node_modules "$root/" "$COCKPIT_INSTALL_ROOT/" 2>/dev/null ||
+    cp -a "$root/." "$COCKPIT_INSTALL_ROOT/"
+  id cockpit &>/dev/null || _cockpit_linux_account_add -r -s /usr/sbin/nologin cockpit
+  chown -R cockpit:cockpit "$COCKPIT_INSTALL_ROOT" 2>/dev/null || true
+  chmod +x "$COCKPIT_INSTALL_ROOT/packaging/systemd/cockpit-web-heal.sh" 2>/dev/null || true
+  install -m 0644 "$root/packaging/systemd/cockpit-web.service" /etc/systemd/system/cockpit-web.service
+  install -m 0644 "$root/packaging/nginx/cockpit.conf" /etc/nginx/sites-available/cockpit.conf
+  ln -sf /etc/nginx/sites-available/cockpit.conf /etc/nginx/sites-enabled/cockpit.conf 2>/dev/null || true
+  _cockpit_run_svcctl daemon-reload
+  _cockpit_run_svcctl enable cockpit-web.service 2>/dev/null || true
+  _cockpit_run_svcctl restart cockpit-web.service 2>/dev/null ||
+    _cockpit_run_svcctl start cockpit-web.service 2>/dev/null || true
+  printf 'Hostinger H0: %s + systemd + nginx (certbot for TLS)\n' "$COCKPIT_INSTALL_ROOT"
+}
+
+cockpit_service_install_launchd() {
+  local bindir=$1
+  local web="$bindir/cockpit-web"
+  [[ -x "$web" ]] || return 1
+  local uid plist domain logdir
+  uid="$(id -u)"
+  logdir="${HOME}/Library/Logs"
+  mkdir -p "${HOME}/Library/LaunchAgents" "$logdir"
+  plist="${HOME}/Library/LaunchAgents/com.dezocode.cockpit-web.plist"
+  launchctl bootout "gui/$uid" "$plist" 2>/dev/null || true
+  launchctl bootout "user/$uid" "$plist" 2>/dev/null || true
+  cat >"$plist" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.dezocode.cockpit-web</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>$web</string>
+  </array>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>StandardOutPath</key>
+  <string>${logdir}/cockpit-web.log</string>
+  <key>StandardErrorPath</key>
+  <string>${logdir}/cockpit-web.log</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/usr/local/bin:${HOME}/.local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <key>COCKPIT_WEB_HOST</key>
+    <string>127.0.0.1</string>
+  </dict>
+</dict>
+</plist>
+EOF
+  if launchctl bootstrap "gui/$uid" "$plist" 2>/dev/null; then
+    domain="gui/$uid"
+  elif launchctl bootstrap "user/$uid" "$plist" 2>/dev/null; then
+    domain="user/$uid"
+  else
+    printf 'launchd: bootstrap failed for %s\n' "$plist" >&2
+    return 1
+  fi
+  printf 'launchd: loaded %s in %s\n' "$plist" "$domain"
+}
+
+cockpit_service_install() {
+  local name=${1:-cockpit-web}
+  local bindir=${2:-${HOME}/.local/bin}
+  local root=${3:-}
+  if cockpit_has_launchd; then
+    cockpit_service_install_launchd "$bindir"
+    return 0
+  fi
+  if cockpit_has_systemd; then
+    if [[ "$(id -u)" -eq 0 && -n "$root" ]]; then
+      cockpit_service_install_systemd "$root"
+      return 0
+    fi
+    printf 'systemd service install requires root and COCKPIT_INSTALL_HOSTINGER=1\n' >&2
+    return 2
+  fi
+  printf 'Run manually: %s/cockpit-web\n' "$bindir"
+}
+
+cockpit_rc_block_content() {
+  local bindir=$1
+  cat <<EOF
+export PATH="$bindir:\$PATH"
+unalias cockpit 2>/dev/null || true
+cpr() {
+  command -v cockpit >/dev/null 2>&1 || return 0
+  cockpit cpr "\$@"
+}
+EOF
+}
+
+cockpit_rc_migrate_legacy() {
+  local file=$1
+  [[ -f "$file" ]] || return 0
+  local tmp="${file}.cockpit-migrate.$$"
+  awk '
+    /^# Cockpit PATH$/ { skip=1; next }
+    /^# Cockpit cpr plugin$/ { skip=1; next }
+    skip && /^[[:space:]]*$/ { skip=0; next }
+    skip && /^export PATH=/ { next }
+    skip && /^if command -v cockpit/ { skip=2; next }
+    skip && /^[[:space:]]*alias cockpit=/ { next }
+    skip && /^unalias cockpit/ { next }
+    skip && /^cpr\(\)/ { skip=1; next }
+    skip && /^[[:space:]]*cockpit cpr/ { next }
+    skip && /^}/ { skip=0; next }
+    { print }
+  ' "$file" >"$tmp" && mv "$tmp" "$file"
+}
+
+cockpit_rc_write_marked() {
+  local file=$1 bindir=$2
+  local start='# >>> cockpit >>>'
+  local end='# <<< cockpit <<<'
+  local block_file tmp="${file}.cockpit.$$"
+  block_file="$(mktemp "${TMPDIR:-/tmp}/cockpit-rc.XXXXXX")"
+  cockpit_rc_block_content "$bindir" >"$block_file"
+  cockpit_rc_migrate_legacy "$file"
+  mkdir -p "$(dirname -- "$file")"
+  if [[ ! -f "$file" ]]; then
+    : >"$file"
+  fi
+  if grep -Fq "$start" "$file" 2>/dev/null; then
+    awk -v start="$start" -v end="$end" -v blockfile="$block_file" '
+      BEGIN { inblock=0 }
+      $0 == start {
+        print
+        while ((getline line < blockfile) > 0) print line
+        close(blockfile)
+        inblock=1
+        next
+      }
+      inblock && $0 == end { print; inblock=0; next }
+      inblock { next }
+      { print }
+    ' "$file" >"$tmp" && mv "$tmp" "$file"
+  else
+    {
+      printf '\n%s\n' "$start"
+      cat "$block_file"
+      printf '%s\n' "$end"
+    } >>"$file"
+  fi
+  rm -f "$block_file"
+}
+
+cockpit_rc_write() {
+  local bindir=${1:-${HOME}/.local/bin}
+  if [[ -n "${COCKPIT_SHELL_RC:-}" ]]; then
+    cockpit_rc_write_marked "$COCKPIT_SHELL_RC" "$bindir"
+    return 0
+  fi
+  local shell_name
+  shell_name="$(basename "${SHELL:-bash}")"
+  case "$shell_name" in
+    bash)
+      cockpit_rc_write_marked "${HOME}/.bashrc" "$bindir"
+      if [[ -f "${HOME}/.bash_profile" ]] || [[ ! -f "${HOME}/.bashrc" ]]; then
+        if [[ -f "${HOME}/.bash_profile" ]] &&
+          ! grep -Fq 'source ~/.bashrc' "${HOME}/.bash_profile" 2>/dev/null &&
+          ! grep -Fq '. ~/.bashrc' "${HOME}/.bash_profile" 2>/dev/null; then
+          printf '\n# Cockpit: login shell loads ~/.bashrc\n[[ -f ~/.bashrc ]] && . ~/.bashrc\n' >>"${HOME}/.bash_profile"
+        fi
+      fi
+      ;;
+    zsh)
+      local zshrc="${ZDOTDIR:-$HOME}/.zshrc"
+      cockpit_rc_write_marked "$zshrc" "$bindir"
+      ;;
+    fish)
+      local fish_drop="${XDG_CONFIG_HOME:-$HOME/.config}/fish/conf.d/cockpit.fish"
+      mkdir -p "$(dirname -- "$fish_drop")"
+      cat >"$fish_drop" <<EOF
+fish_add_path -g $bindir
+function cpr
+  if command -q cockpit
+    cockpit cpr \$argv
+  end
+end
+EOF
+      ;;
+    *)
+      cockpit_rc_write_marked "${HOME}/.bashrc" "$bindir"
+      ;;
+  esac
+}
+
+cockpit_inotifywatch_stream() {
+  local path=$1
+  shift
+  inotifywait -m -q "$@" --format '%w%f' "$path" >&"$COCKPIT_EVENT_FD" 2>/dev/null &
+  COCKPIT_INOTIFY_PIDS+=($!)
+}
+
+cockpit_install_hostinger_if_requested() {
+  local root=$1
+  if [[ "${COCKPIT_INSTALL_HOSTINGER:-0}" != 1 ]]; then
+    return 0
+  fi
+  if [[ "$(id -u)" -ne 0 ]]; then
+    return 0
+  fi
+  if ! cockpit_has_systemd; then
+    printf 'Hostinger install requires systemd (Linux)\n' >&2
+    return 2
+  fi
+  cockpit_service_install_systemd "$root"
+}

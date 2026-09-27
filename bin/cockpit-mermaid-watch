@@ -84,7 +84,7 @@ header() {
 file_fp() {
   local path=$1
   [[ -f "$path" ]] || { printf 'missing\n'; return 0; }
-  stat -c '%Y %s' "$path" 2>/dev/null
+  cockpit_stat_mtime_size "$path" 2>/dev/null | awk '{print $2, $3}'
 }
 
 render_graph() {

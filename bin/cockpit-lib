@@ -2,6 +2,11 @@
 # Idle: block on inotify. Hidden tabs keep a dirty bit. Visible tabs
 # coalesce bursts, skip noise, and skip redraws when the fingerprint is unchanged.
 
+_lib_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=cockpit-portable-lib
+source "$_lib_root/cockpit-portable-lib"
+cockpit_require_bash4
+
 : "${COCKPIT_DEBOUNCE:=0.40}"
 : "${XDG_RUNTIME_DIR:=/tmp}"
 
@@ -106,7 +111,7 @@ cockpit_resolve_codex_bin() {
     rg -q 'mise[[:space:]]+(use|x)' "$candidate" 2>/dev/null; then
     direct="$(find "$HOME/.local/share/mise/installs/codex" \
       -mindepth 3 -maxdepth 3 -type f -path '*/bin/codex' -perm -111 \
-      -print 2>/dev/null | sort -V | tail -1 || true)"
+      -print 2>/dev/null | cockpit_sort_version | tail -1 || true)"
     if [[ -n "$direct" && -x "$direct" ]]; then
       printf '%s\n' "$direct"
       return 0
@@ -464,10 +469,62 @@ cockpit_event_open() {
 cockpit_event_watch() {
   local path=$1
   shift
+  local watch_args=("$@")
   [[ -e "$path" ]] || return 0
-  command -v inotifywait >/dev/null 2>&1 || return 0
-  inotifywait -m -q "$@" --format '%w%f' "$path" >&"$COCKPIT_EVENT_FD" 2>/dev/null &
-  COCKPIT_INOTIFY_PIDS+=($!)
+  local backend
+  backend="$(cockpit_watch_backend)"
+  case "$backend" in
+    "$COCKPIT_BACKEND_INOTIFY")
+      cockpit_inotifywatch_stream "$path" "${watch_args[@]}"
+      ;;
+    "$COCKPIT_BACKEND_FSWATCH")
+      local recursive=0 exclude=''
+      local arg
+      local i=0
+      while [[ $i -lt ${#watch_args[@]} ]]; do
+        arg="${watch_args[$i]}"
+        case "$arg" in
+          -r) recursive=1 ;;
+          --exclude)
+            i=$((i + 1))
+            exclude="${watch_args[$i]:-}"
+            ;;
+        esac
+        i=$((i + 1))
+      done
+      (
+        if [[ "$recursive" == 1 ]]; then
+          if [[ -n "$exclude" ]]; then
+            fswatch -r --latency 0.2 -E --exclude "$exclude" \
+              --event Created --event Updated --event Removed --event Renamed --event MovedTo \
+              "$path" 2>/dev/null
+          else
+            fswatch -r --latency 0.2 -E \
+              --event Created --event Updated --event Removed --event Renamed --event MovedTo \
+              "$path" 2>/dev/null
+          fi
+        else
+          if [[ -n "$exclude" ]]; then
+            fswatch --latency 0.2 -E --exclude "$exclude" \
+              --event Created --event Updated --event Removed --event Renamed --event MovedTo \
+              "$path" 2>/dev/null
+          else
+            fswatch --latency 0.2 -E \
+              --event Created --event Updated --event Removed --event Renamed --event MovedTo \
+              "$path" 2>/dev/null
+          fi
+        fi |
+          while IFS= read -r line; do
+            [[ -n "$line" ]] || continue
+            cockpit_realpath "$line" 2>/dev/null || printf '%s\n' "$line"
+          done
+      ) >&"$COCKPIT_EVENT_FD" 2>/dev/null &
+      COCKPIT_INOTIFY_PIDS+=($!)
+      ;;
+    "$COCKPIT_BACKEND_NONE")
+      return 0
+      ;;
+  esac
 }
 
 cockpit_event_read() {
@@ -543,5 +600,5 @@ cockpit_fingerprint_files() {
     printf 'empty\n'
     return 0
   fi
-  stat -c '%n %Y %s' "$@" 2>/dev/null | sort
+  cockpit_stat_mtime_size "$@" 2>/dev/null | sort
 }

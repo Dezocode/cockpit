@@ -362,7 +362,7 @@ cockpit_agent_inspect() {
     COCKPIT_AGENT_TARGET_STATE=missing
     COCKPIT_AGENT_ERROR='provider instruction target is not present'
   else
-    target_real="$(readlink -f -- "$COCKPIT_AGENT_TARGET" 2>/dev/null || true)"
+    target_real="$(cockpit_realpath "$COCKPIT_AGENT_TARGET" 2>/dev/null || true)"
     if [[ -z "$target_real" ]] || ! cockpit_agent_relpath "$COCKPIT_AGENT_PROJECT" "$target_real" >/dev/null 2>&1; then
       COCKPIT_AGENT_TARGET_STATE=outside-project
       COCKPIT_AGENT_ERROR='provider instruction target resolves outside the project'
@@ -513,7 +513,7 @@ cockpit_agent_apply_profile() {
     COCKPIT_AGENT_BACKUP_PATH="$backup_path"
   fi
   if [[ -f "$COCKPIT_AGENT_TARGET" ]]; then
-    existing_size="$(stat -c '%a' -- "$COCKPIT_AGENT_TARGET" 2>/dev/null || true)"
+    existing_size="$(cockpit_stat_mode "$COCKPIT_AGENT_TARGET" 2>/dev/null || true)"
     [[ -n "$existing_size" ]] && chmod "$existing_size" "$tmp" 2>/dev/null || true
   fi
   mv -f -- "$tmp" "$COCKPIT_AGENT_TARGET"

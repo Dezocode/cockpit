@@ -385,7 +385,7 @@ fi
 lockdir="${XDG_RUNTIME_DIR:-/tmp}/cockpit-adapt-${session}.lock"
 if ! mkdir "$lockdir" 2>/dev/null; then
   stale="$(cat "$lockdir/pid" 2>/dev/null || true)"
-  if [[ -n "$stale" && ! -d "/proc/$stale" ]]; then
+  if [[ -n "$stale" ]] && ! cockpit_pid_alive "$stale"; then
     rm -rf "$lockdir"
     mkdir "$lockdir"
   else

@@ -4,6 +4,8 @@
 set -euo pipefail
 
 repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=../bin/cockpit-portable-lib
+source "$repo_root/bin/cockpit-portable-lib"
 test_root="$(mktemp -d /tmp/cockpit-setup-test.XXXXXX)"
 test_home="$test_root/home"
 fakebin="$test_root/bin"
@@ -69,7 +71,7 @@ ln -s /bin/true "$fakebin/gh"
 ln -s /bin/true "$fakebin/grok"
 
 set +e
-plugin_output="$(printf '1\ny\nx\n\nq\n' | timeout 8s "$repo_root/bin/cockpit-setup" plugins 2>&1)"
+plugin_output="$(printf '1\ny\nx\n\nq\n' | cockpit_timeout 8 "$repo_root/bin/cockpit-setup" plugins 2>&1)"
 plugin_status=$?
 set -e
 [[ "$plugin_status" == 0 ]]
@@ -79,7 +81,7 @@ grep -q 'OAuth ready' <<<"$plugin_output"
 [[ "$(<"$plugin_log")" == 'plugin add demo@local' ]]
 
 set +e
-audit_output="$(printf 'x' | timeout 8s "$repo_root/bin/cockpit-setup" audit 2>&1)"
+audit_output="$(printf 'x' | cockpit_timeout 8 "$repo_root/bin/cockpit-setup" audit 2>&1)"
 audit_status=$?
 set -e
 [[ "$audit_status" == 0 ]]

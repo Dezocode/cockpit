@@ -3,6 +3,12 @@
 # Prints: foot | termius-ios
 set -euo pipefail
 
+_profile_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=cockpit-portable-lib
+source "$_profile_root/cockpit-portable-lib"
+# shellcheck source=cockpit-lib
+source "$_profile_root/cockpit-lib"
+
 usage() {
   printf 'usage: cockpit profile-detect [pid|--session NAME|--explain]\n' >&2
   exit 2
@@ -16,18 +22,15 @@ in_tailscale_cgnat() {
 }
 
 pid_comm() {
-  local pid=$1
-  [[ -r "/proc/$pid/comm" ]] && tr -d '\n' <"/proc/$pid/comm"
+  cockpit_pid_comm "$1"
 }
 
 pid_env() {
-  local pid=$1
-  [[ -r "/proc/$pid/environ" ]] && tr '\0' '\n' <"/proc/$pid/environ"
+  cockpit_pid_environ "$1" || true
 }
 
 pid_ppid() {
-  local pid=$1
-  awk '/^PPid:/{print $2}' "/proc/$pid/status" 2>/dev/null
+  cockpit_pid_ppid "$1"
 }
 
 env_val() {

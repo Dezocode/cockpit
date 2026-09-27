@@ -49,7 +49,7 @@ setup_has_editor() {
   local pane=$1 pid
   pid="$(tmux display-message -p -t "$pane" '#{pane_pid}' 2>/dev/null || true)"
   [[ -n "$pid" ]] || return 1
-  pgrep -P "$pid" -a 2>/dev/null | grep -Eq '(^|[[:space:]/])nvim([[:space:]]|$)'
+  cockpit_pgrep_child_match "$pid" '(^|[[:space:]/])nvim([[:space:]]|$)'
 }
 
 normalize_setup_edit_windows() {
