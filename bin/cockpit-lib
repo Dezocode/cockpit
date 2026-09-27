@@ -1,3 +1,4 @@
+# shellcheck shell=bash disable=SC2034,SC2154
 # Shared event policy for cockpit watchers. Sourced, not executed.
 # Idle: block on inotify. Hidden tabs keep a dirty bit. Visible tabs
 # coalesce bursts, skip noise, and skip redraws when the fingerprint is unchanged.
@@ -518,7 +519,7 @@ cockpit_event_watch() {
             [[ -n "$line" ]] || continue
             cockpit_realpath "$line" 2>/dev/null || printf '%s\n' "$line"
           done
-      ) >&"$COCKPIT_EVENT_FD" 2>/dev/null &
+      ) 2>/dev/null >"&$COCKPIT_EVENT_FD" &
       COCKPIT_INOTIFY_PIDS+=($!)
       ;;
     "$COCKPIT_BACKEND_NONE")

@@ -45,7 +45,7 @@ fi
 modality="$(tmux show-options -v -t "$session" @cockpit_modality 2>/dev/null || true)"
 if [[ -z "$modality" ]]; then
   if [[ "$endpoint" == "termius-ios" ]]; then
-    modality=touch
+    modality='touch'
   else
     modality=keyboard
   fi

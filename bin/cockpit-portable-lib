@@ -416,7 +416,8 @@ cockpit_rc_write() {
         if [[ -f "${HOME}/.bash_profile" ]] &&
           ! grep -Fq 'source ~/.bashrc' "${HOME}/.bash_profile" 2>/dev/null &&
           ! grep -Fq '. ~/.bashrc' "${HOME}/.bash_profile" 2>/dev/null; then
-          printf '\n# Cockpit: login shell loads ~/.bashrc\n[[ -f ~/.bashrc ]] && . ~/.bashrc\n' >>"${HOME}/.bash_profile"
+          printf '\n# Cockpit: login shell loads %s/.bashrc\n[[ -f %s/.bashrc ]] && . %s/.bashrc\n' \
+            "$HOME" "$HOME" "$HOME" >>"${HOME}/.bash_profile"
         fi
       fi
       ;;
