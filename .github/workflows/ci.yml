@@ -22,10 +22,12 @@ jobs:
       - name: tests/*.sh (named skip list)
         shell: bash
         run: |
-          # Pre-existing failures at base e7a1687 (also fail at e5c2eb8 in a clean
-          # sandbox: auth-needed / OAuth-ready asserts; termius "expected FILES, got AGENT").
-          # Quarantined by exact name, never silently. Remove a name once it is fixed.
-          skip=(test-auth-setup test-setup-flows test-termius-touch)
+          # Quarantine by exact name, never silently; a quarantined test is still
+          # run and the job fails once it passes. test-auth-setup, test-setup-flows
+          # and test-termius-touch were quarantined in C2 fix (d642070) from a
+          # workstation sandbox (its login shell resets PATH past the fakebin);
+          # on ubuntu-latest all three pass (run 36323026888), so the list is empty.
+          skip=()
           sandbox() {
             env -i PATH=/usr/bin:/bin HOME="$(mktemp -d)" TMUX_TMPDIR="$(mktemp -d)" TERM=xterm \
               timeout 600 bash "$1" </dev/null
