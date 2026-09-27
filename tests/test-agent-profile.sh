@@ -39,8 +39,14 @@ cat >"$project/.codex/AGENTS.md" <<'EOF'
 Keep this heading and paragraph intact.
 EOF
 
-detect="$($repo_root/bin/cockpit-agent-config detect "$project" codex)"
-grep -q '^markers=.codex,.codex/AGENTS.md$' <<<"$detect"
+detect="$($repo_root/bin/cockpit-agent-config detect "$project" codex" 2>&1)" || {
+  printf 'agent-profile: detect failed:\n%s\n' "$detect" >&2
+  exit 1
+}
+grep -q '^markers=.codex,.codex/AGENTS.md$' <<<"$detect" || {
+  printf 'agent-profile: unexpected detect output:\n%s\n' "$detect" >&2
+  exit 1
+}
 grep -q '^target=.codex/AGENTS.md$' <<<"$detect"
 grep -q '^target_state=valid$' <<<"$detect"
 grep -q '^profile_skills=2$' <<<"$detect"
