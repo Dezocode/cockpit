@@ -2,7 +2,7 @@
 set -euo pipefail
 
 repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
-unset COCKPIT_SHELL_RC COCKPIT_INSTALL_HOSTINGER COCKPIT_INSTALL_SERVICE
+unset COCKPIT_SHELL_RC COCKPIT_INSTALL_HOSTINGER COCKPIT_INSTALL_SERVICE XDG_CONFIG_HOME ZDOTDIR
 fail() {
   printf 'install-shells: FAIL (%s)\n' "$1"
   exit 1
@@ -12,9 +12,11 @@ run_install() {
   local shell_name=$1
   local home=$2
   (
-    export HOME="$home" SHELL="/bin/$shell_name" PATH="/usr/local/bin:/usr/bin:/bin"
+    export HOME="$home" PATH="/usr/local/bin:/usr/bin:/bin"
     export COCKPIT_INSTALL_WEB_BUILD=0 COCKPIT_INSTALL_SERVICE=0 COCKPIT_INSTALL_HOSTINGER=0
-    unset COCKPIT_SHELL_RC
+    unset COCKPIT_SHELL_RC XDG_CONFIG_HOME ZDOTDIR
+    shell_path="$(command -v "$shell_name" 2>/dev/null || printf '/usr/bin/%s' "$shell_name")"
+    export SHELL="$shell_path"
     /bin/bash "$repo_root/install.sh" </dev/null >/dev/null 2>&1
   ) || return 1
 }

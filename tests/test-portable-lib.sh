@@ -96,7 +96,7 @@ if [[ "$(cockpit_watch_backend)" != none ]]; then
   cockpit_event_open testsession WATCHTEST
   watchfile="$tmpdir/watchme"
   touch "$watchfile"
-  cockpit_event_watch "$tmpdir" -r -e close_write --exclude '(^|/)\.git'
+  cockpit_event_watch "$tmpdir" -r -e close_write
   if [[ "$(cockpit_watch_backend)" == "$COCKPIT_BACKEND_FSWATCH" ]]; then
     sleep 2
   else
