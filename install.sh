@@ -2,6 +2,15 @@
 set -euo pipefail
 
 root="$(cd -- "$(dirname -- "$0")" && pwd)"
+
+# The Hostinger deploy gate left install.sh in v2.3.0 (single deploy path).
+# Fail loudly instead of silently doing only a user-level install.
+if [[ "${COCKPIT_INSTALL_HOSTINGER:-0}" == 1 ]]; then
+  printf 'install.sh: COCKPIT_INSTALL_HOSTINGER was removed in v2.3.0 and no longer deploys.\n' >&2
+  printf 'Run the canonical Hostinger install instead:\n  sudo %s/scripts/install-hostinger.sh\n  %s/scripts/hostinger-health.sh --wait 30\n' \
+    "$root" "$root" >&2
+  exit 2
+fi
 bindir="${HOME}/.local/bin"
 confdir="${XDG_CONFIG_HOME:-$HOME/.config}"
 config_home="${COCKPIT_CONFIG_HOME:-$confdir/cockpit}"

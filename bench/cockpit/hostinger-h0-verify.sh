@@ -11,7 +11,9 @@ matrix_begin 'Hostinger H0 verify (cockpit-20260907)'
 [[ -x "$root/scripts/install-hostinger.sh" ]] && i=ok || i=fail
 matrix_check "scripts/install-hostinger.sh (canonical deploy)" "$i"
 
-! grep -q 'COCKPIT_INSTALL_HOSTINGER' "$root/install.sh" && ig=ok || ig=fail
+# install.sh only refuses the removed deploy gate; it must never deploy itself.
+! grep -Eq 'useradd|systemctl|/etc/systemd|/etc/nginx' "$root/install.sh" &&
+  grep -q 'scripts/install-hostinger.sh' "$root/install.sh" && ig=ok || ig=fail
 matrix_check "install.sh has no Hostinger block" "$ig"
 
 [[ -f "$root/packaging/systemd/cockpit-web.service" ]] && s=ok || s=fail

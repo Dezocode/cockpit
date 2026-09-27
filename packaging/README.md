@@ -2,15 +2,20 @@
 
 Install root: **`/opt/cockpit`** — separate from Saul `/root/.grok` and `saul-go`.
 
-## One-liners (v2.1.4+)
+## Install (canonical, v2.3.0+)
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Dezocode/cockpit/v2.1.4/scripts/hostinger-grok-build.sh | sudo bash
+sudo ./scripts/install-hostinger.sh
+./scripts/hostinger-health.sh --wait 30
 ```
 
-Or:
+Historical tag-pinned one-liners (they only work on the **v2.1.4** tag;
+the grok-build wrapper was removed in v2.3.0 — use
+`scripts/install-hostinger.sh` above):
 
 ```bash
+# v2.1.4 tag only
+curl -fsSL https://raw.githubusercontent.com/Dezocode/cockpit/v2.1.4/scripts/hostinger-grok-build.sh | sudo bash
 curl -fsSL https://raw.githubusercontent.com/Dezocode/cockpit/v2.1.4/scripts/install-hostinger.sh | sudo bash
 ```
 
@@ -23,18 +28,16 @@ Canon draft alignment: `tmp/t847u/README.md`
 | `packaging/systemd/cockpit-web.service` | systemd unit + heal pre-start |
 | `packaging/systemd/cockpit-web-heal.sh` | artifact/port heal |
 | `packaging/nginx/cockpit.conf` | TLS + `/api/health` proxy |
-| `scripts/install-hostinger.sh` | full Hostinger install |
-| `deploy/hostinger-grok-build-install.sh` | grok-build subscription recipe (canonical) |
-| `scripts/hostinger-grok-build.sh` | thin wrapper → deploy recipe |
+| `scripts/install-hostinger.sh` | canonical Hostinger install (single deploy path) |
 | `packaging/health-server.js` | optional GET `/api/health` bootstrap (NOT full API — see H0-HEALTH-CONTRACT.md) |
 | `scripts/start-dist-server.sh` | local/systemd-equivalent dist-server start |
-| `scripts/hostinger-health.sh` | GET `/api/health` probe |
+| `scripts/hostinger-health.sh` | GET `/api/health` probe (`--wait N`) |
 | `bench/cockpit/H0-HEALTH-CONTRACT.md` | bootstrap vs full API contract |
 
 ## Health
 
 ```bash
-./scripts/hostinger-health.sh
+./scripts/hostinger-health.sh --wait 30
 # or
 curl -s http://127.0.0.1:8787/api/health | jq .
 ```
