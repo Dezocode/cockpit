@@ -5,6 +5,8 @@ set -euo pipefail
 repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 # shellcheck source=lib/fixture.sh
 source "$repo_root/tests/lib/fixture.sh"
+# shellcheck source=../bin/cockpit-portable-lib
+source "$repo_root/bin/cockpit-portable-lib"
 fixture_init setup-agent-flow
 test_root="$FIXTURE_TEST_ROOT"
 test_home="$FIXTURE_HOME"
@@ -50,7 +52,7 @@ esac
 EOF
 chmod +x "$fakebin/codex"
 
-output="$(cd "$project" && printf 'y\nx\nq\n' | timeout 8s "$repo_root/bin/cockpit-setup" profile 2>&1)"
+output="$(cd "$project" && printf 'y\nx\nq\n' | cockpit_timeout 8 "$repo_root/bin/cockpit-setup" profile 2>&1)"
 grep -q 'COCKPIT PROFILE' <<<"$output"
 grep -q 'Profile skills synced' <<<"$output"
 grep -Fq 'cockpit-profile:begin' "$project/.agent"

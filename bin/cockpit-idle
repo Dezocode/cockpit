@@ -17,7 +17,7 @@ mkdir -p "$(dirname "$pidfile")"
 
 if [[ -f "$pidfile" ]]; then
   old=$(cat "$pidfile" 2>/dev/null || true)
-  if [[ -n "$old" && -d "/proc/$old" ]]; then
+  if [[ -n "$old" ]] && cockpit_pid_alive "$old"; then
     exit 0
   fi
 fi

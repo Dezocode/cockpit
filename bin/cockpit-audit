@@ -6,7 +6,6 @@ export PATH="$HOME/.local/bin:$PATH"
 
 script_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 authlib="$script_root/cockpit-auth-lib"
-theme_lib="$script_root/cockpit-lib"
 # shellcheck source=cockpit-agent-lib
 agentlib="$script_root/cockpit-agent-lib"
 # shellcheck source=cockpit-auth-lib
@@ -14,7 +13,7 @@ source "$authlib"
 # shellcheck source=cockpit-agent-lib
 source "$agentlib"
 # shellcheck source=cockpit-lib
-source "$theme_lib"
+source "$script_root/cockpit-lib"
 
 session="$(cockpit_session_name)"
 if [[ "${1:-}" == "--session" ]]; then
@@ -63,11 +62,7 @@ plugin_catalog_health() {
     warn_check 'Codex plugin catalog skipped (jq missing)'
     return 0
   fi
-  if has_command timeout; then
-    json="$(timeout 1.5s codex plugin list --available --json 2>/dev/null || true)"
-  else
-    json="$(codex plugin list --available --json 2>/dev/null || true)"
-  fi
+  json="$(cockpit_timeout 1.5 codex plugin list --available --json 2>/dev/null || true)"
   if [[ -z "$json" ]] || ! jq -e '(.installed? // []) and (.available? // [])' \
     >/dev/null 2>&1 <<<"$json"; then
     warn_check 'Codex plugin catalog is unavailable'

@@ -135,3 +135,142 @@ jobs:
           test -x scripts/install-hostinger.sh
           grep -q 'packaging/systemd/cockpit-web.service' scripts/install-hostinger.sh
           grep -q 'scripts/hostinger-health.sh' scripts/install-hostinger.sh
+
+  portability:
+    runs-on: ${{ matrix.os }}
+    # Fail closed on a hung test instead of burning the 6 h default.
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-14, macos-15-intel]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install OS deps
+        run: |
+          set -euxo pipefail
+          echo "BASH_VERSION=${BASH_VERSION:-}"
+          uname -sm
+          if [[ "${{ matrix.os }}" == ubuntu-latest ]]; then
+            sudo apt-get update
+            sudo apt-get install -y shellcheck tmux fish zsh inotify-tools ripgrep
+          else
+            brew install fswatch shellcheck tmux fish bash ripgrep
+            if echo "$PATH" | grep -qi gnubin; then
+              echo "gnubin on PATH is forbidden"
+              exit 1
+            fi
+          fi
+          echo "watch backend: $(bash -c 'source bin/cockpit-portable-lib; cockpit_watch_backend')"
+
+      - uses: ./.github/actions/setup-node-pnpm
+
+      - name: Build web + API
+        working-directory: app
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
+          pnpm run build:server
+
+      - name: Portability suite
+        run: |
+          set -euxo pipefail
+          log="portability-${{ matrix.os }}.log"
+          exec > >(tee "$log") 2>&1
+          echo "BASH_VERSION=${BASH_VERSION:-}"
+          uname -sm
+          echo "watch backend: $(bash -c 'source bin/cockpit-portable-lib; cockpit_watch_backend')"
+          export PATH="$PWD/bin:$PATH"
+          bash_bin="$(command -v bash)"
+          if [[ "$(uname -s)" == Darwin ]]; then
+            for candidate in /opt/homebrew/bin/bash /usr/local/bin/bash; do
+              [[ -x "$candidate" ]] && bash_bin="$candidate" && break
+            done
+            export PATH="$(dirname "$bash_bin"):$PATH"
+            echo "portability bash: $bash_bin (${BASH_VERSION:-})"
+          fi
+          shellcheck -x -S warning install.sh bin/cockpit-portable-lib bin/cockpit-lib bin/cockpit-agent-lib \
+            bin/cockpit-mermaid-watch bin/cockpit-wake bin/cockpit-idle bin/cockpit-adapt bin/cockpit-profile \
+            bin/cockpit-reload-views bin/cockpit-plugin
+          COCKPIT_REQUIRE_WATCH_BACKEND=1 "$bash_bin" tests/test-portable-lib.sh
+          "$bash_bin" tests/test-portability-lint.sh
+          "$bash_bin" tests/test-install-shells.sh
+          "$bash_bin" tests/test-launchd.sh
+          failed=()
+          for t in tests/test-*.sh; do
+            case "$t" in
+              tests/test-portable-lib.sh|tests/test-portability-lint.sh|tests/test-install-shells.sh|tests/test-launchd.sh) continue ;;
+            esac
+            if ! "$bash_bin" "$t"; then
+              failed+=("$t")
+              echo "::error::$t failed on ${{ matrix.os }}; xtrace tail follows"
+              "$bash_bin" -x "$t" >"xtrace-$(basename "$t" .sh).log" 2>&1 || true
+              tail -n 60 "xtrace-$(basename "$t" .sh).log"
+            fi
+          done
+          if ((${#failed[@]})); then
+            echo "regression failures: ${failed[*]}"
+            exit 1
+          fi
+          bash bench/cockpit/capability-matrix.sh
+          # Listen proof on an ephemeral loopback port this step owns; only the
+          # server PID started here is stopped. COCKPIT_WEB_HOST is left unset
+          # so the proof covers the default bind.
+          port="$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()')"
+          COCKPIT_HOSTINGER=1 COCKPIT_WEB_PORT="$port" node app/dist-server/index.js >web-listen.log 2>&1 &
+          pid=$!
+          trap 'kill "$pid" 2>/dev/null || :' EXIT
+          for _ in $(seq 1 40); do
+            curl -sf "http://127.0.0.1:${port}/api/health" && break
+            sleep 0.5
+          done
+          cat web-listen.log
+          if [[ "${{ matrix.os }}" == ubuntu-latest ]]; then
+            listen="$(ss -ltnp | grep ":${port} " || :)"
+          else
+            listen="$(lsof -nP -a -p "$pid" -iTCP:"$port" -sTCP:LISTEN || :)"
+          fi
+          printf 'listen-proof (%s):\n%s\n' "${{ matrix.os }}" "$listen"
+          grep -q "127.0.0.1:${port}" <<<"$listen"
+          if grep -E "(\\*|0\\.0\\.0\\.0|\\[::\\]|:::?):${port}" <<<"$listen"; then
+            echo "::error::cockpit-web listens on a non-loopback address"
+            exit 1
+          fi
+          echo "listen-proof: loopback-only (127.0.0.1:${port}, pid ${pid})"
+          kill "$pid" 2>/dev/null || :
+          wait "$pid" 2>/dev/null || :
+          # Default config (no COCKPIT_WEB_PORT / COCKPIT_WEB_HOST) = what nginx
+          # proxies to (127.0.0.1:8787). Refuse, naming the holder, if anything
+          # already listens there; never stop a process this step did not start.
+          if curl -s -o /dev/null --max-time 1 http://127.0.0.1:8787/; then
+            echo "::error::8787 already taken on the runner; not ours to stop"
+            (lsof -nP -iTCP:8787 -sTCP:LISTEN || ss -ltnp) 2>/dev/null || :
+            exit 1
+          fi
+          env -u COCKPIT_WEB_PORT -u COCKPIT_WEB_HOST COCKPIT_HOSTINGER=1 node app/dist-server/index.js >web-default.log 2>&1 &
+          pid=$!
+          for _ in $(seq 1 40); do
+            curl -sf http://127.0.0.1:8787/api/health >/dev/null && break
+            sleep 0.5
+          done
+          cat web-default.log
+          if [[ "${{ matrix.os }}" == ubuntu-latest ]]; then
+            listen="$(ss -ltnp | grep ':8787 ' || :)"
+          else
+            listen="$(lsof -nP -a -p "$pid" -iTCP:8787 -sTCP:LISTEN || :)"
+          fi
+          printf 'listen-proof default (%s):\n%s\n' "${{ matrix.os }}" "$listen"
+          grep -q '127.0.0.1:8787' <<<"$listen"
+          if grep -E '(\*|0\.0\.0\.0|\[::\]|:::?):8787' <<<"$listen"; then
+            echo "::error::cockpit-web default bind is not loopback"
+            exit 1
+          fi
+          echo "listen-proof: default bind loopback-only (127.0.0.1:8787, pid ${pid})"
+
+      - name: Upload portability log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: portability-${{ matrix.os }}
+          path: portability-${{ matrix.os }}.log

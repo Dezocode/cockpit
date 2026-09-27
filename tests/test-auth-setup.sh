@@ -14,9 +14,13 @@ mkdir -p "$test_home/.config/cockpit" "$test_home/.codex" "$test_home/.grok"
 
 export COCKPIT_AUTH_HOME="$HOME/.config/cockpit"
 
-ln -s /bin/true "$fakebin/gh"
-ln -s /bin/true "$fakebin/codex"
-ln -s /bin/true "$fakebin/grok"
+# Stock macOS keeps true/false only under /usr/bin (none in /bin); a dangling
+# symlink would let the real gh/codex on PATH answer the probe instead.
+true_bin="$(type -P true)"
+false_bin="$(type -P false)"
+ln -s "$true_bin" "$fakebin/gh"
+ln -s "$true_bin" "$fakebin/codex"
+ln -s "$true_bin" "$fakebin/grok"
 
 # This is intentionally the pre-probe config shape found on existing installs.
 cat >"$COCKPIT_AUTH_HOME/providers.conf" <<'EOF'
@@ -55,10 +59,10 @@ source "$repo_root/bin/cockpit-auth-lib"
 [[ "$(cockpit_auth_login_cmd grok)" == 'grok login --oauth' ]]
 
 # A failing provider-owned status probe must override a stale auth file.
-ln -sf /bin/false "$fakebin/codex"
+ln -sf "$false_bin" "$fakebin/codex"
 codex_state="$(cockpit_auth_state codex || true)"
 [[ "$codex_state" == auth-needed ]]
-ln -sf /bin/true "$fakebin/codex"
+ln -sf "$true_bin" "$fakebin/codex"
 
 # Grok has no status subcommand; expired or malformed cache records are not ready.
 cat >"$HOME/.grok/auth.json" <<'EOF'

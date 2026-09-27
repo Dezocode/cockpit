@@ -394,6 +394,7 @@ app.post("/api/notify", async (c) => {
 });
 
 const port = Number(process.env.COCKPIT_WEB_PORT ?? 8787);
+const host = process.env.COCKPIT_WEB_HOST?.trim() || "127.0.0.1"; // loopback default; unset/empty never binds all interfaces
 const nodeServer = createServer(getRequestListener(app.fetch));
 const wss = new WebSocketServer({ server: nodeServer, path: "/ws/pty" });
 
@@ -451,6 +452,6 @@ wss.on("connection", (ws, req) => {
   ws.on("close", () => pty?.kill());
 });
 
-nodeServer.listen(port, () => {
-  console.log(`cockpit-web listening on http://localhost:${port}`);
+nodeServer.listen(port, host, () => {
+  console.log(`cockpit-web listening on http://${host}:${port}`);
 });

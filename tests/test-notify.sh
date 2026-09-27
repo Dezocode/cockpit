@@ -31,7 +31,9 @@ stop_ours() {
 trap 'stop_ours; fixture_cleanup' EXIT
 
 fail() { echo "notify: FAIL ($1)"; [[ -n "${2:-}" ]] && printf '%s\n' "$2" >&2; exit 1; }
-sha() { printf '%s' "$1" | { sha256sum 2>/dev/null || shasum -a 256; } | awk '{print $1}'; }
+# shellcheck source=../bin/cockpit-portable-lib
+source "$repo_root/bin/cockpit-portable-lib"
+sha() { printf '%s' "$1" | cockpit_sha256 /dev/stdin; }
 
 # start_stub LOG [--slow S] → sets stub_port, stub_pid
 start_stub() {
@@ -89,7 +91,11 @@ chmod +x "$FIXTURE_FAKEBIN/hermes"
 export HERMES_LOG="$FIXTURE_TEST_ROOT/hermes.log"
 : >"$HERMES_LOG"
 out="$(cockpit notify "Cockpit v2.3.0 GTM done")" || fail hermes "$out"
-[[ "$out" == "notify: delivered=telegram sinks=telegram:ok,ntfy:skip:not-configured,desktop:skip:headless id="* ]] || fail hermes-line "$out"
+# The best-effort toast is real where osascript exists (macOS runner, see the
+# desktop section); a headless Linux sandbox skips it.
+desk_expect=skip:headless
+command -v osascript >/dev/null 2>&1 && desk_expect=ok
+[[ "$out" == "notify: delivered=telegram sinks=telegram:ok,ntfy:skip:not-configured,desktop:${desk_expect} id="* ]] || fail hermes-line "$out"
 [[ "$(head -1 "$HERMES_LOG" | tr '\0' '|')" == "send|--to|telegram|-q|Cockpit v2.3.0 GTM done|" ]] ||
   fail hermes-argv "$(tr '\0' '|' <"$HERMES_LOG")"
 cockpit notify --check --json | grep -q '"telegram":"ready"' || fail hermes-check
@@ -258,12 +264,12 @@ start_api() {
   api_port="$(free_port)"
   if curl -s -o /dev/null --max-time 1 "http://127.0.0.1:${api_port}/"; then fail "api: port $api_port taken"; fi
   env "$@" COCKPIT_WEB_PORT="$api_port" COCKPIT_NOTIFY_ENV_FILE="$COCKPIT_NOTIFY_ENV_FILE" \
-    "$node_bin" --import "$repo_root/app/tests/loopback-bind.mjs" "$repo_root/app/dist-server/index.js" >"$log" 2>&1 &
+    "$node_bin" "$repo_root/app/dist-server/index.js" >"$log" 2>&1 &
   api_pid=$!
   our_pids+=("$api_pid")
   for _ in $(seq 1 100); do
     kill -0 "$api_pid" 2>/dev/null || fail "api: server exited" "$(cat "$log")"
-    grep -q "listening on http://localhost:${api_port}" "$log" &&
+    grep -q "listening on http://127.0.0.1:${api_port}" "$log" &&
       curl -s -o /dev/null "http://127.0.0.1:${api_port}/api/health" && return 0
     sleep 0.1
   done

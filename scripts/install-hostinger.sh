@@ -9,6 +9,9 @@
 set -euo pipefail
 
 root="$(cd -- "$(dirname -- "$0")/.." && pwd)"
+# shellcheck source=../bin/cockpit-portable-lib
+source "$root/bin/cockpit-portable-lib"
+cockpit_has_systemd || { printf 'Hostinger install requires systemd (Linux)\n' >&2; exit 2; }
 COCKPIT_INSTALL_ROOT="${COCKPIT_INSTALL_ROOT:-/opt/cockpit}"
 export COCKPIT_HOSTINGER=1
 # install.sh refuses the removed deploy gate; never forward it from the caller.

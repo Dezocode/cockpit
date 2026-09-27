@@ -100,11 +100,8 @@ cockpit_auth_run_probe() {
   local command=$1 timeout_value
   [[ -n "$command" ]] || return 1
   timeout_value="${COCKPIT_AUTH_TIMEOUT:-1.5s}"
-  if command -v timeout >/dev/null 2>&1; then
-    timeout "$timeout_value" bash -lc "$command" >/dev/null 2>&1
-  else
-    bash -lc "$command" >/dev/null 2>&1
-  fi
+  timeout_value="${timeout_value%s}"
+  cockpit_timeout "$timeout_value" bash -lc "$(cockpit_login_command "$command")" >/dev/null 2>&1
 }
 
 # Grok has a login command but no `login status` subcommand. Its documented
@@ -124,7 +121,7 @@ cockpit_auth_grok_cache_ready() {
       [[ "$key_len" =~ ^[1-9][0-9]*$ ]] || continue
       [[ "$refresh_len" =~ ^[1-9][0-9]*$ ]] || continue
       [[ -n "$expires_at" ]] || continue
-      expiry="$(date -u -d "$expires_at" +%s 2>/dev/null || true)"
+      expiry="$(cockpit_utc_epoch "$expires_at" 2>/dev/null)" || expiry=''
       [[ "$expiry" =~ ^[0-9]+$ ]] || continue
       # A short grace period avoids a false negative during token rollover;
       # a stale cache still needs the native `grok login --oauth` flow.
@@ -326,7 +323,7 @@ cockpit_popup() {
   local title=$1
   shift
   local inner=$*
-  [[ -n "${TMUX:-}" ]] || { bash -lc "$inner"; return $?; }
+  [[ -n "${TMUX:-}" ]] || { bash -lc "$(cockpit_login_command "$inner")"; return $?; }
   if ! cockpit_popup_use_window; then
     tmux display-popup -E -w 88% -h 82% -T "$title" "$inner"
     return $?
@@ -338,7 +335,7 @@ cockpit_popup() {
   slug="$(cockpit_popup_slug "$title")"
   if ! tmux new-window -t "${sess}:" -n "$slug" \
     "exec cockpit-popup run $(printf %q "$ret") $(printf %q "$token") $(printf %q "$title") $(printf %q "$inner")"; then
-    bash -lc "$inner"
+    bash -lc "$(cockpit_login_command "$inner")"
     return $?
   fi
   tmux wait-for "$token"
@@ -357,7 +354,7 @@ cockpit_auth_ensure() {
   if [[ -n "${TMUX:-}" ]]; then
     cockpit_popup "Auth · $(cockpit_auth_label "$id")" "cockpit-auth run $(printf %q "$id")"
   else
-    bash -lc "$login" || true
+    bash -lc "$(cockpit_login_command "$login")" || true
   fi
   cockpit_auth_signed_in "$id"
 }

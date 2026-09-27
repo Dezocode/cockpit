@@ -6,6 +6,9 @@ set -euo pipefail
 
 export PATH="$HOME/.local/bin:$PATH"
 bin_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=cockpit-portable-lib
+source "$bin_root/cockpit-portable-lib"
+cockpit_require_bash4 "$@"
 bundled_root="$(cd -- "$bin_root/.." && pwd)/plugins"
 config_home="${COCKPIT_CONFIG_HOME:-${COCKPIT_AUTH_HOME:-${XDG_CONFIG_HOME:-$HOME/.config}/cockpit}}"
 installed_root="${COCKPIT_PLUGIN_HOME:-$config_home/plugins}"
@@ -98,6 +101,7 @@ run_plugin() {
     return 1
   }
   entry="$(manifest_field "$dir/plugin.conf" entrypoint)"
+  unset COCKPIT_BASH_REEXEC
   exec "$dir/$entry" "$@"
 }
 

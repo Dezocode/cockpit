@@ -298,14 +298,14 @@ function hexToRgb(hex) {
 }
 
 async function main() {
-  // Both ports are ephemeral and owned by this run: the API listens on apiPort
-  // (the preload pins it to 127.0.0.1 until C3's COCKPIT_WEB_HOST bind lands) and
+  // Both ports are ephemeral and owned by this run: the API listens on
+  // HOST:apiPort via the product COCKPIT_WEB_HOST bind (loopback by default) and
   // vite preview proxies /api + /ws to it through COCKPIT_API_PROXY_TARGET.
   const [apiPort, uiPort] = await freePorts(2);
   for (const port of [apiPort, uiPort]) {
     assert(!(await tcpOpen(HOST, port)), `ephemeral port ${port} taken before spawn; refusing to test against a foreign server`);
   }
-  const api = start("node", ["--import", "./tests/loopback-bind.mjs", "dist-server/index.js"], {
+  const api = start("node", ["dist-server/index.js"], {
     COCKPIT_WEB_HOST: HOST,
     COCKPIT_WEB_PORT: String(apiPort),
     TZ: E2E_TZ,
