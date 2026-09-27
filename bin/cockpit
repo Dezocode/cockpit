@@ -46,6 +46,7 @@ Commands:
   files|diff|map|prs    focus a workspace view
   vimdiff               open the on-demand Vim diff view
   restart               relaunch the active Agent in place
+  notify                send an outbound notification (Telegram, ntfy, desktop)
 EOF
     ;;
   config)
@@ -114,6 +115,10 @@ EOF
   client)
     shift
     exec "$script_root/cockpit-client" "$@"
+    ;;
+  notify)
+    shift
+    exec "$script_root/cockpit-notify" "$@"
     ;;
   *)
     exec "$script_root/cockpit-main" "$@"
