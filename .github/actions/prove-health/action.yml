@@ -1,0 +1,22 @@
+name: Prove GET /api/health
+description: Start dist-server with COCKPIT_HOSTINGER=1 and assert health contract
+runs:
+  using: composite
+  steps:
+    - name: Prove GET /api/health
+      shell: bash
+      run: |
+        set -euo pipefail
+        COCKPIT_HOSTINGER=1 node app/dist-server/index.js &
+        pid=$!
+        trap 'kill $pid 2>/dev/null || true' EXIT
+        bash scripts/hostinger-health.sh --wait 40
+        python3 - <<'PY'
+        import json
+        d = json.load(open("/tmp/cockpit-health-probe.json"))
+        assert d["product"] == "cockpit"
+        assert d["status"] in ("green", "yellow")
+        assert d["checks"]["hostinger"] == "configured"
+        assert d.get("source") == "app/dist-server/index.js"
+        print("health ok:", d["status"], "source:", d["source"])
+        PY

@@ -4,6 +4,15 @@ set -euo pipefail
 root="$(cd -- "$(dirname -- "$0")" && pwd)"
 # shellcheck source=bin/cockpit-portable-lib
 source "$root/bin/cockpit-portable-lib"
+
+# The Hostinger deploy gate left install.sh in v2.3.0 (single deploy path).
+# Fail loudly instead of silently doing only a user-level install.
+if [[ "${COCKPIT_INSTALL_HOSTINGER:-0}" == 1 ]]; then
+  printf 'install.sh: COCKPIT_INSTALL_HOSTINGER was removed in v2.3.0 and no longer deploys.\n' >&2
+  printf 'Run the canonical Hostinger install instead:\n  sudo %s/scripts/install-hostinger.sh\n  %s/scripts/hostinger-health.sh --wait 30\n' \
+    "$root" "$root" >&2
+  exit 2
+fi
 bindir="${HOME}/.local/bin"
 confdir="${XDG_CONFIG_HOME:-$HOME/.config}"
 config_home="${COCKPIT_CONFIG_HOME:-$confdir/cockpit}"
@@ -16,14 +25,22 @@ mkdir -p "$bindir" "$tmuxdir" \
   "$legacy_config_home/providers.d" "$legacy_config_home/nvim" \
   "$legacy_config_home/plugins/cockpit-cpr" "$legacy_config_home/skills.d"
 
-# The public command and every helper use the cockpit namespace. The old
-# codex-cockpit-* files are installed alongside them as compatibility shims.
-install -m 0755 "$root/bin/"cockpit* "$bindir/"
-install -m 0755 "$root/bin/"codex-cockpit* "$root/bin/codex-mermaid-watch" "$bindir/" 2>/dev/null || true
+# The public command and every helper use the cockpit namespace. Legacy
+# codex-cockpit-* names are symlinked to the single alias dispatcher at install time.
+shopt -s nullglob
+for cockpit_bin in "$root/bin"/cockpit*; do
+  [[ "$cockpit_bin" == *.list ]] && continue
+  install -m 0755 "$cockpit_bin" "$bindir/"
+done
+shopt -u nullglob
+install -m 0755 "$root/bin/cockpit-legacy-alias" "$bindir/cockpit-legacy-alias"
+while IFS= read -r legacy_name || [[ -n "$legacy_name" ]]; do
+  [[ -n "$legacy_name" ]] || continue
+  [[ "$legacy_name" =~ ^# ]] && continue
+  ln -sf cockpit-legacy-alias "$bindir/$legacy_name"
+done <"$root/bin/cockpit-legacy-names.list"
 install -m 0644 "$root/bin/cockpit-lib" "$root/bin/cockpit-auth-lib" \
   "$root/bin/cockpit-agent-lib" "$root/bin/cockpit-portable-lib" \
-  "$root/bin/codex-cockpit-lib" \
-  "$root/bin/codex-cockpit-auth-lib" "$root/bin/codex-cockpit-agent-lib" \
   "$bindir/"
 install -m 0755 "$root/bin/cpr" "$bindir/cpr"
 
@@ -178,7 +195,7 @@ fi
 if [[ -d "$root/app" && -f "$root/app/package.json" ]]; then
   if command -v pnpm >/dev/null 2>&1; then
     (cd "$root/app" && pnpm install --frozen-lockfile 2>/dev/null || pnpm install) || true
-    if [[ "${COCKPIT_INSTALL_WEB_BUILD:-0}" == 1 || "${COCKPIT_INSTALL_HOSTINGER:-0}" == 1 ]]; then
+    if [[ "${COCKPIT_INSTALL_WEB_BUILD:-0}" == 1 ]]; then
       (cd "$root/app" && pnpm build && pnpm build:server) || true
     fi
   fi
@@ -187,8 +204,6 @@ if [[ -d "$root/app" && -f "$root/app/package.json" ]]; then
     [[ -x "$root/bin/$helper" ]] && install -m 0755 "$root/bin/$helper" "$bindir/$helper" 2>/dev/null || true
   done
 fi
-
-cockpit_install_hostinger_if_requested "$root"
 
 if [[ "${COCKPIT_INSTALL_SERVICE:-0}" == 1 ]]; then
   cockpit_service_install cockpit-web "$bindir" "$root" || true

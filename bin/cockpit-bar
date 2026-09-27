@@ -183,23 +183,13 @@ which_btn() {
   fi
 }
 
-now_ms() {
-  local n
-  n="$(date +%s%3N 2>/dev/null || true)"
-  if [[ "$n" =~ ^[0-9]+$ ]]; then
-    printf '%s\n' "$n"
-  else
-    printf '%s000\n' "$(date +%s)"
-  fi
-}
-
 # Same stamp as cockpit-pointer so a tmux bind and a leaked SGR
 # sequence from Termius cannot fire the same chip twice.
 tap_debounce() {
   local key=$1 dir now last last_key last_ms
   dir="$(cockpit_runtime_home)"
   mkdir -p "$dir"
-  now="$(now_ms)"
+  now="$(cockpit_now_ms)"
   last="$(cat "$dir/pointer.stamp" 2>/dev/null || true)"
   last_key="${last% *}"
   last_ms="${last##* }"

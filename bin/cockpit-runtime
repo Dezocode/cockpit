@@ -230,7 +230,7 @@ open_omarchy_agent_switcher() {
   fi
 }
 
-pick() {
+cockpit_runtime_agent_pick() {
   cockpit_auth_ensure_config
   local ids id n=0 status
   mapfile -t ids < <(cockpit_auth_ids runtime)
@@ -309,12 +309,12 @@ case "$cmd" in
     [[ -n "$slot" ]] && resume_pane "$slot"
     ;;
   model) send_model ;;
-  pick) pick ;;
+  pick) cockpit_runtime_agent_pick ;;
   popup|*)
     if [[ -n "${TMUX:-}" ]]; then
       cockpit_popup "AGENT" "cockpit-runtime pick ${session}"
     else
-      pick
+      cockpit_runtime_agent_pick
     fi
     ;;
 esac

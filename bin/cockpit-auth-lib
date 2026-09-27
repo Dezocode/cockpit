@@ -380,3 +380,53 @@ cockpit_auth_ready_cmd() {
 cockpit_auth_label() {
   cockpit_auth_field "$1" label || printf '%s\n' "$1"
 }
+
+cockpit_auth_pick() {
+  cockpit_auth_ensure_config
+  local ids id n=0 sel
+  local bright muted blue reset
+  bright="$(cockpit_theme_style foreground '' 1)"
+  muted="$(cockpit_theme_muted)"
+  blue="$(cockpit_theme_style accent '' 0)"
+  reset="$(cockpit_theme_reset)"
+  mapfile -t ids < <(cockpit_auth_ids cli-oauth)
+  if ((${#ids[@]} == 0)); then
+    mapfile -t ids < <(cockpit_auth_ids)
+    local filtered=() k
+    for id in "${ids[@]}"; do
+      k="$(cockpit_auth_kind "$id")"
+      [[ "$k" == "runtime" ]] && continue
+      filtered+=("$id")
+    done
+    ids=("${filtered[@]}")
+  fi
+  if ((${#ids[@]} == 0)); then
+    printf 'No providers in %s\n' "$cockpit_auth_file" >&2
+    exit 1
+  fi
+  if ((${#ids[@]} == 1)); then
+    printf '%s\n' "${ids[0]}"
+    return 0
+  fi
+  {
+    printf '%sAuth sources%s\n\n' "$bright" "$reset"
+    for id in "${ids[@]}"; do
+      n=$((n + 1))
+      if cockpit_auth_signed_in "$id"; then
+        printf '  %s) %s  %sready%s\n' "$n" "$(cockpit_auth_label "$id")" "$muted" "$reset"
+      elif cockpit_auth_check "$id"; then
+        printf '  %s) %s  %sneeds auth%s\n' "$n" "$(cockpit_auth_label "$id")" "$blue" "$reset"
+      else
+        printf '  %s) %s  %snot installed%s\n' "$n" "$(cockpit_auth_label "$id")" "$muted" "$reset"
+      fi
+    done
+    printf '\nq / Esc close · tap AGENT to return (desktop: click outside)\nNumber, or q: '
+  } >/dev/tty
+  read -r sel </dev/tty
+  [[ "$sel" == "q" || -z "$sel" ]] && exit 0
+  if [[ "$sel" =~ ^[0-9]+$ ]] && ((sel >= 1 && sel <= ${#ids[@]})); then
+    printf '%s\n' "${ids[sel-1]}"
+    return 0
+  fi
+  printf '%s\n' "$sel"
+}

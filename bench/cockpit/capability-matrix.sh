@@ -3,25 +3,12 @@
 set -euo pipefail
 
 root="$(cd -- "$(dirname -- "$0")/../.." && pwd)"
-pass=0
-fail=0
-warn=0
+# shellcheck source=lib/matrix.sh
+source "$root/bench/cockpit/lib/matrix.sh"
 
-check() {
-  local name=$1 result=$2
-  if [[ "$result" == "ok" ]]; then
-    printf '  ✓ %s\n' "$name"
-    pass=$((pass + 1))
-  elif [[ "$result" == "warn" ]]; then
-    printf '  ~ %s\n' "$name"
-    warn=$((warn + 1))
-  else
-    printf '  ✗ %s\n' "$name"
-    fail=$((fail + 1))
-  fi
-}
+matrix_begin 'cockpit capability matrix (seed cockpit-20260907)'
 
-printf 'cockpit capability matrix (seed cockpit-20260907)\n\n'
+check() { matrix_check "$@"; }
 
 # TUI regression — zero Surface capability loss
 [[ -x "$root/bin/cockpit" ]] && tui=ok || tui=fail
@@ -131,19 +118,24 @@ check "packaging/systemd/cockpit-web-heal (+ heal)" "$heal"
 check "packaging/nginx/cockpit.conf" "$ngx"
 
 [[ -x "$root/scripts/install-hostinger.sh" ]] && ih=ok || ih=fail
-check "scripts/install-hostinger.sh" "$ih"
+check "scripts/install-hostinger.sh (canonical Hostinger deploy)" "$ih"
 
-[[ -x "$root/scripts/hostinger-grok-build.sh" ]] && gb=ok || gb=fail
-check "scripts/hostinger-grok-build.sh" "$gb"
+# install.sh only refuses the removed deploy gate; it must never deploy itself.
+! grep -Eq 'useradd|systemctl|/etc/systemd|/etc/nginx' "$root/install.sh" &&
+  grep -q 'scripts/install-hostinger.sh' "$root/install.sh" && ih0=ok || ih0=fail
+check "install.sh has no Hostinger deploy block" "$ih0"
 
-grep -qE 'frontier_subscription|DENY.*Qwen|sol-v1\.7\.1' "$root/deploy/hostinger-grok-build-install.sh" 2>/dev/null && gb_env=ok || gb_env=fail
-check "grok-build envelope DENY Qwen/sol-v1.7.1" "$gb_env"
+grep -qE 'DENY.*Qwen|sol-v1\.7\.1|/root/\.grok' "$root/scripts/install-hostinger.sh" 2>/dev/null && gb_env=ok || gb_env=fail
+check "install-hostinger DENY grok/saul-go envelope" "$gb_env"
 
-grep -q 'Funnel OFF' "$root/deploy/hostinger-grok-build-install.sh" 2>/dev/null && gb_fun=ok || gb_fun=fail
-check "grok-build Funnel OFF declared" "$gb_fun"
+[[ -x "$root/scripts/hostinger-health.sh" ]] && hp=ok || hp=fail
+check "scripts/hostinger-health.sh probe" "$hp"
 
-grep -q 'deploy/hostinger-grok-build-install.sh' "$root/scripts/hostinger-grok-build.sh" 2>/dev/null && gb_wrap=ok || gb_wrap=fail
-check "scripts/hostinger-grok-build → deploy recipe" "$gb_wrap"
+[[ -x "$root/bin/cockpit-legacy-alias" ]] && la=ok || la=fail
+check "bin/cockpit-legacy-alias dispatcher" "$la"
+
+[[ $(git -C "$root" ls-files 'bin/codex-cockpit-*' 2>/dev/null | wc -l) -eq 0 ]] && shim=ok || shim=fail
+check "no committed bin/codex-cockpit-* shims" "$shim"
 
 [[ -f "$root/packaging/health-server.js" ]] && hs=ok || hs=fail
 check "packaging/health-server.js" "$hs"
@@ -172,9 +164,9 @@ check "Hostinger separate install root env" "$h3"
 [[ -x "$root/bench/cockpit/surface-matrix.sh" ]] && h4=ok || h4=fail
 check "Surface parity harness (zero TUI regression)" "$h4"
 
-# Legacy deploy/ wrappers (backward compat)
-[[ -f "$root/deploy/cockpit-web.service" || -f "$root/packaging/systemd/cockpit-web.service" ]] && legacy=ok || legacy=warn
-check "deploy/ or packaging/ systemd" "$legacy"
+# Single systemd unit (legacy deploy/ copy removed in v2.3.0)
+[[ -f "$root/packaging/systemd/cockpit-web.service" ]] && legacy=ok || legacy=warn
+check "packaging/ systemd" "$legacy"
 
 # Marketing redact
 [[ -x "$root/marketing/redact-secrets.sh" ]] && mkt=ok || mkt=fail
@@ -267,5 +259,4 @@ else
 fi
 check "surface-matrix TUI↔GUI parity" "$surf"
 
-printf '\nmatrix: pass=%d warn=%d fail=%d\n' "$pass" "$warn" "$fail"
-[[ "$fail" -eq 0 ]]
+matrix_end

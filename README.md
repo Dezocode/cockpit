@@ -18,8 +18,8 @@ curl -s localhost:8787/api/health | jq .
 Hostinger + grok-build subscription lane (install root `/opt/cockpit`, ≠ Saul):
 
 ```bash
-./deploy/hostinger-grok-build-install.sh   # gospel deploy recipe
-./scripts/hostinger-grok-build.sh          # thin wrapper (same recipe)
+sudo ./scripts/install-hostinger.sh        # canonical deploy (single script)
+./scripts/hostinger-health.sh --wait 30    # GET /api/health probe (waits up to 30s)
 ```
 
 Health probe: `GET /api/health` — see [deploy/README.md](deploy/README.md)

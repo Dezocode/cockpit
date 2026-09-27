@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+# Legacy codex-cockpit-* / codex-mermaid-watch entrypoints dispatch to cockpit-*.
+# Sourced mode (codex-cockpit-{lib,auth-lib,agent-lib}) must not change the
+# caller's shell options, so strict mode is enabled only in exec mode below.
+legacy_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+legacy_name="${BASH_SOURCE[0]##*/}"
+
+if [[ "${BASH_SOURCE[0]}" != "${0}" ]]; then
+  case "$legacy_name" in
+    codex-cockpit-lib) canonical_name=cockpit-lib ;;
+    codex-cockpit-auth-lib) canonical_name=cockpit-auth-lib ;;
+    codex-cockpit-agent-lib) canonical_name=cockpit-agent-lib ;;
+    *)
+      printf 'unknown legacy library: %s\n' "$legacy_name" >&2
+      return 2 2>/dev/null || exit 2
+      ;;
+  esac
+  # shellcheck source=/dev/null
+  source "$legacy_root/$canonical_name"
+  unset legacy_root legacy_name canonical_name
+  return 0
+fi
+
+set -euo pipefail
+case "$legacy_name" in
+  codex-cockpit) canonical_name=cockpit-main ;;
+  codex-mermaid-watch) canonical_name=cockpit-mermaid-watch ;;
+  codex-cockpit-client) canonical_name=cockpit-client ;;
+  codex-cockpit-*) canonical_name="cockpit-${legacy_name#codex-cockpit-}" ;;
+  *)
+    printf 'unknown legacy entrypoint: %s\n' "$legacy_name" >&2
+    exit 2
+    ;;
+esac
+exec "$legacy_root/$canonical_name" "$@"

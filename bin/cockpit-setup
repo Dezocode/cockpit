@@ -45,13 +45,6 @@ refresh_agent_state() {
   cockpit_agent_inspect "$root" "$provider" || true
 }
 
-shell_quote() {
-  local value=$1
-  value=${value//\\/\\\\}
-  value=${value//\'/\'\\\'\'}
-  printf "'%s'" "$value"
-}
-
 agent_pane() {
   tmux list-panes -s -t "$session" -F '#{pane_id} #{@cockpit_role}' 2>/dev/null |
     awk '$2 == "runtime" { print $1; exit }' || true
@@ -768,9 +761,9 @@ edit_config() {
   )"
   if [[ -z "$editor_pane" ]]; then
     if command -v nvim >/dev/null 2>&1; then
-      editor_command="exec nvim -n $(shell_quote "$cockpit_auth_file") -c 'setlocal filetype=dosini number norelativenumber signcolumn=yes:1' -c 'set errorbells visualbell belloff=all'"
+      editor_command="exec nvim -n $(cockpit_shell_quote "$cockpit_auth_file") -c 'setlocal filetype=dosini number norelativenumber signcolumn=yes:1' -c 'set errorbells visualbell belloff=all'"
     else
-      editor_command="exec $(shell_quote "${VISUAL:-${EDITOR:-vi}}") $(shell_quote "$cockpit_auth_file")"
+      editor_command="exec $(cockpit_shell_quote "${VISUAL:-${EDITOR:-vi}}") $(cockpit_shell_quote "$cockpit_auth_file")"
     fi
     tmux new-window -d -t "$session:" -n SETUP-EDIT -c "$root" "$editor_command" 2>/dev/null || true
     editor_pane="$(
@@ -825,9 +818,9 @@ edit_cockpit_config() {
   fi
   root="$(project_root)"
   if command -v nvim >/dev/null 2>&1; then
-    editor_command="exec nvim -n $(shell_quote "$target") -c 'setlocal number norelativenumber signcolumn=yes:1' -c 'set errorbells visualbell belloff=all'"
+    editor_command="exec nvim -n $(cockpit_shell_quote "$target") -c 'setlocal number norelativenumber signcolumn=yes:1' -c 'set errorbells visualbell belloff=all'"
   else
-    editor_command="exec $(shell_quote "${VISUAL:-${EDITOR:-vi}}") $(shell_quote "$target")"
+    editor_command="exec $(cockpit_shell_quote "${VISUAL:-${EDITOR:-vi}}") $(cockpit_shell_quote "$target")"
   fi
   if [[ -n "${TMUX:-}" ]]; then
     tmux new-window -d -t "$session:" -n "$title" -c "$root" "$editor_command" 2>/dev/null || true

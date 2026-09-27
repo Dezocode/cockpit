@@ -4,25 +4,21 @@
 set -euo pipefail
 
 repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=lib/fixture.sh
+source "$repo_root/tests/lib/fixture.sh"
 # shellcheck source=../bin/cockpit-portable-lib
 source "$repo_root/bin/cockpit-portable-lib"
-test_root="$(mktemp -d /tmp/cockpit-setup-test.XXXXXX)"
-test_home="$test_root/home"
-fakebin="$test_root/bin"
+fixture_init setup-flows
+test_root="$FIXTURE_TEST_ROOT"
+test_home="$FIXTURE_HOME"
+fakebin="$FIXTURE_FAKEBIN"
 plugin_log="$test_root/plugin-add.log"
-mkdir -p "$test_home/.config/cockpit" "$test_home/.grok" "$fakebin"
+mkdir -p "$test_home/.config/cockpit" "$test_home/.grok"
 
-cleanup() {
-  rm -rf "$test_root"
-}
-trap cleanup EXIT
-
-export HOME="$test_home"
 export COCKPIT_AUTH_HOME="$HOME/.config/cockpit"
 export COCKPIT_SESSION=cockpit-setup-test
 export COCKPIT_AUTH_TIMEOUT=0.2s
 export FAKE_PLUGIN_LOG="$plugin_log"
-export PATH="$fakebin:$repo_root/bin:/usr/bin:/bin"
 unset TMUX TMUX_PANE
 
 cat >"$COCKPIT_AUTH_HOME/providers.conf" <<'EOF'
