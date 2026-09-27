@@ -39,9 +39,10 @@ jobs:
           # workstation sandbox (its login shell resets PATH past the fakebin);
           # on ubuntu-latest all three pass (run 36323026888), so the list is empty.
           skip=()
+          node_dir="$(dirname "$(command -v node)")"
           sandbox() {
             chmod +x bin/cockpit bin/cockpit-notify install.sh 2>/dev/null || true
-            env -i PATH=/usr/bin:/bin HOME="$(mktemp -d)" TMUX_TMPDIR="$(mktemp -d)" TERM=xterm \
+            env -i PATH="/usr/bin:/bin:${node_dir}" HOME="$(mktemp -d)" TMUX_TMPDIR="$(mktemp -d)" TERM=xterm \
               timeout 600 bash "$1" </dev/null
           }
           for s in "${skip[@]}"; do
