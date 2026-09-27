@@ -37,15 +37,38 @@ const consoleErrors = [];
 const glWarnings = [];
 let browser = null;
 
-/** Stop exactly the children we spawned (by handle/PID): SIGTERM, then SIGKILL after 5 s. */
+/**
+ * Signal a child we spawned. Every child is spawned `detached: true`, i.e. it leads
+ * its own process group (pgid === pid) that this test created, so the whole group
+ * (vite -> esbuild, node workers) is signalled via process.kill(-pid). A group is
+ * only signalled while its leader is still our live child, never after it exited
+ * (the pgid could then belong to someone else), and never anything found by port.
+ */
+function signalChild(c, sig) {
+  if (c.ownGroup && c.exitCode === null && c.signalCode === null) {
+    try {
+      process.kill(-c.pid, sig);
+      return;
+    } catch {
+      /* group already gone: fall back to the handle */
+    }
+  }
+  try {
+    c.kill(sig);
+  } catch {
+    /* already exited */
+  }
+}
+
+/** Stop exactly the children (and their own process groups) we spawned: SIGTERM, then SIGKILL after 5 s. */
 async function stopChildren() {
   if (browser) await browser.close().catch(() => {});
   await Promise.all(children.map((c) => new Promise((resolve) => {
     c.removeAllListeners("exit");
     if (c.exitCode !== null || c.signalCode !== null) return resolve();
-    const hard = setTimeout(() => c.kill("SIGKILL"), 5000);
+    const hard = setTimeout(() => signalChild(c, "SIGKILL"), 5000);
     c.once("exit", () => { clearTimeout(hard); resolve(); });
-    c.kill("SIGTERM");
+    signalChild(c, "SIGTERM");
   })));
 }
 
@@ -88,7 +111,9 @@ function start(cmd, args, env) {
     cwd: appRoot,
     env: { ...baseEnv, ...env },
     stdio: ["ignore", "pipe", "pipe"],
+    detached: true, // own process group, so teardown can stop grandchildren too
   });
+  child.ownGroup = process.platform !== "win32" && typeof child.pid === "number";
   let log = "";
   child.stdout.on("data", (d) => (log += d));
   child.stderr.on("data", (d) => (log += d));
@@ -162,8 +187,16 @@ async function canvasStats(page, targets = {}) {
   }, targets);
 }
 
+// Rendered-globe thresholds (canvas and re-read PNG crop alike). Observed on the
+// SwiftShader CI leg: a rendered globe gives 771-1362 distinct 15-bit colors
+// (CI 36325107973 @c44119d: 784-1361, lit 0.194-0.255); the hidden-tab /
+// not-yet-rendered canvas gives 159 colors. 300 sits well clear of both, so a blank
+// or half-initialised frame fails on colors too, not on lit alone.
+const GLOBE_MIN_LIT = 0.08;
+const GLOBE_MIN_COLORS = 300;
+
 function globeRendered(s) {
-  return s.present && s.litFraction >= 0.08 && s.distinctColors >= 64;
+  return s.present && s.litFraction >= GLOBE_MIN_LIT && s.distinctColors >= GLOBE_MIN_COLORS;
 }
 
 async function waitGlobe(page, label, timeoutMs = 60000) {
@@ -232,7 +265,8 @@ async function shotAndCheck(page, path, label) {
   }, { b64: png.toString("base64"), box });
   await probe.close();
   assert(file.crop.w > 100 && file.crop.h > 100, `${label}: screenshot canvas crop has no box`, file);
-  assert(file.litFraction >= 0.08 && file.distinctColors >= 64, `${label}: screenshot PNG shows no rendered globe`, file);
+  assert(file.litFraction >= GLOBE_MIN_LIT && file.distinctColors >= GLOBE_MIN_COLORS,
+    `${label}: screenshot PNG shows no rendered globe`, file);
   console.log(
     `godseye: screenshot ${path} (${label}: png=${file.image.w}x${file.image.h}, canvas=${file.crop.w}x${file.crop.h}, ` +
       `lit=${file.litFraction.toFixed(3)}, colors=${file.distinctColors})`,
