@@ -24,6 +24,16 @@ sudo ./scripts/install-hostinger.sh        # canonical deploy (single script)
 
 Health probe: `GET /api/health` — see [deploy/README.md](deploy/README.md)
 
+## Notifications
+
+Ship-time human ping (Telegram via Hermes or server-side Bot API token, ntfy fallback, desktop toast):
+
+```bash
+cockpit notify "Cockpit v2.3.0 GTM done"
+```
+
+Tokens live only on the Hostinger host (`/etc/cockpit/notify.env`), never in git or the browser bundle. See [docs/notify.md](docs/notify.md).
+
 The browser terminal (`/ws/pty`) requires GitHub sign-in — no shared tokens.
 Operator setup (OAuth app + allowlist): [docs/terminal-auth.md](docs/terminal-auth.md).
 Until it is configured, the terminal refuses all connections (fail-closed).

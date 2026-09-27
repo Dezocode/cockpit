@@ -3,8 +3,16 @@
 // on 127.0.0.1, Chromium headless on SwiftShader. Egress to any non-loopback host
 // is aborted AND counted (must be 0). Asserts the Cesium canvas has a real
 // layout box and actually rendered the globe (pixel check), node/unplaced counts
-// match /api/computers, credits are shown, theme switch recolors nodes, arcs
-// render (test roster), and close/reopen 3x leaves <=1 live viewer.
+// match /api/computers, credits are shown, arcs render and a theme switch
+// recolors nodes (explicit-geo test roster, so it never depends on TZ), and
+// close/reopen 3x leaves <=1 live viewer.
+// Ports: the API and vite preview each get an ephemeral 127.0.0.1 port this
+// test owns (bind :0); preview proxies /api to it via COCKPIT_API_PROXY_TARGET.
+// Teardown stops only the processes this test spawned (child handles), never
+// anything found by port.
+// Env: GODSEYE_SHOT / GODSEYE_ARCS_SHOT = screenshot paths (each PNG is
+// re-checked for a rendered globe); GODSEYE_EXPECT_NODES / GODSEYE_EXPECT_UNPLACED
+// = exact placed/unplaced counts to assert (CI pins them per TZ).
 import { spawn } from "node:child_process";
 import { createServer, connect } from "node:net";
 import { networkInterfaces } from "node:os";
@@ -20,44 +28,92 @@ const HOST = "127.0.0.1";
 // correctly unplaced (no invented coordinates).
 const E2E_TZ = process.env.GODSEYE_E2E_TZ || "America/Chicago";
 const KEY_ENV = ["CESIUM_ION_TOKEN", "GOOGLE_MAPS_API_KEY", "VITE_CESIUM_ION_TOKEN", "VITE_GOOGLE_MAPS_API_KEY"];
+// Stripped so placement is decided by E2E_TZ alone (and a stray proxy target
+// can never point preview at someone else's server).
+const PLACEMENT_ENV = ["COCKPIT_NODE_GEO", "COCKPIT_API_PROXY_TARGET"];
 
-const children = [];
+const children = []; // only processes this test spawned; teardown uses these handles
 const consoleErrors = [];
 const glWarnings = [];
-function fail(message, extra) {
-  console.error(`godseye: FAIL ${message}`);
-  if (extra !== undefined) console.error(typeof extra === "string" ? extra : JSON.stringify(extra, null, 2));
-  if (consoleErrors.length) console.error("console errors so far:", consoleErrors.slice(0, 10));
-  if (glWarnings.length) console.error("WebGL warnings so far:", glWarnings.slice(0, 10));
-  for (const c of children) {
-    c.removeAllListeners("exit");
-    c.kill("SIGTERM");
+let browser = null;
+
+/**
+ * Signal a child we spawned. Every child is spawned `detached: true`, i.e. it leads
+ * its own process group (pgid === pid) that this test created, so the whole group
+ * (vite -> esbuild, node workers) is signalled via process.kill(-pid). A group is
+ * only signalled while its leader is still our live child, never after it exited
+ * (the pgid could then belong to someone else), and never anything found by port.
+ */
+function signalChild(c, sig) {
+  if (c.ownGroup && c.exitCode === null && c.signalCode === null) {
+    try {
+      process.kill(-c.pid, sig);
+      return;
+    } catch {
+      /* group already gone: fall back to the handle */
+    }
   }
-  process.exit(1);
+  try {
+    c.kill(sig);
+  } catch {
+    /* already exited */
+  }
+}
+
+/** Stop exactly the children (and their own process groups) we spawned: SIGTERM, then SIGKILL after 5 s. */
+async function stopChildren() {
+  if (browser) await browser.close().catch(() => {});
+  await Promise.all(children.map((c) => new Promise((resolve) => {
+    c.removeAllListeners("exit");
+    if (c.exitCode !== null || c.signalCode !== null) return resolve();
+    const hard = setTimeout(() => signalChild(c, "SIGKILL"), 5000);
+    c.once("exit", () => { clearTimeout(hard); resolve(); });
+    signalChild(c, "SIGTERM");
+  })));
+}
+
+class E2EFail extends Error {}
+let failing = false;
+function fail(message, extra) {
+  if (!failing) {
+    failing = true;
+    console.error(`godseye: FAIL ${message}`);
+    if (extra !== undefined) console.error(typeof extra === "string" ? extra : JSON.stringify(extra, null, 2));
+    if (consoleErrors.length) console.error("console errors so far:", consoleErrors.slice(0, 10));
+    if (glWarnings.length) console.error("WebGL warnings so far:", glWarnings.slice(0, 10));
+    stopChildren().finally(() => process.exit(1));
+  }
+  throw new E2EFail(message);
+}
+for (const sig of ["SIGINT", "SIGTERM"]) {
+  process.once(sig, () => { try { fail(`interrupted (${sig})`); } catch { /* exiting */ } });
 }
 function assert(cond, message, extra) {
   if (!cond) fail(message, extra);
 }
 
-async function freePort() {
-  return new Promise((resolve, reject) => {
+/** n distinct ephemeral ports on 127.0.0.1: all held open together (so they differ), then released for our children. */
+async function freePorts(n) {
+  const servers = await Promise.all(Array.from({ length: n }, () => new Promise((resolve, reject) => {
     const srv = createServer();
     srv.once("error", reject);
-    srv.listen(0, HOST, () => {
-      const { port } = srv.address();
-      srv.close(() => resolve(port));
-    });
-  });
+    srv.listen(0, HOST, () => resolve(srv));
+  })));
+  const ports = servers.map((srv) => srv.address().port);
+  await Promise.all(servers.map((srv) => new Promise((resolve) => srv.close(resolve))));
+  return ports;
 }
 
 function start(cmd, args, env) {
   const baseEnv = { ...process.env };
-  for (const k of KEY_ENV) delete baseEnv[k];
+  for (const k of [...KEY_ENV, ...PLACEMENT_ENV]) delete baseEnv[k];
   const child = spawn(cmd === "node" ? process.execPath : cmd, args, {
     cwd: appRoot,
     env: { ...baseEnv, ...env },
     stdio: ["ignore", "pipe", "pipe"],
+    detached: true, // own process group, so teardown can stop grandchildren too
   });
+  child.ownGroup = process.platform !== "win32" && typeof child.pid === "number";
   let log = "";
   child.stdout.on("data", (d) => (log += d));
   child.stderr.on("data", (d) => (log += d));
@@ -131,8 +187,16 @@ async function canvasStats(page, targets = {}) {
   }, targets);
 }
 
+// Rendered-globe thresholds (canvas and re-read PNG crop alike). Observed on the
+// SwiftShader CI leg: a rendered globe gives 771-1362 distinct 15-bit colors
+// (CI 36325107973 @c44119d: 784-1361, lit 0.194-0.255); the hidden-tab /
+// not-yet-rendered canvas gives 159 colors. 300 sits well clear of both, so a blank
+// or half-initialised frame fails on colors too, not on lit alone.
+const GLOBE_MIN_LIT = 0.08;
+const GLOBE_MIN_COLORS = 300;
+
 function globeRendered(s) {
-  return s.present && s.litFraction >= 0.08 && s.distinctColors >= 64;
+  return s.present && s.litFraction >= GLOBE_MIN_LIT && s.distinctColors >= GLOBE_MIN_COLORS;
 }
 
 async function waitGlobe(page, label, timeoutMs = 60000) {
@@ -154,6 +218,60 @@ function assertCanvasBox(s, label) {
     `${label}: canvas does not fill its host (intrinsic-size canvas)`, s);
   assert(s.buffer.w >= s.css.w * 0.95 && s.buffer.h >= s.css.h * 0.95,
     `${label}: drawing buffer not sized to the canvas`, s);
+}
+
+/** No error / fallback / placeholder text: none on the page, none inside the GOD'S EYE panel. */
+async function assertNoFallbackText(page, label) {
+  const text = await page.evaluate(() => ({
+    body: document.body.innerText,
+    root: document.querySelector("[data-testid=godseye-root]")?.innerText ?? null,
+  }));
+  assert(text.root !== null, `${label}: [data-testid=godseye-root] missing (fallback rendered instead of the globe)`);
+  const bad = /Globe unavailable|initialising globe/i.exec(text.body) ?? /unavailable|error|failed/i.exec(text.root);
+  assert(!bad, `${label}: error/fallback/placeholder text on screen: "${bad?.[0]}"`, text.root.slice(0, 800));
+}
+
+/**
+ * Screenshot, then re-read the PNG file itself: crop the canvas box out of the
+ * saved image and require the same globe thresholds, so the artifact can never
+ * be a blank/error frame even if the live canvas check passed a moment earlier.
+ */
+async function shotAndCheck(page, path, label) {
+  const live = await canvasStats(page);
+  assert(globeRendered(live), `${label}: globe not rendered at screenshot time`, live);
+  assertCanvasBox(live, label);
+  await assertNoFallbackText(page, label);
+  const box = await page.locator("[data-testid=godseye-canvas]").boundingBox();
+  const png = await page.screenshot({ path });
+  const probe = await page.context().newPage();
+  const file = await probe.evaluate(async ({ b64, box }) => {
+    const img = new Image();
+    img.src = `data:image/png;base64,${b64}`;
+    await img.decode();
+    const c = document.createElement("canvas");
+    c.width = Math.round(box.width);
+    c.height = Math.round(box.height);
+    const ctx = c.getContext("2d", { willReadFrequently: true });
+    ctx.drawImage(img, Math.round(box.x), Math.round(box.y), c.width, c.height, 0, 0, c.width, c.height);
+    const { data } = ctx.getImageData(0, 0, c.width, c.height);
+    const colors = new Set();
+    let lit = 0;
+    for (let i = 0; i < data.length; i += 4) {
+      const r = data[i], g = data[i + 1], b = data[i + 2];
+      if (Math.max(r, g, b) > 48) lit += 1;
+      colors.add(((r >> 3) << 10) | ((g >> 3) << 5) | (b >> 3));
+    }
+    return { image: { w: img.naturalWidth, h: img.naturalHeight }, crop: { w: c.width, h: c.height }, litFraction: lit / (data.length / 4), distinctColors: colors.size };
+  }, { b64: png.toString("base64"), box });
+  await probe.close();
+  assert(file.crop.w > 100 && file.crop.h > 100, `${label}: screenshot canvas crop has no box`, file);
+  assert(file.litFraction >= GLOBE_MIN_LIT && file.distinctColors >= GLOBE_MIN_COLORS,
+    `${label}: screenshot PNG shows no rendered globe`, file);
+  console.log(
+    `godseye: screenshot ${path} (${label}: png=${file.image.w}x${file.image.h}, canvas=${file.crop.w}x${file.crop.h}, ` +
+      `lit=${file.litFraction.toFixed(3)}, colors=${file.distinctColors})`,
+  );
+  return file;
 }
 
 async function addPanel(page) {
@@ -180,11 +298,13 @@ function hexToRgb(hex) {
 }
 
 async function main() {
-  // vite preview proxies /api to localhost:8787 (vite.config.ts), so the API
-  // takes 8787; the preload pins it to 127.0.0.1 until C3's COCKPIT_WEB_HOST bind lands.
-  const apiPort = 8787;
-  const uiPort = await freePort();
-  assert(!(await tcpOpen(HOST, apiPort)), `port ${apiPort} already in use; refusing to test against a stale server`);
+  // Both ports are ephemeral and owned by this run: the API listens on apiPort
+  // (the preload pins it to 127.0.0.1 until C3's COCKPIT_WEB_HOST bind lands) and
+  // vite preview proxies /api + /ws to it through COCKPIT_API_PROXY_TARGET.
+  const [apiPort, uiPort] = await freePorts(2);
+  for (const port of [apiPort, uiPort]) {
+    assert(!(await tcpOpen(HOST, port)), `ephemeral port ${port} taken before spawn; refusing to test against a foreign server`);
+  }
   const api = start("node", ["--import", "./tests/loopback-bind.mjs", "dist-server/index.js"], {
     COCKPIT_WEB_HOST: HOST,
     COCKPIT_WEB_PORT: String(apiPort),
@@ -193,10 +313,10 @@ async function main() {
   const preview = start(
     "node",
     [join(appRoot, "node_modules/vite/bin/vite.js"), "preview", "--host", HOST, "--strictPort", "--port", String(uiPort)],
-    {},
+    { COCKPIT_API_PROXY_TARGET: `http://${HOST}:${apiPort}` },
   );
   for (const [name, child] of [["api", api], ["preview", preview]]) {
-    child.once("exit", (code) => fail(`${name} exited early (code ${code})`, child.log()));
+    child.once("exit", (code) => { try { fail(`${name} exited early (code ${code})`, child.log()); } catch { /* exiting */ } });
   }
   try {
     await waitHttp(`http://${HOST}:${apiPort}/api/computers`);
@@ -211,12 +331,19 @@ async function main() {
       assert(!(await tcpOpen(iface.address, port)), `port ${port} reachable on non-loopback ${iface.address}`);
     }
   }
-  // Roster straight from the built API (the panel must agree with it).
+  // Roster straight from the built API (the panel must agree with it), and the
+  // same roster through the preview proxy: proves preview targets OUR API port.
+  const direct = await (await fetch(`http://${HOST}:${apiPort}/api/computers`)).json();
   const roster = await (await fetch(`http://${HOST}:${uiPort}/api/computers`)).json();
+  assert(JSON.stringify(roster) === JSON.stringify(direct), "preview /api proxy does not reach this run's API", { direct, roster });
   const expectPlaced = roster.computers.filter((c) => c.geo).map((c) => c.name);
   const expectUnplaced = roster.computers.filter((c) => !c.geo).map((c) => c.name);
+  for (const [envName, got] of [["GODSEYE_EXPECT_NODES", expectPlaced.length], ["GODSEYE_EXPECT_UNPLACED", expectUnplaced.length]]) {
+    const want = process.env[envName];
+    if (want !== undefined && want !== "") assert(got === Number(want), `${envName}=${want} but roster gives ${got} (TZ=${E2E_TZ})`, roster);
+  }
 
-  const browser = await chromium.launch({
+  browser = await chromium.launch({
     headless: true,
     args: ["--use-angle=swiftshader", "--enable-unsafe-swiftshader", "--ignore-gpu-blocklist"],
   });
@@ -266,26 +393,8 @@ async function main() {
     null, { timeout: 30000 },
   ).catch(() => fail("credits line does not show Natural Earth"));
   await sleep(4000); // let imagery settle for the screenshot
-  if (process.env.GODSEYE_SHOT) {
-    await page.screenshot({ path: process.env.GODSEYE_SHOT });
-    console.log(`godseye: screenshot ${process.env.GODSEYE_SHOT}`);
-  }
-
-  // 2) theme switch recolors placed nodes (tokens → Cesium colors at runtime).
-  if (expectPlaced.length > 0) {
-    const tokens = async () => page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--cockpit-accent"));
-    const darkAccent = hexToRgb(await tokens());
-    const beforeDark = (await canvasStats(page, { dark: darkAccent })).near.dark;
-    await page.locator('button[data-theme="ghui-cyan"]').click();
-    await page.waitForFunction(() => document.documentElement.dataset.theme === "ghui-cyan");
-    const cyanAccent = hexToRgb(await tokens());
-    await sleep(1500);
-    const after = await canvasStats(page, { dark: darkAccent, cyan: cyanAccent });
-    assert(beforeDark >= 20, "no node pixels in the fieldset-dark accent before theme switch", { beforeDark, darkAccent });
-    assert(after.near.cyan >= 20 && after.near.dark < beforeDark / 2,
-      "theme switch did not recolor nodes", { beforeDark, after: after.near, darkAccent, cyanAccent });
-    await page.locator('button[data-theme="fieldset-dark"]').click();
-  }
+  await assertNoFallbackText(page, "open");
+  if (process.env.GODSEYE_SHOT) await shotAndCheck(page, process.env.GODSEYE_SHOT, "keyless");
 
   // 3) close + reopen 3x: one live viewer at most, and each reopen renders.
   for (let i = 0; i < 3; i += 1) {
@@ -347,7 +456,23 @@ async function main() {
   const arcPixels = (await canvasStats(page, { accent: [...darkAccent, 64] })).near.accent;
   // 3 points ≈ 3×80 px; two ~7000 km geodesic arcs add several hundred more.
   assert(arcPixels >= 450, "arc polylines not visible in the canvas", { arcPixels });
-  if (process.env.GODSEYE_ARCS_SHOT) await page.screenshot({ path: process.env.GODSEYE_ARCS_SHOT });
+  if (process.env.GODSEYE_ARCS_SHOT) await shotAndCheck(page, process.env.GODSEYE_ARCS_SHOT, "arcs");
+
+  // 2) theme switch recolors placed nodes (tokens → Cesium colors at runtime).
+  //    Runs on the explicit-geo roster (always 3 placed), never gated on the
+  //    product roster's placed count, so it holds under every TZ (incl. UTC).
+  const tokens = async () => page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--cockpit-accent"));
+  const beforeDark = (await canvasStats(page, { dark: darkAccent })).near.dark;
+  await page.locator('button[data-theme="ghui-cyan"]').click();
+  await page.waitForFunction(() => document.documentElement.dataset.theme === "ghui-cyan");
+  const cyanAccent = hexToRgb(await tokens());
+  await sleep(1500);
+  const after = await canvasStats(page, { dark: darkAccent, cyan: cyanAccent });
+  assert(beforeDark >= 20, "no node pixels in the fieldset-dark accent before theme switch", { beforeDark, darkAccent });
+  assert(after.near.cyan >= 20 && after.near.dark < beforeDark / 2,
+    "theme switch did not recolor nodes", { beforeDark, after: after.near, darkAccent, cyanAccent });
+  await page.locator('button[data-theme="fieldset-dark"]').click();
+  await page.waitForFunction(() => document.documentElement.dataset.theme === "fieldset-dark");
   rosterOverride = null;
   await closePanels(page);
 
@@ -355,16 +480,17 @@ async function main() {
   assert(glWarnings.length === 0, "WebGL context loss / render stop warnings", glWarnings);
   assert(nonLoopbackAttempts === 0, `non-loopback request attempts=${nonLoopbackAttempts}`, blocked);
 
-  await browser.close();
-  for (const c of children) {
-    c.removeAllListeners("exit");
-    c.kill("SIGTERM");
-  }
+  await stopChildren();
+  browser = null;
   console.log(
-    `godseye: ok (keyless, offline, nodes=${expectPlaced.length}, unplaced=${expectUnplaced.length}, ` +
+    `godseye: ok (keyless, offline, tz=${E2E_TZ}, nodes=${expectPlaced.length}, unplaced=${expectUnplaced.length}, ` +
       `canvas=${first.css.w}x${first.css.h}, lit=${first.litFraction.toFixed(3)}, colors=${first.distinctColors}, ` +
-      `arcs=2 px=${arcPixels}, non-loopback=0, liveViewers=${afterReopen.liveViewers})`,
+      `arcs=2 px=${arcPixels}, recolor=${beforeDark}->${after.near.cyan}, non-loopback=0, ` +
+      `liveViewers=${afterReopen.liveViewers}, ports=api:${apiPort},ui:${uiPort})`,
   );
 }
 
-main().catch((error) => fail(error?.stack ?? String(error)));
+main().catch((error) => {
+  if (error instanceof E2EFail) return; // fail() already reported and is tearing down
+  try { fail(error?.stack ?? String(error)); } catch { /* exiting */ }
+});

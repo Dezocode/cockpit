@@ -14,6 +14,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: ./.github/actions/setup-node-pnpm
+
+      # tests/test-notify.sh drives the real dist-server (/api/notify) and
+      # tests/test-notify-lint.sh scans the shipped app/dist bundle.
+      - name: Build web + API for notify tests
+        working-directory: app
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
+          pnpm run build:server
+
       - name: Install ripgrep (tests/test-gev-provenance.sh needs rg in /usr/bin)
         run: |
           command -v rg >/dev/null 2>&1 || { sudo apt-get update -qq && sudo apt-get install -y -qq ripgrep; }
@@ -28,9 +39,12 @@ jobs:
           # workstation sandbox (its login shell resets PATH past the fakebin);
           # on ubuntu-latest all three pass (run 36323026888), so the list is empty.
           skip=()
+          # PATH stays /usr/bin:/bin; only the explicit node binary is handed to
+          # tests that need it (test-notify.sh starts dist-server with it).
+          node_bin="$(command -v node)"
           sandbox() {
             env -i PATH=/usr/bin:/bin HOME="$(mktemp -d)" TMUX_TMPDIR="$(mktemp -d)" TERM=xterm \
-              timeout 600 bash "$1" </dev/null
+              COCKPIT_TEST_NODE="$node_bin" timeout 600 bash "$1" </dev/null
           }
           for s in "${skip[@]}"; do
             [[ -f "tests/$s.sh" ]] || { echo "stale skip entry: $s"; exit 1; }
@@ -87,11 +101,34 @@ jobs:
 
       - name: C10 God's Eye panel tests
         working-directory: app
+        env:
+          # Screens come from the asserting e2e run itself; each PNG is re-read and
+          # must show a rendered globe (lit >= 0.08, colors >= 300) or the run fails.
+          GODSEYE_SHOT: ${{ runner.temp }}/godseye-screens/godseye-keyless.png
+          GODSEYE_ARCS_SHOT: ${{ runner.temp }}/godseye-screens/godseye-arcs.png
         run: |
+          mkdir -p "$RUNNER_TEMP/godseye-screens"
           pnpm exec playwright install --with-deps chromium
           node --test 'src/panels/godseye/**/*.test.mjs'
           node tests/godseye-bundle.check.mjs
-          xvfb-run -a node tests/godseye-panel.e2e.mjs
+          # America/Chicago (e2e default): the local node is placed by its tz centroid.
+          GODSEYE_EXPECT_NODES=1 GODSEYE_EXPECT_UNPLACED=3 xvfb-run -a node tests/godseye-panel.e2e.mjs
+          # Etc/UTC has no zone1970.tab centroid: every node stays unplaced (never invented).
+          GODSEYE_E2E_TZ=Etc/UTC GODSEYE_EXPECT_NODES=0 GODSEYE_EXPECT_UNPLACED=4 \
+            GODSEYE_SHOT="$RUNNER_TEMP/godseye-screens/godseye-utc.png" GODSEYE_ARCS_SHOT= \
+            xvfb-run -a node tests/godseye-panel.e2e.mjs
+          n=$(find "$RUNNER_TEMP/godseye-screens" -name '*.png' | wc -l)
+          echo "godseye-screens: $n png"
+          # exactly keyless + arcs (America/Chicago run) + utc (Etc/UTC run)
+          test "$n" -eq 3
+
+      - name: Upload God's Eye screenshots (artifact godseye-screens)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: godseye-screens
+          path: ${{ runner.temp }}/godseye-screens/*.png
+          if-no-files-found: error
 
       - name: Canonical Hostinger install script
         run: |

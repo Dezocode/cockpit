@@ -1,0 +1,631 @@
+#!/usr/bin/env bash
+# cockpit notify — the ONE outbound sender (CLI `cockpit notify` and POST /api/notify).
+# Sinks: Telegram (Hermes CLI, else Bot API with a server-side token), ntfy, desktop toast.
+# Secrets (bot token, ntfy topic/token, notify key) never ride on argv: every curl call
+# reads url/headers/body from a process-substitution config FD (ps shows /dev/fd/NN).
+set -euo pipefail
+
+if [[ "${BASH_VERSINFO[0]:-0}" -lt 4 ]]; then
+  echo "cockpit notify: bash 4+ required" >&2
+  exit 2
+fi
+
+script_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=cockpit-lib
+source "$script_root/cockpit-lib"
+# C3 portable lib (cockpit_sha256) when it has landed; never a second sha helper.
+if [[ -f "$script_root/cockpit-portable-lib" ]]; then
+  # shellcheck source=/dev/null
+  source "$script_root/cockpit-portable-lib"
+fi
+
+cn_state_dir="${XDG_STATE_HOME:-$HOME/.local/state}/cockpit"
+cn_receipt_file="$cn_state_dir/notify.jsonl"
+cn_config_file="$(cockpit_config_home)/notify.conf"
+cn_env_file="${COCKPIT_NOTIFY_ENV_FILE:-/etc/cockpit/notify.env}"
+cn_env_keys=" COCKPIT_TELEGRAM_BOT_TOKEN COCKPIT_TELEGRAM_CHAT_ID COCKPIT_NOTIFY_KEY COCKPIT_NOTIFY_URL COCKPIT_NTFY_TOPIC COCKPIT_NTFY_TOKEN COCKPIT_NTFY_SERVER "
+
+cn_usage() {
+  cat <<'USAGE'
+Usage: cockpit notify [--title T] [--sink auto|telegram|ntfy|desktop|all] [--require SINK]
+                      [--priority low|default|high] [--link URL] [--id ID] [--json] [--dry-run]
+                      [--check] [--via local|api] [--] MESSAGE... | -
+
+Send one plain-text notification. auto = first remote sink in notify.conf `order` that
+succeeds (Telegram before ntfy, never both) plus a best-effort desktop toast.
+Exit: 0 delivered · 2 usage · 3 nothing delivered / --require unmet · 4 API auth refused · 5 rate-limited
+Tokens: process env, then /etc/cockpit/notify.env, then cockpit-keys. See docs/notify.md.
+USAGE
+}
+
+cn_die_usage() {
+  printf 'cockpit notify: %s\n' "$1" >&2
+  cn_usage >&2
+  exit 2
+}
+
+# Mask every secret value we hold plus generic token shapes. All error paths go through here.
+cn_redact() {
+  local s=$1 v
+  for v in "${COCKPIT_TELEGRAM_BOT_TOKEN:-}" "${COCKPIT_NOTIFY_KEY:-}" "${COCKPIT_NTFY_TOKEN:-}" \
+    "${COCKPIT_NTFY_TOPIC:-}" "${COCKPIT_TELEGRAM_CHAT_ID:-}"; do
+    [[ ${#v} -ge 4 ]] && s=${s//"$v"/***}
+  done
+  printf '%s' "$s" | sed -E -e 's/bot[0-9]+:[A-Za-z0-9_-]+/bot***/g' -e 's/Bearer [^[:space:]]+/Bearer ***/g'
+}
+
+cn_json_str() {
+  local s=$1
+  s=${s//\\/\\\\}
+  s=${s//\"/\\\"}
+  s=${s//$'\n'/\\n}
+  s=${s//$'\r'/\\r}
+  s=${s//$'\t'/\\t}
+  printf '"%s"' "$s"
+}
+
+cn_cfg_quote() {
+  local s=$1
+  s=${s//\\/\\\\}
+  s=${s//\"/\\\"}
+  s=${s//$'\n'/\\n}
+  s=${s//$'\r'/\\r}
+  s=${s//$'\t'/\\t}
+  printf '"%s"' "$s"
+}
+
+cn_sha256() {
+  if declare -F cockpit_sha256 >/dev/null 2>&1; then
+    printf '%s' "$1" | cockpit_sha256 /dev/stdin
+  elif command -v sha256sum >/dev/null 2>&1; then
+    printf '%s' "$1" | sha256sum | awk '{print $1}'
+  elif command -v shasum >/dev/null 2>&1; then
+    printf '%s' "$1" | shasum -a 256 | awk '{print $1}'
+  else
+    printf '%s' "$1" | openssl dgst -sha256 -r | awk '{print $1}'
+  fi
+}
+
+cn_uuid() {
+  if command -v uuidgen >/dev/null 2>&1; then
+    uuidgen | tr '[:upper:]' '[:lower:]'
+    return
+  fi
+  local h
+  h="$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')"
+  printf '%s-%s-4%s-%x%s-%s\n' "${h:0:8}" "${h:8:4}" "${h:13:3}" \
+    $(((16#${h:16:1} & 3) | 8)) "${h:17:3}" "${h:20:12}"
+}
+
+cn_trim() {
+  local s=$1
+  s="${s#"${s%%[![:space:]]*}"}"
+  s="${s%"${s##*[![:space:]]}"}"
+  printf '%s' "$s"
+}
+
+# Strip control characters except \n (API contract; the CLI applies the same rule).
+cn_clean() {
+  printf '%s' "$1" | LC_ALL=C tr -d '\000-\011\013-\037\177'
+}
+
+# Precedence (first wins): process env, then notify.env, then cockpit-keys.
+# notify.env is parsed as KEY=VALUE data for known keys only (never sourced, never overrides env).
+cn_load_notify_env() {
+  [[ -f "$cn_env_file" && -r "$cn_env_file" ]] || return 0
+  local line key val
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    line="$(cn_trim "$line")"
+    [[ -z "$line" || "$line" == \#* ]] && continue
+    line="${line#export }"
+    [[ "$line" == *=* ]] || continue
+    key="${line%%=*}"
+    val="${line#*=}"
+    [[ "$cn_env_keys" == *" $key "* ]] || continue
+    if [[ "$val" == \"*\" && ${#val} -ge 2 ]]; then
+      val="${val:1:${#val}-2}"
+    elif [[ "$val" == \'*\' && ${#val} -ge 2 ]]; then
+      val="${val:1:${#val}-2}"
+    fi
+    [[ -n "${!key:-}" || -z "$val" ]] && continue
+    printf -v "$key" '%s' "$val"
+    export "${key?}"
+  done <"$cn_env_file"
+}
+
+cn_maybe_keys_reexec() {
+  [[ -n "${COCKPIT_NOTIFY_KEYS_LOADED:-}" ]] && return 0
+  [[ -n "${COCKPIT_TELEGRAM_BOT_TOKEN:-}${COCKPIT_NTFY_TOPIC:-}${COCKPIT_NOTIFY_KEY:-}" ]] && return 0
+  if [[ -x "$script_root/cockpit-keys" ]]; then
+    export COCKPIT_NOTIFY_KEYS_LOADED=1
+    exec "$script_root/cockpit-keys" exec --for notify -- "$script_root/cockpit-notify" "$@"
+  fi
+}
+
+cn_read_conf() {
+  cn_order="telegram,ntfy,desktop"
+  cn_default_title="Cockpit"
+  cn_dedupe_window_s=600
+  [[ -f "$cn_config_file" ]] || return 0
+  local line
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    line="$(cn_trim "${line%%#*}")"
+    case "$line" in
+      order=*) cn_order="${line#order=}" ;;
+      default_title=*) cn_default_title="${line#default_title=}" ;;
+      dedupe_window_s=*)
+        [[ "${line#dedupe_window_s=}" =~ ^[0-9]+$ ]] && cn_dedupe_window_s="${line#dedupe_window_s=}"
+        ;;
+    esac
+  done <"$cn_config_file"
+}
+
+cn_priority_num() {
+  case "$1" in
+    low) printf '2' ;;
+    high) printf '4' ;;
+    *) printf '3' ;;
+  esac
+}
+
+cn_gui_session() {
+  [[ -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}${DBUS_SESSION_BUS_ADDRESS:-}" ]]
+}
+
+cn_desktop_available() {
+  { cn_gui_session && command -v notify-send >/dev/null 2>&1; } || command -v osascript >/dev/null 2>&1
+}
+
+cn_hermes_present() { command -v hermes >/dev/null 2>&1; }
+cn_botapi_configured() { [[ -n "${COCKPIT_TELEGRAM_BOT_TOKEN:-}" && -n "${COCKPIT_TELEGRAM_CHAT_ID:-}" ]]; }
+cn_telegram_configured() { cn_hermes_present || cn_botapi_configured; }
+cn_ntfy_configured() { [[ -n "${COCKPIT_NTFY_TOPIC:-}" ]]; }
+cn_remote_configured() { cn_telegram_configured || cn_ntfy_configured; }
+
+cn_max_time() {
+  local left=$((cn_deadline - SECONDS))
+  ((left > 10)) && left=10
+  ((left < 1)) && left=1
+  printf '%s' "$left"
+}
+
+# curl with the whole request (url with bot<TOKEN>, auth headers, body) on a config FD.
+# Prints the response body followed by a final line holding the HTTP status code.
+cn_curl() {
+  local cfg=$1 max=$2
+  curl --silent --show-error --max-time "$max" --write-out '\n%{http_code}' --config <(printf '%s\n' "$cfg")
+}
+
+cn_err=""
+cn_note_err() {
+  cn_err="$(cn_redact "$1" | tr '\n' ' ' | cut -c1-300)"
+  printf 'cockpit notify: %s\n' "$cn_err" >&2
+}
+
+cn_sink_hermes() {
+  local out rc=0
+  out="$(hermes send --to telegram -q "$1" 2>&1)" || rc=$?
+  if [[ "$rc" -eq 0 ]]; then
+    return 0
+  fi
+  cn_note_err "telegram: hermes send failed rc=$rc: $out → see docs/notify.md"
+  cn_fail_code="hermes-rc-$rc"
+  return 1
+}
+
+cn_sink_botapi() {
+  local text=$1
+  if ((${#text} > 4000)); then
+    text="${text:0:3999}…"
+  fi
+  local base="${COCKPIT_TELEGRAM_API_BASE:-https://api.telegram.org}"
+  local cfg
+  cfg="url = $(cn_cfg_quote "${base%/}/bot${COCKPIT_TELEGRAM_BOT_TOKEN}/sendMessage")
+data-urlencode = $(cn_cfg_quote "chat_id=${COCKPIT_TELEGRAM_CHAT_ID}")
+data-urlencode = $(cn_cfg_quote "text=${text}")
+data-urlencode = \"disable_web_page_preview=true\""
+  local out rc=0 code body
+  out="$(cn_curl "$cfg" "$(cn_max_time)" 2>&1)" || rc=$?
+  code="${out##*$'\n'}"
+  body="${out%$'\n'*}"
+  if [[ "$rc" -eq 0 && "$code" == 200 && "$body" == *'"ok":true'* ]]; then
+    return 0
+  fi
+  if [[ "$rc" -ne 0 ]]; then
+    cn_fail_code="botapi-curl-$rc"
+  else
+    cn_fail_code="botapi-http-$code"
+  fi
+  cn_note_err "telegram: Bot API sendMessage failed ($cn_fail_code): $body → see docs/notify.md"
+  return 1
+}
+
+cn_telegram_getme() {
+  local base="${COCKPIT_TELEGRAM_API_BASE:-https://api.telegram.org}"
+  local out rc=0 cfg
+  cfg="url = $(cn_cfg_quote "${base%/}/bot${COCKPIT_TELEGRAM_BOT_TOKEN}/getMe")"
+  out="$(cn_curl "$cfg" 10 2>&1)" || rc=$?
+  [[ "$rc" -eq 0 && "${out##*$'\n'}" == 200 && "$out" == *'"ok":true'* ]]
+}
+
+cn_sink_ntfy() {
+  local title=$1 msg=$2 pri=$3 link=$4
+  local server="${COCKPIT_NTFY_SERVER:-https://ntfy.sh}"
+  local cfg
+  cfg="url = $(cn_cfg_quote "${server%/}/${COCKPIT_NTFY_TOPIC}")
+header = $(cn_cfg_quote "Title: ${title}")
+header = \"Priority: ${pri}\"
+header = \"Tags: cockpit\""
+  [[ -n "$link" ]] && cfg+=$'\n'"header = $(cn_cfg_quote "Click: ${link}")"
+  [[ -n "${COCKPIT_NTFY_TOKEN:-}" ]] && cfg+=$'\n'"header = $(cn_cfg_quote "Authorization: Bearer ${COCKPIT_NTFY_TOKEN}")"
+  # data-raw: a message starting with @ is text, never a file to upload.
+  cfg+=$'\n'"data-raw = $(cn_cfg_quote "$msg")"
+  local out rc=0 code body
+  out="$(cn_curl "$cfg" "$(cn_max_time)" 2>&1)" || rc=$?
+  code="${out##*$'\n'}"
+  body="${out%$'\n'*}"
+  if [[ "$rc" -eq 0 && "$code" == 200 ]]; then
+    return 0
+  fi
+  if [[ "$rc" -ne 0 ]]; then
+    cn_fail_code="ntfy-curl-$rc"
+  else
+    cn_fail_code="ntfy-http-$code"
+  fi
+  cn_note_err "ntfy: publish failed ($cn_fail_code): $body → see docs/notify.md"
+  return 1
+}
+
+cn_sink_desktop() {
+  local title=$1 msg=$2 out rc=0
+  if cn_gui_session && command -v notify-send >/dev/null 2>&1; then
+    out="$(notify-send -a Cockpit -u normal -- "$title" "$msg" 2>&1)" || rc=$?
+    cn_desktop_via=notify-send
+  elif command -v osascript >/dev/null 2>&1; then
+    out="$(osascript -e 'on run argv' \
+      -e 'display notification (item 2 of argv) with title (item 1 of argv)' \
+      -e 'end run' -- "$title" "$msg" 2>&1)" || rc=$?
+    cn_desktop_via=osascript
+  else
+    cn_fail_code=headless
+    return 2
+  fi
+  if [[ "$rc" -eq 0 ]]; then
+    return 0
+  fi
+  cn_fail_code="$cn_desktop_via-rc-$rc"
+  cn_note_err "desktop: $cn_desktop_via failed rc=$rc: $out"
+  return 1
+}
+
+cn_receipt_json() {
+  # $1 id, $2 delivered, $3 sinks-json, $4 deduped
+  printf '{"ts":%s,"id":%s,"via":%s,"title":%s,"message_sha256":"%s","preview":%s,"sinks":%s,"delivered":"%s","deduped":%s}' \
+    "$(date +%s)" "$(cn_json_str "$1")" "$(cn_json_str "$cn_receipt_via")" "$(cn_json_str "$(cn_redact "$cn_title")")" \
+    "$(cn_sha256 "$cn_message")" "$(cn_json_str "$(cn_redact "${cn_message:0:80}")")" "$3" "$2" "$4"
+}
+
+cn_write_receipt() {
+  (
+    umask 077
+    mkdir -p "$cn_state_dir"
+    printf '%s\n' "$1" >>"$cn_receipt_file"
+  )
+}
+
+# Latest receipt for this id inside the dedupe window that actually delivered.
+# Dry runs and failed attempts never dedupe, so a retry after failure really sends.
+cn_find_dedupe() {
+  local id=$1 line ts found="" cutoff
+  [[ -f "$cn_receipt_file" ]] || return 1
+  cutoff=$(($(date +%s) - cn_dedupe_window_s))
+  while IFS= read -r line; do
+    [[ "$line" == *"\"id\":\"$id\""* ]] || continue
+    [[ "$line" =~ \"delivered\":\"(telegram|ntfy|desktop)\" ]] || continue
+    [[ "$line" =~ ^\{\"ts\":([0-9]+), ]] || continue
+    ts="${BASH_REMATCH[1]}"
+    ((ts >= cutoff)) && found="$line"
+  done <"$cn_receipt_file"
+  [[ -n "$found" ]] || return 1
+  printf '%s' "$found"
+}
+
+cn_field() {
+  # cn_field KEY JSON → string value of a flat "KEY":"value" pair
+  local re="\"$1\":\"([^\"]*)\""
+  [[ "$2" =~ $re ]] && printf '%s' "${BASH_REMATCH[1]}"
+}
+
+cn_emit() {
+  # $1 receipt json
+  if [[ -n "$cn_json" ]]; then
+    printf '%s\n' "$1"
+    return
+  fi
+  local sinks kv="" pair k v
+  if [[ "$1" =~ \"sinks\":\{([^}]*)\} ]]; then
+    sinks="${BASH_REMATCH[1]}"
+    IFS=',' read -ra pairs <<<"$sinks"
+    for pair in "${pairs[@]}"; do
+      k="${pair%%:*}"; v="${pair#*:}"
+      k="${k//\"/}"; v="${v//\"/}"
+      kv+="${kv:+,}$k:$v"
+    done
+  fi
+  [[ "$(cn_field delivered "$1")" == dry-run ]] && kv="dry-run:ok"
+  local extra=""
+  [[ "$1" == *'"deduped":true'* ]] && extra=" deduped=true"
+  printf 'notify: delivered=%s sinks=%s id=%s%s\n' "$(cn_field delivered "$1")" "$kv" "$(cn_field id "$1")" "$extra"
+}
+
+cn_run_check() {
+  local tg nt dk
+  if cn_hermes_present; then
+    tg=ready
+  elif cn_botapi_configured; then
+    if cn_telegram_getme; then tg=ready; else tg=invalid; fi
+  elif [[ -n "${COCKPIT_TELEGRAM_BOT_TOKEN:-}${COCKPIT_TELEGRAM_CHAT_ID:-}" ]]; then
+    tg=invalid
+  else
+    tg=not-configured
+  fi
+  if cn_ntfy_configured; then nt=configured; else nt=not-configured; fi
+  if cn_desktop_available; then dk=available; else dk=headless; fi
+  if [[ -n "$cn_json" ]]; then
+    printf '{"telegram":"%s","ntfy":"%s","desktop":"%s"}\n' "$tg" "$nt" "$dk"
+  else
+    printf 'telegram:%s ntfy:%s desktop:%s\n' "$tg" "$nt" "$dk"
+    [[ "$tg" == ready ]] || printf 'telegram: %s → see docs/notify.md\n' "$tg" >&2
+  fi
+}
+
+cn_deliver_local() {
+  local id=$1
+  local tg_st=skip:not-configured nt_st=skip:not-configured dk_st=skip:headless
+  local delivered=none pri_n full_msg="$cn_message" rc
+  pri_n="$(cn_priority_num "$cn_priority")"
+  [[ -n "$cn_link" ]] && full_msg+=$'\n'"$cn_link"
+
+  if [[ -n "$cn_dry_run" ]]; then
+    local r
+    r="$(cn_receipt_json "$id" dry-run '{"telegram":"dry-run:ok","ntfy":"dry-run:ok","desktop":"dry-run:ok"}' false)"
+    cn_write_receipt "$r"
+    cn_emit "$r"
+    return 0
+  fi
+
+  try_telegram() {
+    tg_st=skip:not-configured
+    if cn_hermes_present; then
+      cn_fail_code=""
+      if cn_sink_hermes "$full_msg"; then tg_st=ok; return 0; fi
+      tg_st="fail:$cn_fail_code"
+      cn_botapi_configured || return 1
+    fi
+    if cn_botapi_configured; then
+      cn_fail_code=""
+      if cn_sink_botapi "$full_msg"; then tg_st=ok; return 0; fi
+      tg_st="fail:$cn_fail_code"
+    fi
+    return 1
+  }
+  try_ntfy() {
+    nt_st=skip:not-configured
+    cn_ntfy_configured || return 1
+    cn_fail_code=""
+    if cn_sink_ntfy "$cn_title" "$full_msg" "$pri_n" "$cn_link"; then nt_st=ok; return 0; fi
+    nt_st="fail:$cn_fail_code"
+    return 1
+  }
+  try_desktop() {
+    cn_fail_code=""
+    rc=0
+    cn_sink_desktop "$cn_title" "$full_msg" || rc=$?
+    case "$rc" in
+      0) dk_st=ok ;;
+      2) dk_st="skip:headless" ;;
+      *) dk_st="fail:$cn_fail_code" ;;
+    esac
+    [[ "$rc" -eq 0 ]]
+  }
+
+  case "$cn_sink" in
+    telegram) try_telegram && delivered=telegram ;;
+    ntfy) try_ntfy && delivered=ntfy ;;
+    desktop) try_desktop && delivered=desktop ;;
+    all)
+      try_telegram || true
+      try_ntfy || true
+      try_desktop || true
+      if [[ "$tg_st" == ok ]]; then delivered=telegram
+      elif [[ "$nt_st" == ok ]]; then delivered=ntfy
+      elif [[ "$dk_st" == ok ]]; then delivered=desktop
+      fi
+      ;;
+    auto)
+      local part
+      IFS=',' read -ra cn_order_parts <<<"$cn_order"
+      for part in "${cn_order_parts[@]}"; do
+        part="$(cn_trim "$part")"
+        [[ "$delivered" != none ]] && break
+        case "$part" in
+          telegram) try_telegram && delivered=telegram ;;
+          ntfy) try_ntfy && delivered=ntfy ;;
+        esac
+      done
+      [[ "$delivered" == telegram ]] && cn_ntfy_configured && [[ "$nt_st" == skip:not-configured ]] && nt_st=skip:telegram-ok
+      # Best-effort toast only where a GUI session exists (never on a headless server).
+      if cn_desktop_available; then
+        try_desktop || true
+      fi
+      # Desktop alone satisfies delivery only when no remote sink is configured.
+      if [[ "$delivered" == none && "$dk_st" == ok ]] && ! cn_remote_configured; then
+        delivered=desktop
+      fi
+      ;;
+  esac
+
+  local r
+  r="$(cn_receipt_json "$id" "$delivered" \
+    "$(printf '{"telegram":"%s","ntfy":"%s","desktop":"%s"}' "$tg_st" "$nt_st" "$dk_st")" false)"
+  cn_write_receipt "$r"
+  cn_emit "$r"
+  [[ "$cn_desktop_via" == osascript && "$dk_st" == ok ]] && printf 'desktop:ok via osascript\n' >&2
+
+  if [[ "$delivered" == none ]]; then
+    cn_telegram_configured || cn_ntfy_configured ||
+      printf 'cockpit notify: no sink delivered (telegram/ntfy not-configured, desktop %s) → see docs/notify.md\n' "$dk_st" >&2
+    return 3
+  fi
+  if [[ -n "$cn_require" ]]; then
+    local need
+    case "$cn_require" in
+      telegram) need=$tg_st ;;
+      ntfy) need=$nt_st ;;
+      desktop) need=$dk_st ;;
+    esac
+    if [[ "$need" != ok ]]; then
+      printf 'cockpit notify: --require %s unmet (%s) → see docs/notify.md\n' "$cn_require" "$need" >&2
+      return 3
+    fi
+  fi
+  return 0
+}
+
+cn_post_api() {
+  local id=$1
+  local payload
+  payload="{\"message\":$(cn_json_str "$cn_message"),\"title\":$(cn_json_str "$cn_title"),\"id\":$(cn_json_str "$id")"
+  [[ "$cn_sink" != auto ]] && payload+=",\"sink\":$(cn_json_str "$cn_sink")"
+  [[ "$cn_priority" != default ]] && payload+=",\"priority\":$(cn_json_str "$cn_priority")"
+  [[ -n "$cn_link" ]] && payload+=",\"link\":$(cn_json_str "$cn_link")"
+  payload+="}"
+  local cfg out rc=0 code body
+  cfg="url = $(cn_cfg_quote "$COCKPIT_NOTIFY_URL")
+header = \"Content-Type: application/json\"
+header = $(cn_cfg_quote "Authorization: Bearer ${COCKPIT_NOTIFY_KEY:-}")
+data-raw = $(cn_cfg_quote "$payload")"
+  out="$(cn_curl "$cfg" 20 2>&1)" || rc=$?
+  code="${out##*$'\n'}"
+  body="${out%$'\n'*}"
+  if [[ "$rc" -ne 0 ]]; then
+    cn_note_err "api: request failed (curl rc=$rc): $body"
+    return 3
+  fi
+  case "$code" in
+    200) cn_emit "$body"; return 0 ;;
+    400) cn_note_err "api: rejected (400): $body"; return 2 ;;
+    401) cn_note_err "api: auth refused (401) → check COCKPIT_NOTIFY_KEY, see docs/notify.md"; return 4 ;;
+    429) cn_note_err "api: rate-limited (429), retry later"; return 5 ;;
+    502)
+      [[ "$body" == \{* && "$body" == *'"delivered"'* ]] && cn_emit "$body"
+      cn_note_err "api: no sink delivered on the server (502)"
+      return 3
+      ;;
+    *) cn_note_err "api: unexpected HTTP $code: $body"; return 3 ;;
+  esac
+}
+
+cn_main() {
+  cn_title="" cn_sink=auto cn_priority=default cn_via="" cn_json="" cn_dry_run=""
+  cn_check="" cn_require="" cn_link="" cn_id="" cn_message="" cn_desktop_via="" cn_fail_code=""
+  local from_stdin="" words=()
+  while (($#)); do
+    case "$1" in
+      -h|--help) cn_usage; exit 0 ;;
+      --title|--sink|--require|--priority|--link|--id|--via)
+        (($# >= 2)) || cn_die_usage "$1 needs a value"
+        case "$1" in
+          --title) cn_title=$2 ;;
+          --sink) cn_sink=$2 ;;
+          --require) cn_require=$2 ;;
+          --priority) cn_priority=$2 ;;
+          --link) cn_link=$2 ;;
+          --id) cn_id=$2 ;;
+          --via) cn_via=$2 ;;
+        esac
+        shift 2
+        ;;
+      --json) cn_json=1; shift ;;
+      --dry-run) cn_dry_run=1; shift ;;
+      --check) cn_check=1; shift ;;
+      --) shift; words=("$@"); break ;;
+      -)
+        (($# == 1)) || cn_die_usage "'-' (stdin) takes no further words"
+        from_stdin=1; shift
+        ;;
+      -?*) cn_die_usage "unknown option $1" ;;
+      *) words=("$@"); break ;;
+    esac
+  done
+
+  case "$cn_sink" in auto|telegram|ntfy|desktop|all) ;; *) cn_die_usage "bad --sink $cn_sink" ;; esac
+  case "$cn_require" in ""|telegram|ntfy|desktop) ;; *) cn_die_usage "bad --require $cn_require" ;; esac
+  case "$cn_priority" in low|default|high) ;; *) cn_die_usage "bad --priority $cn_priority" ;; esac
+  case "$cn_via" in ""|local|api) ;; *) cn_die_usage "bad --via $cn_via" ;; esac
+  if [[ -n "$cn_link" ]] && ! [[ "$cn_link" =~ ^https://[^[:space:][:cntrl:]]+$ ]]; then
+    cn_die_usage "--link must be an https:// URL"
+  fi
+  if [[ -n "$cn_id" ]] && ! [[ "$cn_id" =~ ^[A-Za-z0-9._:-]{1,128}$ ]]; then
+    cn_die_usage "--id must match [A-Za-z0-9._:-]{1,128}"
+  fi
+  [[ -n "${COCKPIT_NOTIFY_DRY_RUN:-}" && "${COCKPIT_NOTIFY_DRY_RUN}" != 0 ]] && cn_dry_run=1
+
+  cn_load_notify_env
+  cn_maybe_keys_reexec "${cn_argv[@]}"
+  cn_read_conf
+
+  if [[ -n "$cn_check" ]]; then
+    cn_run_check
+    exit 0
+  fi
+
+  if [[ -n "$from_stdin" ]]; then
+    cn_message="$(cat)"
+  elif ((${#words[@]})); then
+    cn_message="${words[*]}"
+  fi
+  cn_message="$(cn_trim "$(cn_clean "$cn_message")")"
+  [[ -n "$cn_message" ]] || cn_die_usage "empty message"
+  cn_title="$(cn_trim "$(cn_clean "${cn_title:-$cn_default_title}")")"
+  cn_title="${cn_title//$'\n'/ }"
+  [[ -n "$cn_title" ]] || cn_title=Cockpit
+  ((${#cn_title} <= 120)) || cn_title="${cn_title:0:120}"
+
+  if [[ -z "$cn_via" ]]; then
+    if cn_remote_configured || [[ -n "$cn_dry_run" ]]; then
+      cn_via=local
+    elif [[ -n "${COCKPIT_NOTIFY_URL:-}" ]]; then
+      cn_via=api
+    else
+      cn_via=local
+    fi
+  fi
+  [[ -n "$cn_dry_run" ]] && cn_via=local  # dry run: zero network calls, ever
+
+  # The server runs us with --via local and COCKPIT_NOTIFY_ORIGIN=api so receipts say via=api.
+  cn_receipt_via="$cn_via"
+  [[ "${COCKPIT_NOTIFY_ORIGIN:-}" == api ]] && cn_receipt_via=api
+  local id="${cn_id:-$(cn_uuid)}"
+  cn_deadline=$((SECONDS + 20))
+
+  if [[ "$cn_via" == api ]]; then
+    [[ -n "${COCKPIT_NOTIFY_URL:-}" ]] || cn_die_usage "--via api needs COCKPIT_NOTIFY_URL"
+    local rc=0
+    cn_post_api "$id" || rc=$?
+    exit "$rc"
+  fi
+
+  local prev
+  if [[ -n "$cn_id" ]] && prev="$(cn_find_dedupe "$cn_id")"; then
+    cn_emit "${prev/\"deduped\":false/\"deduped\":true}"
+    exit 0
+  fi
+
+  local rc=0
+  cn_deliver_local "$id" || rc=$?
+  exit "$rc"
+}
+
+cn_argv=("$@")
+cn_main "$@"
