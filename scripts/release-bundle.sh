@@ -3,7 +3,7 @@
 set -euo pipefail
 
 root="$(cd -- "$(dirname -- "$0")/.." && pwd)"
-version="${COCKPIT_VERSION:-2.2.0}"
+version="${COCKPIT_VERSION:-2.3.0-dev}"
 out="$root/dist/release"
 name="cockpit-${version}"
 staging="$out/$name"

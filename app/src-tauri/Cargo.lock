@@ -473,7 +473,7 @@ dependencies = [
 
 [[package]]
 name = "cockpit"
-version = "2.0.0"
+version = "2.3.0-dev"
 dependencies = [
  "parking_lot",
  "portable-pty",

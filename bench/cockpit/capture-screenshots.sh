@@ -127,7 +127,7 @@ shot "$ui_base/workspace#AGENT" "$out/live-term.png" "text=active:"
 shot "$ui_base/workspace#COMPUTERS" "$out/computers.png" "text=COMPUTERS"
 shot "$ui_base/workspace#MEMORY" "$out/memory.png" "text=MEMORY"
 
-python3 - "$out" "$profile" "$agent_count" "$api_base" <<'PY'
+python3 - "$out" "$profile" "$agent_count" "$api_base" "$root" <<'PY'
 import hashlib
 import json
 import sys
@@ -138,6 +138,7 @@ out = Path(sys.argv[1])
 profile = sys.argv[2]
 agent_count = int(sys.argv[3])
 api_base = sys.argv[4]
+version = json.loads((Path(sys.argv[5]) / "app/package.json").read_text())["version"]
 
 files = [
     "hostinger-health.json",
@@ -180,7 +181,7 @@ manifest = {
     "evidence_class": "live_spa_dist_server",
     "ui_source": "vite preview (app/dist)",
     "api_source": "app/dist-server/index.js",
-    "version": "2.2.0",
+    "version": version,
     "profile": profile,
     "agent_count": agent_count,
     "files": [f for f in files if (out / f).is_file()],
