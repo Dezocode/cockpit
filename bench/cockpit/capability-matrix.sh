@@ -73,7 +73,8 @@ check "6-chip AGENT bar (no 7th)" "$bar"
 grep -q 'device/start' "$root/app/server/index.ts" 2>/dev/null && df=ok || df=fail
 check "splash GitHub device-flow API" "$df"
 
-grep -q 'hermes' "$root/app/server/index.ts" 2>/dev/null && hermes=ok || hermes=fail
+# /api/computers moved to app/server/fleet/nodes.ts (C10); hermes row lives there.
+grep -q 'hermes' "$root/app/server/fleet/nodes.ts" 2>/dev/null && hermes=ok || hermes=fail
 check "Hermes COMPUTERS node (not AGENT)" "$hermes"
 
 grep -rq 'ModelsView' "$root/app/src/pages" 2>/dev/null && models=ok || models=fail

@@ -1,7 +1,7 @@
 export const LAYOUT_V3_KEY = "cockpit.layout.v3";
 
 /** Staging multiview draggable panel types (Agents / Computers / Files). */
-export type StagingPanelType = "AGENTS" | "COMPUTERS" | "FILES" | "GRAPH";
+export type StagingPanelType = "AGENTS" | "COMPUTERS" | "FILES" | "GRAPH" | "GODSEYE";
 
 export interface StagingPanelState {
   id: string;

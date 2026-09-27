@@ -28,8 +28,8 @@ Foot remains size-owning; no product-socket kill; isolated TMUX_TMPDIR tests
 
 ## Hostinger H0
 
-install.sh + systemd cockpit-web + nginx TLS + `/api/health` green  
-Lane: `deploy/hostinger-grok-build-install.sh` (grok-build subscription runtime)
+`sudo ./scripts/install-hostinger.sh` (systemd cockpit-web + nginx TLS) + `./scripts/hostinger-health.sh --wait 30` → `/api/health` green  
+Lane: `scripts/install-hostinger.sh` (canonical deploy recipe since C2, d642070; `deploy/hostinger-grok-build-install.sh` was removed — matches `forge/cockpit-redesign-oneshot.md`)
 
 ## Done-line
 

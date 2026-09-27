@@ -3,10 +3,12 @@ import { useQuery } from "@tanstack/react-query";
 import { api } from "../../lib/api";
 import { ModelsView } from "../../pages/ModelsView";
 import { GhuiChip } from "../GhuiChip";
+import { useCockpitStore } from "../../stores/cockpit";
 import styles from "../../panels/ComputersPanel.module.css";
 
 export function ComputersPanelContent() {
   const { data } = useQuery({ queryKey: ["computers"], queryFn: api.computers });
+  const selectedComputerId = useCockpitStore((s) => s.selectedComputerId);
   const [showModels, setShowModels] = useState(false);
 
   useEffect(() => {
@@ -41,7 +43,12 @@ export function ComputersPanelContent() {
         </thead>
         <tbody>
           {(data?.computers ?? []).map((c) => (
-            <tr key={c.id} className={c.role === "hermes" ? "denseRowActive" : undefined}>
+            <tr
+              key={c.id}
+              className={
+                selectedComputerId === c.id || c.role === "hermes" ? "denseRowActive" : undefined
+              }
+            >
               <td>
                 {c.name}
                 {c.role === "hermes" && <span className={styles.hermes}> · Deck</span>}
