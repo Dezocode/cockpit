@@ -37,7 +37,8 @@ else
   finding secrets-in-dist "app/dist not built (need pnpm or a prebuilt app/dist) — cannot prove the bundle clean"
 fi
 
-probe curl-token-argv "rg -n 'curl [^\\n]*(bot\\\$|/bot\\\$\\{|Bearer \\\$|-u [^ ]*:\\\$)' bin"
+# 5: single-line curl, same four paths as 5b below (canonical probe 5 scope).
+probe curl-token-argv "rg -n 'curl [^\\n]*(bot\\\$|/bot\\\$\\{|Bearer \\\$|-u [^ ]*:\\\$)' bin scripts install.sh app/server"
 # 5b: same secrets on a backslash-continued curl (the actual C7 leak shape, 7e0737f bin/cockpit-notify:249-252).
 probe5b_cmd=$(cat <<'RG'
 rg -U -P -n 'curl(?:[^\n]*\\\n)*?[^\n]*(bot\$|/bot\$\{|Bearer \$|-u [^ ]*:\$)' bin scripts install.sh app/server
