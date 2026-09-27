@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # Portable primitives for Cockpit (bash 3.2-safe). Sourced only; no side effects on load.
 # Feature-detect GNU/BSD tools; never branch on uname for control flow.
 
@@ -444,7 +445,7 @@ EOF
 cockpit_inotifywatch_stream() {
   local path=$1
   shift
-  inotifywait -m -q "$@" --format '%w%f' "$path" >&"$COCKPIT_EVENT_FD" 2>/dev/null &
+  { inotifywait -m -q "$@" --format '%w%f' "$path" >&"$COCKPIT_EVENT_FD"; } 2>/dev/null &
   COCKPIT_INOTIFY_PIDS+=($!)
 }
 
