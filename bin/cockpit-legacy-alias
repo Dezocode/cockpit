@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Legacy codex-cockpit-* / codex-mermaid-watch entrypoints dispatch to cockpit-*.
-set -euo pipefail
+# Sourced mode (codex-cockpit-{lib,auth-lib,agent-lib}) must not change the
+# caller's shell options, so strict mode is enabled only in exec mode below.
 legacy_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 legacy_name="${BASH_SOURCE[0]##*/}"
 
@@ -20,6 +21,7 @@ if [[ "${BASH_SOURCE[0]}" != "${0}" ]]; then
   return 0
 fi
 
+set -euo pipefail
 case "$legacy_name" in
   codex-cockpit) canonical_name=cockpit-main ;;
   codex-mermaid-watch) canonical_name=cockpit-mermaid-watch ;;

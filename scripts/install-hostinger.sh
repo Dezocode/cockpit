@@ -10,8 +10,9 @@ set -euo pipefail
 
 root="$(cd -- "$(dirname -- "$0")/.." && pwd)"
 COCKPIT_INSTALL_ROOT="${COCKPIT_INSTALL_ROOT:-/opt/cockpit}"
-export COCKPIT_INSTALL_WEB_BUILD=1
 export COCKPIT_HOSTINGER=1
+# install.sh refuses the removed deploy gate; never forward it from the caller.
+unset COCKPIT_INSTALL_HOSTINGER
 
 case "$COCKPIT_INSTALL_ROOT" in
   /root/.grok*|*/saul-go*)
@@ -26,11 +27,15 @@ need_root() {
   [[ "$(id -u)" -eq 0 ]] || { printf 'Run as root for systemd/nginx: sudo %s\n' "$0"; exit 1; }
 }
 
-# User-level helpers + web build (no COCKPIT_INSTALL_HOSTINGER — deploy runs once below).
-"$root/install.sh"
-
 if [[ -d "$root/app" ]]; then
   command -v pnpm >/dev/null 2>&1 || { printf 'pnpm required\n'; exit 1; }
+fi
+
+# User-level helpers only. The web build runs exactly once, below, where a
+# failure aborts the deploy (install.sh's optional build swallows errors).
+COCKPIT_INSTALL_WEB_BUILD=0 "$root/install.sh"
+
+if [[ -d "$root/app" ]]; then
   (cd "$root/app" && pnpm install && pnpm build && pnpm exec tsc -p tsconfig.server.json)
 fi
 

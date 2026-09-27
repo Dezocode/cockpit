@@ -38,7 +38,7 @@ DENY: local Qwen / sol-v1.7.1 · Funnel · secrets bake · force-push · product
 ./bench/cockpit/hostinger-h0-verify.sh
 ./bench/cockpit/capability-matrix.sh
 ./bench/cockpit/capture-screenshots.sh
-COCKPIT_INSTALL_HOSTINGER=1 ./install.sh
+sudo ./scripts/install-hostinger.sh && ./scripts/hostinger-health.sh --wait 30
 ```
 
 Mirror: `bench/cursor/reports/t847u-cockpit2-gospel-prompt.md`

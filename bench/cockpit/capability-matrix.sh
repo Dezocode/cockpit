@@ -120,7 +120,9 @@ check "packaging/nginx/cockpit.conf" "$ngx"
 [[ -x "$root/scripts/install-hostinger.sh" ]] && ih=ok || ih=fail
 check "scripts/install-hostinger.sh (canonical Hostinger deploy)" "$ih"
 
-! grep -q 'COCKPIT_INSTALL_HOSTINGER' "$root/install.sh" && ih0=ok || ih0=fail
+# install.sh only refuses the removed deploy gate; it must never deploy itself.
+! grep -Eq 'useradd|systemctl|/etc/systemd|/etc/nginx' "$root/install.sh" &&
+  grep -q 'scripts/install-hostinger.sh' "$root/install.sh" && ih0=ok || ih0=fail
 check "install.sh has no Hostinger deploy block" "$ih0"
 
 grep -qE 'DENY.*Qwen|sol-v1\.7\.1|/root/\.grok' "$root/scripts/install-hostinger.sh" 2>/dev/null && gb_env=ok || gb_env=fail
@@ -162,9 +164,9 @@ check "Hostinger separate install root env" "$h3"
 [[ -x "$root/bench/cockpit/surface-matrix.sh" ]] && h4=ok || h4=fail
 check "Surface parity harness (zero TUI regression)" "$h4"
 
-# Legacy deploy/ wrappers (backward compat)
-[[ -f "$root/deploy/cockpit-web.service" || -f "$root/packaging/systemd/cockpit-web.service" ]] && legacy=ok || legacy=warn
-check "deploy/ or packaging/ systemd" "$legacy"
+# Single systemd unit (legacy deploy/ copy removed in v2.3.0)
+[[ -f "$root/packaging/systemd/cockpit-web.service" ]] && legacy=ok || legacy=warn
+check "packaging/ systemd" "$legacy"
 
 # Marketing redact
 [[ -x "$root/marketing/redact-secrets.sh" ]] && mkt=ok || mkt=fail
