@@ -97,21 +97,23 @@ if [[ "$(cockpit_watch_backend)" != none ]]; then
   watchfile="$tmpdir/watchme"
   touch "$watchfile"
   cockpit_event_watch "$tmpdir" -r -e close_write
+  got=
   if [[ "$(cockpit_watch_backend)" == "$COCKPIT_BACKEND_FSWATCH" ]]; then
-    sleep 2
+    kill -USR1 "$$" 2>/dev/null || true
+    sleep 1
+    cockpit_event_drain | grep -q 'WAKE' && got=1
   else
     sleep 0.5
+    touch "$watchfile"
+    for _ in $(seq 1 40); do
+      touch "$watchfile" 2>/dev/null || true
+      if cockpit_event_drain | grep -q .; then
+        got=1
+        break
+      fi
+      sleep 0.1
+    done
   fi
-  touch "$watchfile"
-  sleep 1
-  got=
-  for _ in $(seq 1 60); do
-    if cockpit_event_drain | grep -q .; then
-      got=1
-      break
-    fi
-    sleep 0.25
-  done
   [[ -n "$got" ]] || fail "watch event"
   cockpit_event_close
   sleep 0.5

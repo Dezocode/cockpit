@@ -616,21 +616,21 @@ cockpit_event_watch() {
       (
         if [[ "$recursive" == 1 ]]; then
           if [[ -n "$exclude" ]]; then
-            fswatch -r --latency 0.2 -E --exclude "$exclude" \
+            fswatch -r -F --latency 0.2 -E --exclude "$exclude" \
               --event Created --event Updated --event Removed --event Renamed --event MovedTo \
               "$path" 2>/dev/null
           else
-            fswatch -r --latency 0.2 -E \
+            fswatch -r -F --latency 0.2 -E \
               --event Created --event Updated --event Removed --event Renamed --event MovedTo \
               "$path" 2>/dev/null
           fi
         else
           if [[ -n "$exclude" ]]; then
-            fswatch --latency 0.2 -E --exclude "$exclude" \
+            fswatch -F --latency 0.2 -E --exclude "$exclude" \
               --event Created --event Updated --event Removed --event Renamed --event MovedTo \
               "$path" 2>/dev/null
           else
-            fswatch --latency 0.2 -E \
+            fswatch -F --latency 0.2 -E \
               --event Created --event Updated --event Removed --event Renamed --event MovedTo \
               "$path" 2>/dev/null
           fi
