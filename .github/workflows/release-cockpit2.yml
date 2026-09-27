@@ -135,6 +135,16 @@ jobs:
           if-no-files-found: error
           retention-days: 3
 
+      - name: Committed tree unchanged (tracked files)
+        run: |
+          changed="$(git status --porcelain --untracked-files=no)"
+          if [[ -n "$changed" ]]; then
+            printf '%s\n' "$changed"
+            echo "::error::this job modified tracked files of the checkout"
+            exit 1
+          fi
+          echo "tree: tracked files unchanged at $(git rev-parse --short HEAD)"
+
       - name: Job summary
         run: |
           {
@@ -191,7 +201,7 @@ jobs:
         working-directory: app
         env:
           BUNDLES: ${{ matrix.bundles }}
-        run: pnpm tauri build --bundles "$BUNDLES"
+        run: pnpm tauri build --bundles "$BUNDLES" -- --locked
 
       - name: Bundle integrity
         run: ./scripts/check-desktop-bundle.sh --collect "$RUNNER_TEMP/desktop" | tee "$RUNNER_TEMP/desktop.txt"
@@ -203,6 +213,16 @@ jobs:
           path: ${{ runner.temp }}/desktop/*
           if-no-files-found: error
           retention-days: 3
+
+      - name: Committed tree unchanged (tracked files)
+        run: |
+          changed="$(git status --porcelain --untracked-files=no)"
+          if [[ -n "$changed" ]]; then
+            printf '%s\n' "$changed"
+            echo "::error::this job modified tracked files of the checkout"
+            exit 1
+          fi
+          echo "tree: tracked files unchanged at $(git rev-parse --short HEAD)"
 
       - name: Job summary
         run: |

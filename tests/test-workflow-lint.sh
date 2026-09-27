@@ -241,6 +241,8 @@ twin "macos-15-intel in ci.yml" -n 'macos-15-intel' "$ci"
 twin "macos-15-intel in release-cockpit2.yml" -n 'macos-15-intel' "$rel"
 twin 'tauri.conf "version": "../package.json"' -n '"version": "\.\./package\.json"' app/src-tauri/tauri.conf.json
 twin "check-exec-bits in ci.yml" -n 'check-exec-bits' "$ci"
+twin "ci.yml desktop builds against the committed Cargo.lock (--locked)" -n 'pnpm tauri build --bundles "\$BUNDLES" -- --locked' "$ci"
+twin "release desktop builds against the committed Cargo.lock (--locked)" -n 'pnpm tauri build --bundles "\$BUNDLES" -- --locked' "$rel"
 job_lines="$(rg -c '^  shell-tests:|^  verify:|^  portability:|^  desktop:|^  versions:' "$ci" 2>&1 || :)"
 [[ "$job_lines" == 5 ]] || finding "missing positive twin: 5 job lines in ci.yml" "got ${job_lines:-0}"
 by_path="$(rg -c '^\s+run: \./scripts/check-exec-bits\.sh$' "$ci" 2>&1 || :)"
