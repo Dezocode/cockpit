@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC2088
 set -euo pipefail
 
 root="$(cd -- "$(dirname -- "$0")" && pwd)"
