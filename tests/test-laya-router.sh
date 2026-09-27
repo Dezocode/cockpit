@@ -53,6 +53,16 @@ printf '#!/bin/sh\necho "venv-python $*" >>"%s"\nexit 99\n' "$sentinel_log" >"$v
 chmod 0755 "$venv/bin/python"
 laya_write_key
 port="$(laya_pick_port)"
+# unset case: venv + key but no laya.conf and no COCKPIT_LAYA -> routing stays off.
+rm -f "$HOME/.config/cockpit/laya.conf"
+out="$(env -u COCKPIT_LAYA bash "$route" --json 'task' 2>&1)"
+[[ "$out" == *'"laya":"off"'* ]] || laya_fail "off unset (no laya.conf): $out"
+# a laya.conf without an enabled= line is off too (the toggle defaults off).
+laya_write_conf 0 "$port" 2000
+grep -v '^enabled=' "$HOME/.config/cockpit/laya.conf" >"$FIXTURE_TEST_ROOT/noenabled.conf"
+cp "$FIXTURE_TEST_ROOT/noenabled.conf" "$HOME/.config/cockpit/laya.conf"
+out="$(env -u COCKPIT_LAYA bash "$route" --json 'task' 2>&1)"
+[[ "$out" == *'"laya":"off"'* ]] || laya_fail "off unset (no enabled= line): $out"
 laya_write_conf 0 "$port" 2000
 out="$(bash "$route" --json 'task' 2>&1)"
 [[ "$out" == *'"laya":"off"'* ]] || laya_fail "off enabled=0: $out"
@@ -105,7 +115,7 @@ t1="$(laya_now_ms)"
 [[ "$out" == *'"laya":"ok"'* ]] || laya_fail "timeout: baseline ok call $out"
 baseline=$((t1 - t0))
 slow_port="$(laya_pick_port)"
-laya_start_stub "$slow_port" "$key" "$FIXTURE_TEST_ROOT/rec-slow" LAYA_STUB_SLEEP_MS=5000
+laya_start_stub "$slow_port" "$key" "$FIXTURE_TEST_ROOT/rec-slow" FAKE_LAYA_SLEEP_MS=5000
 t0="$(laya_now_ms)"
 rc=0
 out="$(COCKPIT_LAYA_URL="http://127.0.0.1:$slow_port" COCKPIT_LAYA_TIMEOUT_MS=300 bash "$route" --json 'rename x')" || rc=$?
@@ -125,7 +135,7 @@ out="$(bash "$route" --json 'low-confidence architecture task')"
 
 # --- tiers-map: chosen provider has no tiers= → model untouched -----------------
 laya_stop_stubs
-laya_start_stub "$port" "$key" "$rec" LAYA_FORCE_TOOL=notiers
+laya_start_stub "$port" "$key" "$rec" FAKE_LAYA_FORCE_TOOL=notiers
 model="$(
   # shellcheck source=../bin/cockpit-lib
   source "$repo_root/bin/cockpit-lib"
@@ -162,12 +172,16 @@ serve_rec="$FIXTURE_TEST_ROOT/rec-serve"
 mkdir -p "$serve_rec"
 serve_port="$(laya_pick_port)"
 laya_write_conf 0 "$serve_port" 2000
-start_out="$(LAYA_HOST=0.0.0.0 LAYA_API_KEY=not-the-key LAYA_STUB_RECORD_DIR="$serve_rec" LAYA_STUB_QUIET=1 \
+start_out="$(LAYA_HOST=0.0.0.0 LAYA_API_KEY=not-the-key LAYA_AUTO_TASK=1 LAYA_LOG_LEVEL=debug \
+  FAKE_LAYA_RECORD_DIR="$serve_rec" FAKE_LAYA_QUIET=1 \
   COCKPIT_LAYA_START_TIMEOUT_S=15 bash "$laya" start 2>&1)" || laya_fail "loopback-bind: start failed: $start_out"
 [[ "$(cat "$serve_rec/host.txt")" == 127.0.0.1 ]] || laya_fail "loopback-bind: served LAYA_HOST=$(cat "$serve_rec/host.txt")"
 [[ "$(cat "$serve_rec/listening.txt")" == "127.0.0.1:$serve_port" ]] || laya_fail "loopback-bind: listening $(cat "$serve_rec/listening.txt")"
 [[ "$start_out" == "laya: serving 127.0.0.1:$serve_port device=cpu version=0.3.99" ]] || laya_fail "loopback-bind: start said '$start_out'"
 if grep -q "$key" "$serve_rec/argv.txt"; then laya_fail "loopback-bind: key on laya-serve argv"; fi
+# config-is-data: the launcher sets exactly the LAYA_* vars upstream documents.
+[[ "$(cat "$serve_rec/laya-env.txt")" == 'LAYA_API_KEY LAYA_DEVICE LAYA_HOST LAYA_MODELS LAYA_PORT LAYA_PRELOAD LAYA_THREADS' ]] ||
+  laya_fail "loopback-bind: laya-serve env $(cat "$serve_rec/laya-env.txt")"
 status_out="$(bash "$laya" status)"
 [[ "$status_out" == "laya: serving 127.0.0.1:$serve_port device=cpu version=0.3.99" ]] || laya_fail "loopback-bind: status '$status_out'"
 status_json="$(bash "$laya" status --json)"
@@ -179,6 +193,15 @@ key_mode="$(ls -l "$HOME/.local/state/cockpit/laya/api.key")"
 [[ "${key_mode:0:10}" == -rw------- ]] || laya_fail "loopback-bind: api.key not 0600"
 bash "$laya" stop >/dev/null
 [[ ! -f "$HOME/.local/state/cockpit/laya/laya-serve.pid" ]] || laya_fail "loopback-bind: pidfile left behind"
+# stop never kills a pid it cannot verify as laya-serve (stale/reused pidfile).
+sleep 30 &
+decoy=$!
+printf '%s\n' "$decoy" >"$HOME/.local/state/cockpit/laya/laya-serve.pid"
+bash "$laya" stop >/dev/null 2>&1 || true
+if ! kill -0 "$decoy" 2>/dev/null; then laya_fail "loopback-bind: stop killed a non-laya pid"; fi
+kill "$decoy" 2>/dev/null || true
+wait "$decoy" 2>/dev/null || true
+rm -f "$HOME/.local/state/cockpit/laya/laya-serve.pid"
 out="$(bash "$route" --json 'rename x')"
 [[ "$out" == *'"laya":"down"'* ]] || laya_fail "loopback-bind: after stop $out"
 

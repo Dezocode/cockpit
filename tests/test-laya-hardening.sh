@@ -29,7 +29,7 @@ rec="$FIXTURE_TEST_ROOT/rec"
 laya_write_conf 1 "$port" 3000
 
 # --- key-off-argv + key-off-disk: sample ps and the disk during a slowed call ---
-laya_start_stub "$port" "$key" "$rec" LAYA_STUB_SLEEP_MS=1500
+laya_start_stub "$port" "$key" "$rec" FAKE_LAYA_SLEEP_MS=1500
 bash "$route" --json 'rename x' >"$FIXTURE_TEST_ROOT/slow.out" &
 route_pid=$!
 saw_curl=0
@@ -108,20 +108,20 @@ out="$(bash "$route" --json 'rename x')"
 [[ "$out" == *'"laya":"down"'* && "$out" == *http_401* && "$out" == *'"tool":"codex"'* ]] || laya_fail "http-error: 401 $out"
 cp "$FIXTURE_TEST_ROOT/key.save" "$HOME/.local/state/cockpit/laya/api.key"
 laya_stop_stubs
-laya_start_stub "$port" "$key" "$rec" LAYA_STUB_MODE=http500
+laya_start_stub "$port" "$key" "$rec" FAKE_LAYA_MODE=http500
 out="$(bash "$route" --json 'rename x')"
 [[ "$out" == *'"laya":"down"'* && "$out" == *http_500* ]] || laya_fail "http-error: 500 $out"
 
 # --- malformed: a 200 with a non-JSON body is "down" with a reason -------------
 laya_stop_stubs
-laya_start_stub "$port" "$key" "$rec" LAYA_STUB_MODE=malformed
+laya_start_stub "$port" "$key" "$rec" FAKE_LAYA_MODE=malformed
 out="$(bash "$route" --json 'rename x')"
 [[ "$out" == *'"laya":"down"'* && "$out" == *malformed_json* && "$out" == *'"tier":"cheap"'* ]] || laya_fail "malformed: $out"
 
 # --- tool-allowlist: only runtimes Cockpit offered can be picked ---------------
 for forced in 'codex; touch pwned' 'unknownrt' '../../bin/sh'; do
   laya_stop_stubs
-  laya_start_stub "$port" "$key" "$rec" LAYA_FORCE_TOOL="$forced"
+  laya_start_stub "$port" "$key" "$rec" FAKE_LAYA_FORCE_TOOL="$forced"
   out="$(bash "$route" --json 'rename x')"
   [[ "$out" == *'"tool":"codex"'* && "$out" == *low_confidence_tool* ]] || laya_fail "tool-allowlist: '$forced' → $out"
 done
@@ -184,7 +184,7 @@ for name in task-absent task-off; do
 done
 grep -q '@cockpit_runtime_id notiers' "$FIXTURE_TEST_ROOT/launch/plain/tmux.log" ||
   laya_fail "launch-unchanged: fake launch never ran with the saved runtime (vacuous)"
-laya_start_stub "$port" "$key" "$rec" LAYA_FORCE_TOOL=stubrt
+laya_start_stub "$port" "$key" "$rec" FAKE_LAYA_FORCE_TOOL=stubrt
 launch task-ok ok COCKPIT_TASK='rename a variable in one file'
 grep -q '@cockpit_runtime_id stubrt' "$FIXTURE_TEST_ROOT/launch/task-ok/tmux.log" ||
   laya_fail "launch-unchanged: a real Laya answer did not pick the runtime"
@@ -223,7 +223,7 @@ for mode in off down absent; do
 done
 [[ ! -s "$LAYA_TEST_APPLIED" ]] || laya_fail "apply-only-ok: model_apply ran without Laya: $(cat "$LAYA_TEST_APPLIED")"
 laya_stop_stubs
-laya_start_stub "$port" "$key" "$rec" LAYA_FORCE_TOOL=codex
+laya_start_stub "$port" "$key" "$rec" FAKE_LAYA_FORCE_TOOL=codex
 res="$(
   unset COCKPIT_PROVIDER COCKPIT_MODEL
   # shellcheck source=../bin/cockpit-lib

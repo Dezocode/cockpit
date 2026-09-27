@@ -8,9 +8,9 @@ A non-object `questions` is a 400, a wrong bearer is a 401, GET /health is
 unauthenticated. Configured like the real server by LAYA_HOST, LAYA_PORT and
 LAYA_API_KEY; there is no default port, so every test owns an ephemeral one.
 
-Test hooks (env): LAYA_STUB_RECORD_DIR (writes host.txt, argv.txt, env-key.txt,
-body.json, auth-ok.txt), LAYA_STUB_SLEEP_MS / ?delay_ms= (slow answers),
-LAYA_STUB_MODE=malformed|http500, LAYA_FORCE_TOOL, LAYA_STUB_QUIET=1.
+Test hooks (env): FAKE_LAYA_RECORD_DIR (writes host.txt, argv.txt, laya-env.txt, env-key.txt,
+body.json, auth-ok.txt), FAKE_LAYA_SLEEP_MS / ?delay_ms= (slow answers),
+FAKE_LAYA_MODE=malformed|http500, FAKE_LAYA_FORCE_TOOL, FAKE_LAYA_QUIET=1.
 """
 from __future__ import annotations
 
@@ -18,13 +18,14 @@ import json
 import os
 import sys
 import time
+import socketserver
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.parse import parse_qs, urlparse
 
 HOST = os.environ.get("LAYA_HOST", "0.0.0.0")  # same default as upstream, so a missing LAYA_HOST is visible
 PORT = int(os.environ["LAYA_PORT"])
 API_KEY = os.environ.get("LAYA_API_KEY") or None
-RECORD_DIR = os.environ.get("LAYA_STUB_RECORD_DIR", "")
+RECORD_DIR = os.environ.get("FAKE_LAYA_RECORD_DIR", "")
 
 
 def _record(name: str, text: str) -> None:
@@ -52,7 +53,7 @@ def _answers(text: str, questions: dict) -> dict:
     tool_conf = 0.77
     if "low-confidence" in low:
         tier_conf = tool_conf = 0.4
-    forced = os.environ.get("LAYA_FORCE_TOOL", "").strip()
+    forced = os.environ.get("FAKE_LAYA_FORCE_TOOL", "").strip()
     if forced:
         tool = forced
     review = 0.91 if "needs-review" in low else 0.08
@@ -71,11 +72,22 @@ def _answers(text: str, questions: dict) -> dict:
     return out
 
 
+class QuickBindHTTPServer(HTTPServer):
+    """HTTPServer.server_bind calls socket.getfqdn(), a reverse-DNS lookup that
+    can stall for seconds on macOS runners; the stub never needs the name."""
+
+    def server_bind(self):
+        socketserver.TCPServer.server_bind(self)
+        host, port = self.server_address[:2]
+        self.server_name = host
+        self.server_port = port
+
+
 class Handler(BaseHTTPRequestHandler):
     server_version = "fake-laya-serve/2"
 
     def log_message(self, fmt, *args):  # noqa: D102
-        if os.environ.get("LAYA_STUB_QUIET") != "1":
+        if os.environ.get("FAKE_LAYA_QUIET") != "1":
             super().log_message(fmt, *args)
 
     def _send(self, code: int, obj) -> None:
@@ -101,7 +113,7 @@ class Handler(BaseHTTPRequestHandler):
             self._send(401, {"detail": "invalid or missing bearer token"})
             return
         _record("auth-ok.txt", "1")
-        delay_ms = int(os.environ.get("LAYA_STUB_SLEEP_MS", "0") or "0")
+        delay_ms = int(os.environ.get("FAKE_LAYA_SLEEP_MS", "0") or "0")
         qs = parse_qs(parsed.query)
         if "delay_ms" in qs:
             delay_ms = int(qs["delay_ms"][0])
@@ -109,7 +121,7 @@ class Handler(BaseHTTPRequestHandler):
             time.sleep(delay_ms / 1000.0)
         raw = self.rfile.read(int(self.headers.get("Content-Length", "0") or "0"))
         _record("body.json", raw.decode("utf-8", "replace"))
-        mode = os.environ.get("LAYA_STUB_MODE", "")
+        mode = os.environ.get("FAKE_LAYA_MODE", "")
         if mode == "malformed":
             self._send(200, b"{not json")
             return
@@ -134,8 +146,9 @@ class Handler(BaseHTTPRequestHandler):
 def main() -> int:
     _record("host.txt", HOST)
     _record("argv.txt", "\n".join(sys.argv))
+    _record("laya-env.txt", " ".join(sorted(k for k in os.environ if k.startswith("LAYA_"))))
     _record("env-key.txt", "set" if API_KEY else "unset")
-    httpd = HTTPServer((HOST, PORT), Handler)
+    httpd = QuickBindHTTPServer((HOST, PORT), Handler)
     _record("listening.txt", "%s:%d" % httpd.server_address[:2])
     try:
         httpd.serve_forever()

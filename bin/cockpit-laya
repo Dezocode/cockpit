@@ -280,8 +280,13 @@ laya_start_cmd() {
   (umask 077 && : >>"$logfile")
   IFS= read -r key <"$(cockpit_laya_key_file)" || true
   (
-    # Loopback bind is not configurable: LAYA_HOST is always 127.0.0.1. The key
-    # travels in the child's environment, never on its argv.
+    # Only the LAYA_* variables upstream documents are set, and nothing else
+    # leaks in from the caller (e.g. LAYA_AUTO_TASK, LAYA_LOG_LEVEL). Loopback
+    # bind is not configurable: LAYA_HOST is always 127.0.0.1. The key travels
+    # in the child's environment, never on its argv.
+    while IFS= read -r name; do
+      [[ "$name" == LAYA_* ]] && unset "$name"
+    done < <(compgen -e)
     export LAYA_HOST=127.0.0.1
     export LAYA_PORT="$port" LAYA_DEVICE="$device" LAYA_PRELOAD=1 LAYA_MODELS=english
     export LAYA_THREADS="$threads" LAYA_API_KEY="$key"

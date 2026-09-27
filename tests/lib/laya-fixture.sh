@@ -116,19 +116,26 @@ EOF2
 }
 
 # laya_start_stub PORT KEY RECORD_DIR [ENV=VALUE...]: our own stub, ready on return.
+# Waits up to 30 s (a cold Homebrew python on a macOS runner can take seconds),
+# fails at once if the stub dies, and shows its stderr.
 laya_start_stub() {
-  local port=$1 key=$2 rec=$3 i
+  local port=$1 key=$2 rec=$3 i pid
   shift 3
   mkdir -p "$rec"
   rm -f "$rec"/*
-  env LAYA_HOST=127.0.0.1 LAYA_PORT="$port" LAYA_API_KEY="$key" LAYA_STUB_QUIET=1 \
-    LAYA_STUB_RECORD_DIR="$rec" "$@" "$LAYA_TEST_PY" "$FIXTURE_REPO_ROOT/tests/fixtures/fake-laya-serve.py" &
-  LAYA_TEST_STUB_PIDS+=("$!")
-  for ((i = 0; i < 100; i++)); do
+  env LAYA_HOST=127.0.0.1 LAYA_PORT="$port" LAYA_API_KEY="$key" FAKE_LAYA_QUIET=1 \
+    FAKE_LAYA_RECORD_DIR="$rec" "$@" "$LAYA_TEST_PY" "$FIXTURE_REPO_ROOT/tests/fixtures/fake-laya-serve.py" \
+    2>"$rec.stderr" &
+  pid=$!
+  LAYA_TEST_STUB_PIDS+=("$pid")
+  for ((i = 0; i < 600; i++)); do
     [[ -s "$rec/listening.txt" ]] && return 0
+    if ! kill -0 "$pid" 2>/dev/null; then
+      laya_fail "stub exited before listening on 127.0.0.1:$port: $(tail -5 "$rec.stderr" 2>/dev/null)"
+    fi
     sleep 0.05
   done
-  laya_fail "stub did not start on 127.0.0.1:$port"
+  laya_fail "stub did not start on 127.0.0.1:$port within 30 s: $(tail -5 "$rec.stderr" 2>/dev/null)"
 }
 
 laya_stop_stubs() {

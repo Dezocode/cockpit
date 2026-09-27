@@ -12,6 +12,10 @@ Install and start (Python >= 3.10 with venv; nothing is installed by install.sh 
 The venv lives in `~/.local/share/cockpit/laya/venv`; the first start downloads
 the model (~0.8-1.7 GB) into the Hugging Face cache.
 
+`cockpit laya start` sets only upstream's documented variables (LAYA_HOST=127.0.0.1,
+LAYA_PORT, LAYA_DEVICE, LAYA_PRELOAD, LAYA_MODELS, LAYA_THREADS, LAYA_API_KEY) and
+drops any other inherited LAYA_*. Routing defaults off (`enabled=0`, or no laya.conf).
+
 Privacy: the server binds 127.0.0.1 only and needs a bearer key kept in
 `~/.local/state/cockpit/laya/api.key` (0600, never printed, never on argv).
 Receipts in `~/.local/state/cockpit/route.jsonl` store the task's sha256, never its text.
