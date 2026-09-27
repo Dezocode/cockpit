@@ -210,7 +210,8 @@ if [[ -d "$root/app" && -f "$root/app/package.json" ]]; then
 fi
 
 if [[ "${COCKPIT_INSTALL_SERVICE:-0}" == 1 ]]; then
-  cockpit_service_install cockpit-web "$bindir" "$root" || true
+  cockpit_service_install cockpit-web "$bindir" "$root" ||
+    printf 'service: install failed (rc %s); run %s/cockpit-web manually\n' "$?" "$bindir" >&2
 fi
 
 watch_backend="$(cockpit_watch_backend)"

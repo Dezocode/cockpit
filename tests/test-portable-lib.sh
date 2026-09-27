@@ -107,6 +107,12 @@ set -e
 [[ "$(cockpit_utc_epoch 2099-01-01T00:00:00Z)" == 4070908800 ]] || fail "utc_epoch 2099"
 if cockpit_utc_epoch not-a-date >/dev/null 2>&1; then fail "utc_epoch garbage"; fi
 
+# Plist data is written literally: & < > escaped under this bash and under the
+# system /bin/bash (3.2 on macOS; 5.2+ has patsub_replacement on by default).
+[[ "$(cockpit_xml_escape 'a&b<c>')" == 'a&amp;b&lt;c&gt;' ]] || fail "xml_escape"
+[[ "$(/bin/bash -c 'source "$1"; cockpit_xml_escape "a&b<c>"' _ "$repo_root/bin/cockpit-portable-lib")" == 'a&amp;b&lt;c&gt;' ]] ||
+  fail "xml_escape /bin/bash"
+
 # Login-shell probes keep the caller's PATH precedence (macOS path_helper
 # reorders PATH in /etc/profile; elsewhere the command is passed unchanged).
 [[ "$(_cockpit_has_path_helper=0 cockpit_login_command 'echo x')" == 'echo x' ]] || fail "login_command passthrough"

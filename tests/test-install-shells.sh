@@ -84,9 +84,23 @@ grep -q '# >>> cockpit >>>' "$legacy_home/.bashrc" || fail "legacy migration"
 if [[ "$(uname -s)" == Darwin ]]; then
   rm -f "$sentinel"
   mkdir -p "$tmpdir/home-darwin"
-  PATH="$fakebin:$PATH" HOME="$tmpdir/home-darwin" COCKPIT_INSTALL_SERVICE=1 SHELL=/bin/bash \
-    /bin/bash "$repo_root/install.sh" </dev/null >/dev/null 2>&1
+  darwin_log="$tmpdir/install-darwin.log"
+  set +e
+  PATH="$fakebin:$PATH" HOME="$tmpdir/home-darwin" COCKPIT_INSTALL_SERVICE=1 \
+    COCKPIT_INSTALL_WEB_BUILD=0 COCKPIT_INSTALL_HOSTINGER=0 SHELL=/bin/bash \
+    COCKPIT_WEB_PORT="$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()')" \
+    /bin/bash -c 'printf "installer BASH_VERSION=%s\n" "$BASH_VERSION"; exec /bin/bash "$0"' \
+    "$repo_root/install.sh" </dev/null >"$darwin_log" 2>&1
+  darwin_rc=$?
+  set -e
+  # The service step bootstrapped our own launch agent from the temp HOME;
+  # unload only that label (this test's own job), never by port.
+  launchctl bootout "gui/$(id -u)/com.dezocode.cockpit-web" 2>/dev/null ||
+    launchctl bootout "user/$(id -u)/com.dezocode.cockpit-web" 2>/dev/null || :
+  grep -E '^installer BASH_VERSION=|^launchd: |^service: ' "$darwin_log" | sed 's/^/install-shells: /'
+  [[ "$darwin_rc" == 0 ]] || { tail -20 "$darwin_log"; fail "darwin install rc $darwin_rc"; }
   [[ ! -e "$sentinel" ]] || fail "darwin systemd sentinel"
+  printf 'install-shells: darwin sentinel absent (test ! -e $TMP/sentinel)\n'
 fi
 
 bash3_major="$(/bin/bash -c 'echo ${BASH_VERSINFO[0]}' 2>/dev/null || echo 5)"

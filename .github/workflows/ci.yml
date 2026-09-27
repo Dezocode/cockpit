@@ -212,25 +212,30 @@ jobs:
             exit 1
           fi
           bash bench/cockpit/capability-matrix.sh
-          COCKPIT_HOSTINGER=1 node app/dist-server/index.js &
+          # Listen proof on an ephemeral loopback port this step owns; only the
+          # server PID started here is stopped. COCKPIT_WEB_HOST is left unset
+          # so the proof covers the default bind.
+          port="$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()')"
+          COCKPIT_HOSTINGER=1 COCKPIT_WEB_PORT="$port" node app/dist-server/index.js >web-listen.log 2>&1 &
           pid=$!
-          trap 'kill $pid 2>/dev/null || true' EXIT
+          trap 'kill "$pid" 2>/dev/null || :' EXIT
           for _ in $(seq 1 40); do
-            curl -sf http://127.0.0.1:8787/api/health && break
+            curl -sf "http://127.0.0.1:${port}/api/health" && break
             sleep 0.5
           done
+          cat web-listen.log
           if [[ "${{ matrix.os }}" == ubuntu-latest ]]; then
-            listen="$(ss -ltnp | grep ':8787 ')"
+            listen="$(ss -ltnp | grep ":${port} " || :)"
           else
-            listen="$(lsof -nP -iTCP:8787 -sTCP:LISTEN)"
+            listen="$(lsof -nP -a -p "$pid" -iTCP:"$port" -sTCP:LISTEN || :)"
           fi
           printf 'listen-proof (%s):\n%s\n' "${{ matrix.os }}" "$listen"
-          grep -q '127.0.0.1:8787' <<<"$listen"
-          if grep -E '(\*|0\.0\.0\.0|\[::\]|:::?):8787' <<<"$listen"; then
+          grep -q "127.0.0.1:${port}" <<<"$listen"
+          if grep -E "(\\*|0\\.0\\.0\\.0|\\[::\\]|:::?):${port}" <<<"$listen"; then
             echo "::error::cockpit-web listens on a non-loopback address"
             exit 1
           fi
-          echo "listen-proof: loopback-only (127.0.0.1:8787)"
+          echo "listen-proof: loopback-only (127.0.0.1:${port}, pid ${pid})"
 
       - name: Upload portability log
         if: always()

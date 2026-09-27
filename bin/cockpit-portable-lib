@@ -309,46 +309,39 @@ cockpit_pgrep_child_match() {
   return 1
 }
 
-_cockpit_cmd_svcctl() {
-  command -v "$(printf '%s%s' system ctl)" >/dev/null 2>&1
-}
+# systemd is named only inside the cockpit_service_install_systemd* helpers
+# (portability-lint contract). sd_booted(3): /run/systemd/system exists.
+cockpit_service_install_systemd_available() { command -v systemctl >/dev/null 2>&1 && [[ -d /run/systemd/system ]]; }
 
 cockpit_has_systemd() {
-  _cockpit_cmd_svcctl && [[ -d /run/systemd/system ]]
-}
-
-_cockpit_run_svcctl() {
-  "$(printf '%s%s' system ctl)" "$@"
-}
-
-_cockpit_linux_account_add() {
-  "$(printf '%s%s' user add)" "$@"
+  cockpit_service_install_systemd_available
 }
 
 cockpit_has_launchd() {
   command -v launchctl >/dev/null 2>&1
 }
 
+# Linux system service = the single Hostinger deploy entry (C2 dedupe); never
+# a second copy of its account/unit/nginx steps here.
 cockpit_service_install_systemd() {
-  local root=$1
-  COCKPIT_INSTALL_ROOT="${COCKPIT_INSTALL_ROOT:-/opt/cockpit}"
-  case "$COCKPIT_INSTALL_ROOT" in
-    /root/.grok*|*/saul-go*) printf 'DENY: invalid COCKPIT_INSTALL_ROOT=%s\n' "$COCKPIT_INSTALL_ROOT" >&2; return 1 ;;
-  esac
-  install -d "$COCKPIT_INSTALL_ROOT"
-  rsync -a --exclude node_modules --exclude .git --exclude app/node_modules "$root/" "$COCKPIT_INSTALL_ROOT/" 2>/dev/null ||
-    cp -a "$root/." "$COCKPIT_INSTALL_ROOT/"
-  id cockpit &>/dev/null || _cockpit_linux_account_add -r -s /usr/sbin/nologin cockpit
-  chown -R cockpit:cockpit "$COCKPIT_INSTALL_ROOT" 2>/dev/null || true
-  chmod +x "$COCKPIT_INSTALL_ROOT/packaging/systemd/cockpit-web-heal.sh" 2>/dev/null || true
-  install -m 0644 "$root/packaging/systemd/cockpit-web.service" /etc/systemd/system/cockpit-web.service
-  install -m 0644 "$root/packaging/nginx/cockpit.conf" /etc/nginx/sites-available/cockpit.conf
-  ln -sf /etc/nginx/sites-available/cockpit.conf /etc/nginx/sites-enabled/cockpit.conf 2>/dev/null || true
-  _cockpit_run_svcctl daemon-reload
-  _cockpit_run_svcctl enable cockpit-web.service 2>/dev/null || true
-  _cockpit_run_svcctl restart cockpit-web.service 2>/dev/null ||
-    _cockpit_run_svcctl start cockpit-web.service 2>/dev/null || true
-  printf 'Hostinger H0: %s + systemd + nginx (certbot for TLS)\n' "$COCKPIT_INSTALL_ROOT"
+  local root=$1 entry="$1/scripts/install-hostinger.sh"
+  [[ -f "$entry" ]] || { printf 'systemd: %s missing\n' "$entry" >&2; return 1; }
+  if [[ "$(id -u)" -ne 0 ]]; then
+    printf 'systemd: system service needs root: sudo %s\n' "$entry" >&2
+    return 2
+  fi
+  bash "$entry"
+}
+
+# Plist values are data: escape XML metacharacters so a path containing
+# & < > is written literally instead of breaking (or injecting into) the plist.
+cockpit_xml_escape() {
+  local s=$1
+  # Quoted replacements: bash 5.2 patsub_replacement would expand a bare &.
+  s=${s//&/"&amp;"}
+  s=${s//</"&lt;"}
+  s=${s//>/"&gt;"}
+  printf '%s' "$s"
 }
 
 cockpit_service_install_launchd() {
@@ -364,6 +357,19 @@ cockpit_service_install_launchd() {
   if [[ -n "$node_bin" ]]; then
     path_prefix="$(dirname "$node_bin"):$path_prefix"
   fi
+  local port_entry=""
+  if [[ -n "${COCKPIT_WEB_PORT:-}" ]]; then
+    if [[ "$COCKPIT_WEB_PORT" =~ ^[0-9]{1,5}$ ]]; then
+      port_entry="$(printf '    <key>COCKPIT_WEB_PORT</key>\n    <string>%s</string>' "$COCKPIT_WEB_PORT")"
+    else
+      printf 'launchd: ignoring non-numeric COCKPIT_WEB_PORT\n' >&2
+    fi
+  fi
+  local x_web x_log x_path x_root
+  x_web="$(cockpit_xml_escape "$web")"
+  x_log="$(cockpit_xml_escape "${logdir}/cockpit-web.log")"
+  x_path="$(cockpit_xml_escape "${path_prefix}:${HOME}/.local/bin:/usr/bin:/bin:/usr/sbin:/sbin")"
+  x_root="$(cockpit_xml_escape "$install_root")"
   mkdir -p "${HOME}/Library/LaunchAgents" "$logdir"
   plist="${HOME}/Library/LaunchAgents/com.dezocode.cockpit-web.plist"
   launchctl bootout "gui/$uid" "$plist" 2>/dev/null || true
@@ -377,26 +383,27 @@ cockpit_service_install_launchd() {
   <string>com.dezocode.cockpit-web</string>
   <key>ProgramArguments</key>
   <array>
-    <string>$web</string>
+    <string>$x_web</string>
   </array>
   <key>RunAtLoad</key>
   <true/>
   <key>KeepAlive</key>
   <true/>
-$( [[ -n "$install_root" ]] && printf '  <key>WorkingDirectory</key>\n  <string>%s</string>\n' "$install_root" )
+$( [[ -n "$install_root" ]] && printf '  <key>WorkingDirectory</key>\n  <string>%s</string>\n' "$x_root" )
   <key>StandardOutPath</key>
-  <string>${logdir}/cockpit-web.log</string>
+  <string>${x_log}</string>
   <key>StandardErrorPath</key>
-  <string>${logdir}/cockpit-web.log</string>
+  <string>${x_log}</string>
   <key>EnvironmentVariables</key>
   <dict>
     <key>PATH</key>
-    <string>${path_prefix}:${HOME}/.local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <string>${x_path}</string>
     <key>COCKPIT_WEB_HOST</key>
     <string>127.0.0.1</string>
     <key>COCKPIT_HOSTINGER</key>
     <string>1</string>
-$( [[ -n "$install_root" ]] && printf '    <key>COCKPIT_INSTALL_ROOT</key>\n    <string>%s</string>\n' "$install_root" )
+$( [[ -n "$install_root" ]] && printf '    <key>COCKPIT_INSTALL_ROOT</key>\n    <string>%s</string>\n' "$x_root" )
+${port_entry}
   </dict>
 </dict>
 </plist>
@@ -418,15 +425,11 @@ cockpit_service_install() {
   local root=${3:-}
   if cockpit_has_launchd; then
     cockpit_service_install_launchd "$bindir" "$root"
-    return 0
+    return $?
   fi
-  if cockpit_has_systemd; then
-    if [[ "$(id -u)" -eq 0 && -n "$root" ]]; then
-      cockpit_service_install_systemd "$root"
-      return 0
-    fi
-    printf 'systemd service install requires root and COCKPIT_INSTALL_HOSTINGER=1\n' >&2
-    return 2
+  if cockpit_has_systemd && [[ -n "$root" ]]; then
+    cockpit_service_install_systemd "$root"
+    return $?
   fi
   printf 'Run manually: %s/cockpit-web\n' "$bindir"
 }
@@ -547,17 +550,3 @@ cockpit_inotifywatch_stream() {
   COCKPIT_INOTIFY_PIDS+=($!)
 }
 
-cockpit_install_hostinger_if_requested() {
-  local root=$1
-  if [[ "${COCKPIT_INSTALL_HOSTINGER:-0}" != 1 ]]; then
-    return 0
-  fi
-  if [[ "$(id -u)" -ne 0 ]]; then
-    return 0
-  fi
-  if ! cockpit_has_systemd; then
-    printf 'Hostinger install requires systemd (Linux)\n' >&2
-    return 2
-  fi
-  cockpit_service_install_systemd "$root"
-}
