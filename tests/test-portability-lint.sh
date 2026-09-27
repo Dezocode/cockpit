@@ -36,6 +36,8 @@ scan -n 'readlink -f|chmod --reference|sed -i|find [^|]*-printf|xargs -r' bin in
 scan -n '/proc/' bin install.sh plugins -g '!tests/test-portability-lint.sh'; report "$(drop '^bin/cockpit-portable-lib:' <<<"$scan_out")"
 scan -n '\btimeout [0-9]|\bsha256sum\b' bin plugins tests -g '!tests/test-portability-lint.sh'; report "$(drop '^bin/cockpit-portable-lib:' <<<"$scan_out")"
 scan -n 'pgrep [^|]*-a\b' bin -g '!tests/test-portability-lint.sh'; report "$scan_out"
+# Stock macOS ships true/false only in /usr/bin; /bin/true is a GNU/Linux-ism.
+scan -n '/bin/(true|false)\b' bin install.sh plugins tests -g '!tests/test-portability-lint.sh'; report "$(drop '/usr/bin/(true|false)' <<<"$scan_out")"
 scan -n 'declare -A|mapfile|readarray|\$\{[A-Za-z_]+(,,|\^\^)\}|exec \{' install.sh bin/cockpit-portable-lib -g '!tests/test-portability-lint.sh'; report "$scan_out"
 scan -n 'COCKPIT_SHELL_RC:-\$\{HOME\}/\.bashrc|alias cockpit="cockpit"|^# Cockpit (PATH|cpr plugin)$' install.sh -g '!tests/test-portability-lint.sh'; report "$scan_out"
 scan -n 'useradd|systemctl' install.sh bin -g '!tests/test-portability-lint.sh'; report "$(drop 'cockpit_service_install_systemd' <<<"$scan_out")"

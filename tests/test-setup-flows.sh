@@ -63,8 +63,11 @@ case "$*" in
 esac
 EOF
 chmod +x "$fakebin/codex"
-ln -s /bin/true "$fakebin/gh"
-ln -s /bin/true "$fakebin/grok"
+# Stock macOS keeps true/false only under /usr/bin (none in /bin); a dangling
+# symlink would let the real gh/codex on PATH answer the probe instead.
+true_bin="$(type -P true)"
+ln -s "$true_bin" "$fakebin/gh"
+ln -s "$true_bin" "$fakebin/grok"
 
 set +e
 plugin_output="$(printf '1\ny\nx\n\nq\n' | cockpit_timeout 8 "$repo_root/bin/cockpit-setup" plugins 2>&1)"

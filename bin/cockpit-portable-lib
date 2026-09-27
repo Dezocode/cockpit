@@ -52,11 +52,19 @@ cockpit_watch_backend() {
 }
 
 cockpit_require_bash4() {
-  if [[ "${COCKPIT_BASH_REEXEC:-}" == 1 ]]; then
+  if [[ "${BASH_VERSINFO[0]:-0}" -ge 4 ]]; then
+    # Landed on bash >= 4: drop the loop flag so children decide for
+    # themselves. A child started via `env bash` with /bin/bash (3.2) first on
+    # PATH (tmux panes, plugins, fixtures) must re-exec too, not inherit a
+    # "done" flag and die on the first bash-4-only builtin.
+    unset COCKPIT_BASH_REEXEC
     return 0
   fi
-  if [[ "${BASH_VERSINFO[0]:-0}" -ge 4 ]]; then
-    return 0
+  if [[ "${COCKPIT_BASH_REEXEC:-}" == 1 ]]; then
+    # A re-exec already happened and still landed on bash < 4: stop, no loop.
+    unset COCKPIT_BASH_REEXEC
+    printf 'cockpit: bash >= 4 required. Install: brew install bash\n' >&2
+    exit 64
   fi
   local candidate entry idx
   # Re-exec the user-invoked entrypoint (e.g. bin/cockpit-agent-config), not an
