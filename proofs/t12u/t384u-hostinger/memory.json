@@ -1,0 +1,1 @@
+{"entries":[{"id":"mem-1","title":"Agent profile sync","source":"cockpit.memory","ts":"2026-09-07T05:00:00Z"},{"id":"mem-2","title":"Intercom fail-closed guard","source":"cockpit.intercom","ts":"2026-09-07T05:01:00Z"}],"failClosed":true}
