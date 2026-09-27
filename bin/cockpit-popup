@@ -70,7 +70,7 @@ if [[ "$cmd" == "run" ]]; then
   export COCKPIT_POPUP=1
   export COCKPIT_POPUP_TITLE="$title"
   set +e
-  bash -lc "$inner"
+  bash -lc "$(cockpit_login_command "$inner")"
   exit 0
 fi
 

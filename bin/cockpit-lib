@@ -599,53 +599,40 @@ cockpit_event_watch() {
       cockpit_inotifywatch_stream "$path" "${watch_args[@]}"
       ;;
     "$COCKPIT_BACKEND_FSWATCH")
-      local recursive=0 exclude=''
-      local arg
-      local i=0
-      while [[ $i -lt ${#watch_args[@]} ]]; do
-        arg="${watch_args[$i]}"
-        case "$arg" in
-          -r) recursive=1 ;;
+      # Same line contract as the inotify backend (--format '%w%f'): one absolute path per
+      # line on COCKPIT_EVENT_FD. $! is fswatch itself, so cockpit_event_close
+      # reaps it and the normalizer exits on EOF (no orphan watchers).
+      local fsw=(fswatch --latency 0.2 -E) i=0
+      while ((i < ${#watch_args[@]})); do
+        case "${watch_args[$i]}" in
+          -r) fsw+=(-r) ;;
+          -e) i=$((i + 1)) ;; # inotify event list; fswatch uses the fixed set below
           --exclude)
             i=$((i + 1))
-            exclude="${watch_args[$i]:-}"
+            [[ -n "${watch_args[$i]:-}" ]] && fsw+=(--exclude "${watch_args[$i]}")
             ;;
         esac
         i=$((i + 1))
       done
-      (
-        if [[ "$recursive" == 1 ]]; then
-          if [[ -n "$exclude" ]]; then
-            fswatch -r -F --latency 0.2 -E --exclude "$exclude" \
-              --event Created --event Updated --event Removed --event Renamed --event MovedTo \
-              "$path" 2>/dev/null
-          else
-            fswatch -r -F --latency 0.2 -E \
-              --event Created --event Updated --event Removed --event Renamed --event MovedTo \
-              "$path" 2>/dev/null
-          fi
-        else
-          if [[ -n "$exclude" ]]; then
-            fswatch -F --latency 0.2 -E --exclude "$exclude" \
-              --event Created --event Updated --event Removed --event Renamed --event MovedTo \
-              "$path" 2>/dev/null
-          else
-            fswatch -F --latency 0.2 -E \
-              --event Created --event Updated --event Removed --event Renamed --event MovedTo \
-              "$path" 2>/dev/null
-          fi
-        fi |
-          while IFS= read -r line; do
-            [[ -n "$line" ]] || continue
-            cockpit_realpath "$line" 2>/dev/null || printf '%s\n' "$line"
-          done
-      ) 2>/dev/null >"&$COCKPIT_EVENT_FD" &
+      fsw+=(--event Created --event Updated --event Removed --event Renamed --event MovedTo "$path")
+      "${fsw[@]}" 2>/dev/null > >(cockpit_event_normalize >&"$COCKPIT_EVENT_FD") &
       COCKPIT_INOTIFY_PIDS+=($!)
       ;;
     "$COCKPIT_BACKEND_NONE")
       return 0
       ;;
   esac
+}
+
+# FSEvents reports /private/var/... for /var/... paths; emit canonical paths
+# so callers comparing against cockpit_realpath'd files still match.
+cockpit_event_normalize() {
+  local line real
+  while IFS= read -r line; do
+    [[ -n "$line" ]] || continue
+    real="$(cockpit_realpath "$line" 2>/dev/null)" || real=$line
+    printf '%s\n' "${real:-$line}"
+  done
 }
 
 cockpit_event_read() {

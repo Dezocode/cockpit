@@ -101,36 +101,7 @@ cockpit_auth_run_probe() {
   [[ -n "$command" ]] || return 1
   timeout_value="${COCKPIT_AUTH_TIMEOUT:-1.5s}"
   timeout_value="${timeout_value%s}"
-  cockpit_timeout "$timeout_value" bash -lc "$command" >/dev/null 2>&1
-}
-
-cockpit_auth_utc_epoch() {
-  local expires_at=${1:-} expiry=''
-  [[ -n "$expires_at" ]] || return 1
-  expiry="$(date -u -d "$expires_at" +%s 2>/dev/null || true)"
-  if [[ "$expiry" =~ ^[0-9]+$ ]]; then
-    printf '%s\n' "$expiry"
-    return 0
-  fi
-  if command -v python3 >/dev/null 2>&1; then
-    expiry="$(
-      python3 - "$expires_at" <<'PY' 2>/dev/null || true
-import datetime
-import sys
-
-value = sys.argv[1]
-try:
-    print(int(datetime.datetime.fromisoformat(value.replace("Z", "+00:00")).timestamp()))
-except (TypeError, ValueError, OverflowError):
-    raise SystemExit(1)
-PY
-    )"
-    if [[ "$expiry" =~ ^[0-9]+$ ]]; then
-      printf '%s\n' "$expiry"
-      return 0
-    fi
-  fi
-  return 1
+  cockpit_timeout "$timeout_value" bash -lc "$(cockpit_login_command "$command")" >/dev/null 2>&1
 }
 
 # Grok has a login command but no `login status` subcommand. Its documented
@@ -150,7 +121,7 @@ cockpit_auth_grok_cache_ready() {
       [[ "$key_len" =~ ^[1-9][0-9]*$ ]] || continue
       [[ "$refresh_len" =~ ^[1-9][0-9]*$ ]] || continue
       [[ -n "$expires_at" ]] || continue
-      expiry="$(cockpit_auth_utc_epoch "$expires_at" 2>/dev/null || true)"
+      expiry="$(cockpit_utc_epoch "$expires_at" 2>/dev/null)" || expiry=''
       [[ "$expiry" =~ ^[0-9]+$ ]] || continue
       # A short grace period avoids a false negative during token rollover;
       # a stale cache still needs the native `grok login --oauth` flow.
@@ -352,7 +323,7 @@ cockpit_popup() {
   local title=$1
   shift
   local inner=$*
-  [[ -n "${TMUX:-}" ]] || { bash -lc "$inner"; return $?; }
+  [[ -n "${TMUX:-}" ]] || { bash -lc "$(cockpit_login_command "$inner")"; return $?; }
   if ! cockpit_popup_use_window; then
     tmux display-popup -E -w 88% -h 82% -T "$title" "$inner"
     return $?
@@ -364,7 +335,7 @@ cockpit_popup() {
   slug="$(cockpit_popup_slug "$title")"
   if ! tmux new-window -t "${sess}:" -n "$slug" \
     "exec cockpit-popup run $(printf %q "$ret") $(printf %q "$token") $(printf %q "$title") $(printf %q "$inner")"; then
-    bash -lc "$inner"
+    bash -lc "$(cockpit_login_command "$inner")"
     return $?
   fi
   tmux wait-for "$token"
@@ -383,7 +354,7 @@ cockpit_auth_ensure() {
   if [[ -n "${TMUX:-}" ]]; then
     cockpit_popup "Auth · $(cockpit_auth_label "$id")" "cockpit-auth run $(printf %q "$id")"
   else
-    bash -lc "$login" || true
+    bash -lc "$(cockpit_login_command "$login")" || true
   fi
   cockpit_auth_signed_in "$id"
 }

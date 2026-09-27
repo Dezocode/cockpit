@@ -343,7 +343,7 @@ auth_flow() {
   printf '%sStarting the native CLI OAuth flow in this SETUP pane:%s\n\n  %s\n\n' "$bright" "$reset" "$login"
   printf '%sComplete it, or press Ctrl-C if the CLI offers cancellation.%s\n\n' "$muted" "$reset"
   set +e
-  bash -lc "$login"
+  bash -lc "$(cockpit_login_command "$login")"
   st=$?
   set -e
   if provider_oauth_ready "$id"; then
@@ -387,7 +387,7 @@ provider_models() {
     if [[ -n "$command" ]]; then
       # Discovery is opt-in and happens only when MODEL is opened. Keep a
       # misbehaving provider command from blocking the SETUP terminal.
-      raw="$(cockpit_timeout 1 bash -lc "$command" 2>/dev/null || true)"
+      raw="$(cockpit_timeout 1 bash -lc "$(cockpit_login_command "$command")" 2>/dev/null || true)"
     fi
   fi
   # `models=` accepts comma- or pipe-separated values; discovery commands may
@@ -474,7 +474,7 @@ select_catalog_model() {
   apply="$(cockpit_auth_field "$id" model_apply 2>/dev/null || true)"
   if [[ -n "$apply" ]]; then
     printf '%sApplying %s · %s...%s\n\n' "$muted" "$(provider_label "$id")" "$model" "$reset"
-    if COCKPIT_PROVIDER="$id" COCKPIT_MODEL="$model" bash -lc "$apply"; then
+    if COCKPIT_PROVIDER="$id" COCKPIT_MODEL="$model" bash -lc "$(cockpit_login_command "$apply")"; then
       message="Selected $(provider_label "$id") · $model."
     else
       message="The model_apply hook failed for $(provider_label "$id") · $model."
@@ -835,7 +835,7 @@ shell_command() {
   [[ -n "$command" ]] || return 0
   printf '\n%sRUN%s  %s\n\n' "$blue" "$reset" "$command"
   set +e
-  bash -lc "$command"
+  bash -lc "$(cockpit_login_command "$command")"
   status=$?
   set -e
   message="Command exited with status $status."

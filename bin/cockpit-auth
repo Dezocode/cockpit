@@ -38,7 +38,7 @@ run_login() {
   printf '%s%s%s\n' "$muted" "Click outside this box to cancel. It closes on success." "$reset"
   printf '%s\n\n' "$login"
   set +e
-  bash -lc "$login"
+  bash -lc "$(cockpit_login_command "$login")"
   local st=$?
   set -e
   if cockpit_auth_signed_in "$id"; then
@@ -70,7 +70,7 @@ gate() {
   while true; do
     if cockpit_auth_signed_in "$id"; then
       if [[ -n "$ready" ]]; then
-        exec bash -lc "$ready"
+        exec bash -lc "$(cockpit_login_command "$ready")"
       fi
       printf '%s%s is signed in.%s\n' "$bright" "$label" "$reset"
       printf 'q to leave this pane idle.\n'
