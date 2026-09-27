@@ -395,9 +395,12 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
 
+      # rust-cache keys on job id + OS + arch, not the runner image: the
+      # desktop jobs on ubuntu-latest and ubuntu-22.04 would cross-restore.
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: app/src-tauri -> target
+          key: ci-${{ matrix.os }}
 
       - name: Install Linux deps (Tauri)
         if: runner.os == 'Linux'
