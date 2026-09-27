@@ -6,7 +6,7 @@
 _lib_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=cockpit-portable-lib
 source "$_lib_root/cockpit-portable-lib"
-cockpit_require_bash4
+cockpit_require_bash4 "$@"
 
 : "${COCKPIT_DEBOUNCE:=0.40}"
 : "${XDG_RUNTIME_DIR:=/tmp}"
