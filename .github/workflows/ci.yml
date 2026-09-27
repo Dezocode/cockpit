@@ -14,6 +14,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: ./.github/actions/setup-node-pnpm
+
+      - name: Build API for notify tests
+        working-directory: app
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm run build:server
+
       - name: Install ripgrep (tests/test-gev-provenance.sh needs rg in /usr/bin)
         run: |
           command -v rg >/dev/null 2>&1 || { sudo apt-get update -qq && sudo apt-get install -y -qq ripgrep; }
