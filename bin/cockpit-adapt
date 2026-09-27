@@ -78,7 +78,7 @@ done < <(tmux list-clients -t "$session" -F '#{client_width} #{client_height} #{
 # Phone-only: always the touch tab row, even if a leftover @cockpit_modality
 # says keyboard (that left Termius with a top bar and empty tab formats).
 if ((has_phone == 1 && has_desktop == 0)); then
-  modality=touch
+  modality='touch'
 fi
 want_tabs=0
 if ((phone == 1 && has_desktop == 0)); then
