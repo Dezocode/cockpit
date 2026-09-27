@@ -13,6 +13,7 @@ fakebin="$FIXTURE_FAKEBIN"
 mkdir -p "$test_home/.config/cockpit" "$test_home/.codex" "$test_home/.grok"
 
 export COCKPIT_AUTH_HOME="$HOME/.config/cockpit"
+export COCKPIT_AUTH_TIMEOUT=0.2s
 
 ln -s /bin/true "$fakebin/gh"
 ln -s /bin/true "$fakebin/codex"

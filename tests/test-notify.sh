@@ -263,7 +263,7 @@ start_api() {
   our_pids+=("$api_pid")
   for _ in $(seq 1 100); do
     kill -0 "$api_pid" 2>/dev/null || fail "api: server exited" "$(cat "$log")"
-    grep -q "listening on http://localhost:${api_port}" "$log" &&
+    grep -qE "listening on http://(localhost|127\\.0\\.0\\.1):${api_port}" "$log" &&
       curl -s -o /dev/null "http://127.0.0.1:${api_port}/api/health" && return 0
     sleep 0.1
   done
