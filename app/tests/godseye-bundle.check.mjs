@@ -86,10 +86,22 @@ function main() {
       process.exit(1);
     }
   }
+  // One @cesium/engine only. cesium@1.138.0 declares @cesium/widgets ^14.3.0, but
+  // widgets 14.5.0 needs engine ^24 — a second engine copy whose ContextLimits
+  // are never initialised (Viewer from one engine, entities from the other):
+  // "renderState.lineWidth is out of range" / "maximum texture size (0)".
+  // package.json pnpm.overrides pins the matched pair; guard it here.
+  const lock = readFileSync(join(appRoot, "pnpm-lock.yaml"), "utf8");
+  const engines = [...new Set([...lock.matchAll(/^ {2}'@cesium\/engine@([^']+)':$/gm)].map((m) => m[1]))];
+  const widgets = [...new Set([...lock.matchAll(/^ {2}'@cesium\/widgets@([^']+)':$/gm)].map((m) => m[1]))];
+  if (engines.length !== 1 || widgets.length !== 1) {
+    console.error(`godseye-bundle: expected exactly one @cesium/engine and @cesium/widgets, got engine=[${engines}] widgets=[${widgets}]`);
+    process.exit(1);
+  }
   const lazyFile = join(distDir, manifest[godsEyeKey].file);
   const lazyGz = gzipSize(lazyFile);
   console.log(
-    `godseye-bundle: ok (lazy, entry+${entryGz - baseline.entry_gz_bytes}B gz vs baseline, lazy=${lazyGz}B gz, index.html has no Cesium script, cesium assets copied)`,
+    `godseye-bundle: ok (lazy, entry+${entryGz - baseline.entry_gz_bytes}B gz vs baseline, lazy=${lazyGz}B gz, @cesium/engine@${engines[0]} single copy, index.html has no Cesium script, cesium assets copied)`,
   );
 }
 

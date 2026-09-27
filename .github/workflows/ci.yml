@@ -14,6 +14,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Install ripgrep (tests/test-gev-provenance.sh needs rg in /usr/bin)
+        run: |
+          command -v rg >/dev/null 2>&1 || { sudo apt-get update -qq && sudo apt-get install -y -qq ripgrep; }
+          test -x /usr/bin/rg
+
       - name: tests/*.sh (named skip list)
         shell: bash
         run: |
@@ -21,27 +26,37 @@ jobs:
           # sandbox: auth-needed / OAuth-ready asserts; termius "expected FILES, got AGENT").
           # Quarantined by exact name, never silently. Remove a name once it is fixed.
           skip=(test-auth-setup test-setup-flows test-termius-touch)
+          sandbox() {
+            env -i PATH=/usr/bin:/bin HOME="$(mktemp -d)" TMUX_TMPDIR="$(mktemp -d)" TERM=xterm \
+              timeout 600 bash "$1" </dev/null
+          }
           for s in "${skip[@]}"; do
             [[ -f "tests/$s.sh" ]] || { echo "stale skip entry: $s"; exit 1; }
           done
-          fail=0 ran=0
+          fail=0 ran=0 fixed=0
           for t in tests/test-*.sh; do
             n=$(basename "$t" .sh)
             if [[ " ${skip[*]} " == *" $n "* ]]; then
-              echo "SKIP $n (pre-existing failure at e7a1687)"
+              # Quarantine must stay honest: a skipped test is still run, and
+              # the job fails if it now passes (it must leave the skip list).
+              if sandbox "$t" >"$RUNNER_TEMP/quarantine-$n.log" 2>&1; then
+                echo "::error::quarantined test now passes, remove from skip list: $n"
+                fixed=1
+              else
+                echo "SKIP $n (quarantined; still fails as recorded at e7a1687)"
+              fi
               continue
             fi
             ran=$((ran + 1))
-            if env -i PATH=/usr/bin:/bin HOME="$(mktemp -d)" TMUX_TMPDIR="$(mktemp -d)" TERM=xterm \
-                bash "$t" </dev/null; then
+            if sandbox "$t"; then
               echo "PASS $n"
             else
               echo "FAIL $n"
               fail=1
             fi
           done
-          echo "shell tests: ran=$ran skipped=${#skip[@]} failed=$fail"
-          [[ "$ran" -gt 0 && "$fail" -eq 0 ]]
+          echo "shell tests: ran=$ran skipped=${#skip[@]} failed=$fail quarantine_now_passing=$fixed"
+          [[ "$ran" -gt 0 && "$fail" -eq 0 && "$fixed" -eq 0 ]]
 
   verify:
     runs-on: ubuntu-latest
@@ -73,8 +88,6 @@ jobs:
         run: |
           pnpm exec playwright install --with-deps chromium
           node --test 'src/panels/godseye/**/*.test.mjs'
-          pnpm build
-          pnpm run build:server
           node tests/godseye-bundle.check.mjs
           xvfb-run -a node tests/godseye-panel.e2e.mjs
 

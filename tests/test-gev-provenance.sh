@@ -3,24 +3,37 @@ set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$root"
 
+# Without ripgrep every `rg ... && exit 1 || true` probe below would pass vacuously.
+command -v rg >/dev/null 2>&1 || { echo "gev-provenance: ripgrep (rg) is required" >&2; exit 1; }
+
 PORTMAP="$root/third_party/gods-eye-view/PORTMAP.tsv"
 if [[ ! -f "$PORTMAP" ]]; then
   echo "gev-provenance: missing PORTMAP" >&2
   exit 1
 fi
 
+# Columns (gospels/C10.md HARD PART 8): row upstream_path upstream_lines cockpit_path mode card
 rows=0
-while IFS= read -r line || [[ -n "$line" ]]; do
-  [[ -z "$line" || "$line" =~ ^# ]] && continue
-  mode="$(echo "$line" | awk -F'\t' '{print $4}')"
-  dest="$(echo "$line" | awk -F'\t' '{print $3}')"
+dests=()
+while IFS=$'\t' read -r row upstream lines dest mode card || [[ -n "$row" ]]; do
+  [[ -z "$row" || "$row" == \#* ]] && continue
+  if [[ -z "$dest" || -z "$mode" || -z "$card" ]]; then
+    echo "gev-provenance: malformed PORTMAP row: $row $upstream" >&2
+    exit 1
+  fi
   [[ "$mode" == "TRIVIAL" ]] && continue
   rows=$((rows + 1))
   if [[ ! -e "$root/$dest" ]]; then
     echo "gev-provenance: missing $dest" >&2
     exit 1
   fi
+  dests+=("$dest")
 done < "$PORTMAP"
+[[ "$rows" -gt 0 ]] || { echo "gev-provenance: PORTMAP has no rows" >&2; exit 1; }
+
+# Every non-TRIVIAL PORTMAP destination carries the provenance header.
+missing_rows=$(rg --files-without-match 'Ported from bilawalsidhu/gods-eye-view@b210ab0fe4d71c7faa0268134e0aa5f3c53fc7fe' "${dests[@]}" || true)
+if [[ -n "$missing_rows" ]]; then echo "gev-provenance: header missing: $missing_rows" >&2; exit 1; fi
 
 must_absent() {
   git ls-files | rg -i 'telegeography|bhote|local_data/|public/models/|public/events/' && exit 1 || true

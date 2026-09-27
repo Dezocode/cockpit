@@ -71,3 +71,64 @@ export function mapFleetRoster({
   const local = placed.find((n) => n.id === 'local') ?? null;
   return { placed, unplaced, local, offlineThresholdMs: threshold };
 }
+
+/**
+ * Arcs run from the local node to every other placed node, labelled with the
+ * node's latency. Pure (no cesium) so the arc path is node-testable even when
+ * the live roster has a single placed node and therefore draws no arc.
+ * @param {{ placed: import('./fleetModel.d.mts').PlacedNode[], local: import('./fleetModel.d.mts').PlacedNode | null }} mapped
+ */
+export function computeFleetArcs({ placed, local }) {
+  if (!local) return [];
+  const arcs = [];
+  for (const node of placed) {
+    if (node.id === local.id) continue;
+    arcs.push({
+      id: `${local.id}->${node.id}`,
+      fromId: local.id,
+      toId: node.id,
+      from: local.geo,
+      to: node.geo,
+      midpoint: geodesicMidpoint(local.geo, node.geo),
+      latencyMs: node.latencyMs,
+      label: `${node.latencyMs} ms`,
+      colorToken: node.colorToken,
+    });
+  }
+  return arcs;
+}
+
+/** Great-circle midpoint of two {lat, lon} points in degrees. */
+export function geodesicMidpoint(a, b) {
+  const rad = Math.PI / 180;
+  const lat1 = a.lat * rad;
+  const lat2 = b.lat * rad;
+  const dLon = (b.lon - a.lon) * rad;
+  const bx = Math.cos(lat2) * Math.cos(dLon);
+  const by = Math.cos(lat2) * Math.sin(dLon);
+  const lat = Math.atan2(
+    Math.sin(lat1) + Math.sin(lat2),
+    Math.sqrt((Math.cos(lat1) + bx) ** 2 + by ** 2),
+  );
+  const lon = a.lon * rad + Math.atan2(by, Math.cos(lat1) + bx);
+  let lonDeg = lon / rad;
+  if (lonDeg > 180) lonDeg -= 360;
+  if (lonDeg < -180) lonDeg += 360;
+  return { lat: lat / rad, lon: lonDeg };
+}
+
+/**
+ * Clamp a requested polyline width into the GL-supported aliased line width
+ * range (gl.ALIASED_LINE_WIDTH_RANGE). ANGLE/SwiftShader (headless CI) and
+ * most desktop ANGLE builds report [1, 1]; an unknown or malformed range
+ * falls back to width 1 so arcs always draw.
+ * @param {number} requested
+ * @param {ArrayLike<number> | null | undefined} range
+ */
+export function clampLineWidth(requested, range) {
+  const want = Number.isFinite(requested) && requested > 0 ? requested : 1;
+  const min = Number(range?.[0]);
+  const max = Number(range?.[1]);
+  if (!Number.isFinite(min) || !Number.isFinite(max) || max < 1 || min > max) return 1;
+  return Math.min(Math.max(want, Math.max(1, min)), max);
+}

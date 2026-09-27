@@ -52,5 +52,11 @@
   },
   "optionalDependencies": {
     "node-pty": "^1.0.0"
+  },
+  "pnpm": {
+    "overrides": {
+      "@cesium/engine": "22.3.0",
+      "@cesium/widgets": "14.3.0"
+    }
   }
 }

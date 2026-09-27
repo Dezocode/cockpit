@@ -39,3 +39,30 @@ export declare function mapFleetRoster(args: {
 };
 
 export declare function assertComputersPayload(payload: unknown): ComputersPayload;
+
+export interface FleetArc {
+  id: string;
+  fromId: string;
+  toId: string;
+  from: { lat: number; lon: number };
+  to: { lat: number; lon: number };
+  midpoint: { lat: number; lon: number };
+  latencyMs: number;
+  label: string;
+  colorToken: 'accent' | 'active';
+}
+
+export declare function computeFleetArcs(mapped: {
+  placed: PlacedNode[];
+  local: PlacedNode | null;
+}): FleetArc[];
+
+export declare function geodesicMidpoint(
+  a: { lat: number; lon: number },
+  b: { lat: number; lon: number },
+): { lat: number; lon: number };
+
+export declare function clampLineWidth(
+  requested: number,
+  range: ArrayLike<number> | null | undefined,
+): number;
