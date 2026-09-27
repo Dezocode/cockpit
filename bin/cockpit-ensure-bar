@@ -32,10 +32,6 @@ bar="$(
     awk '$2 == "bar" { print $1; exit }'
 )"
 
-window_of() {
-  tmux display-message -p -t "$1" '#{window_id}' 2>/dev/null || true
-}
-
 tag_bar() {
   local pane=$1
   tmux select-pane -t "$pane" -T BAR 2>/dev/null || true
@@ -56,7 +52,7 @@ hide_from_tabs() {
 
 if [[ "$action" == "hide" ]]; then
   if [[ -n "$bar" ]]; then
-    if [[ "$(window_of "$bar")" == "$(window_of "$runtime")" ]]; then
+    if [[ "$(cockpit_window_of "$bar")" == "$(cockpit_window_of "$runtime")" ]]; then
       tmux break-pane -d -s "$bar" -n '.bar' 2>/dev/null || true
       hide_from_tabs "$bar"
     fi
@@ -67,7 +63,7 @@ if [[ "$action" == "hide" ]]; then
 fi
 
 if [[ -n "$bar" ]]; then
-  if [[ "$(window_of "$bar")" != "$(window_of "$runtime")" ]]; then
+  if [[ "$(cockpit_window_of "$bar")" != "$(cockpit_window_of "$runtime")" ]]; then
     # Only restore when looking at the agent, so FILES/DIFF are not stolen.
     rt_active="$(tmux display-message -p -t "$runtime" '#{window_active}' 2>/dev/null || echo 0)"
     if [[ "$rt_active" == "1" ]]; then

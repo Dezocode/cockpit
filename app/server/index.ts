@@ -8,6 +8,7 @@ import { execSync } from "node:child_process";
 import { createServer } from "node:http";
 import { WebSocketServer } from "ws";
 import { createHmac, timingSafeEqual, randomBytes } from "node:crypto";
+import { fleetNodesApp } from "./fleet/nodes.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = join(__dirname, "../..");
@@ -37,9 +38,10 @@ function healthCheck() {
   const tui = existsSync(join(root, "bin/cockpit"));
   const fixtures = existsSync(join(fixturesDir, "agents.json"));
   const web = existsSync(join(root, "app/dist/index.html"));
+  const api = existsSync(join(root, "app/dist-server/index.js"));
   const hostinger = process.env.COCKPIT_HOSTINGER === "1";
   const core = tui && fixtures;
-  const hostingerReady = !hostinger || web;
+  const hostingerReady = !hostinger || (web && api);
   return {
     status: core && hostingerReady ? "green" : "yellow",
     product: "cockpit",
@@ -49,8 +51,10 @@ function healthCheck() {
       fixtures: fixtures ? "ok" : "missing",
       gh_auth: gh.authenticated ? "ok" : "pending",
       web_build: web ? "ok" : "pending",
+      api_server: api ? "ok" : "pending",
       hostinger: hostinger ? "configured" : "local",
     },
+    source: "app/dist-server/index.js",
     gh,
     timestamp: new Date().toISOString(),
   };
@@ -142,18 +146,8 @@ app.post("/api/emulators/:id/launch", (c) => {
   });
 });
 
-app.get("/api/computers", (c) =>
-  c.json({
-    computers: [
-      { id: "local", name: "Local Dev", status: "online", latencyMs: 0, tailnet: false },
-      { id: "hermes", name: "Hermes Deck", status: "online", latencyMs: 12, tailnet: true, role: "hermes" },
-      { id: "hostinger", name: "Hostinger VPS", status: "online", latencyMs: 42, tailnet: true },
-      { id: "omarchy", name: "Omarchy Pad", status: "online", latencyMs: 8, tailnet: false },
-    ],
-    offlineThresholdMs: 3000,
-    hermesNote: "Deck receipt / COMPUTERS node — NOT an AGENT provider",
-  }),
-);
+app.route("/", fleetNodesApp);
+
 app.get("/api/memory", (c) =>
   c.json({
     entries: [

@@ -1,0 +1,34 @@
+.chip {
+  border: 1px solid var(--cockpit-border);
+  background: transparent;
+  color: var(--cockpit-chrome);
+  font-family: var(--cockpit-font);
+  font-size: 0.65rem;
+  padding: 0.15rem 0.4rem;
+  cursor: pointer;
+}
+
+.cyan {
+  border-color: var(--cockpit-chrome);
+  color: var(--cockpit-chrome);
+}
+
+.magenta {
+  border-color: var(--cockpit-active);
+  color: var(--cockpit-active);
+  background: color-mix(in srgb, var(--cockpit-active) 12%, transparent);
+}
+
+.warn {
+  border-color: var(--cockpit-accent-alt);
+  color: var(--cockpit-accent-alt);
+}
+
+.active {
+  box-shadow: 0 0 0 1px var(--cockpit-focus-ring);
+}
+
+.chip:focus-visible {
+  outline: 2px solid var(--cockpit-focus-ring);
+  outline-offset: 1px;
+}

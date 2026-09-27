@@ -1,0 +1,63 @@
+# t12u-live CPR score — Hostinger-LIVE visual multiview (Proctor)
+# Card: cursor-cockpit2-visual-multiview-t12u-next
+# Soft holds BANNED. soft_steer ≠ score.
+
+score_id: t12u-live-cpr
+card_id: cursor-cockpit2-visual-multiview-t12u-next
+parent_card: cursor-cockpit2-visual-multiview-t12u
+status: kick_ready
+verdict: residuals_closed
+prior_run: bc-e1c5cc28
+proofs_root: proofs/t12u/t384u-hostinger/
+capture_profile: hostinger-live
+release_floor: v2.2.0
+optional_release: v2.2.1
+optional_release_ref: e84669b
+
+residual_hashes:
+  theme-ghui-cyan.png: d71fc43377ef96cacf28c8bdeea45c98
+  focus-rings.png: f57effdca4a0b80261746ffb18aeb550
+  fullscreen.png: 0aea3fd49bf583b113068ac5df6d8831
+  graph-resize.png: 20cf82790ebae84124809e38c9bc9e8c
+residual_hashes_unique_ok: true
+residuals_closed_at: "2026-09-07T17:54:00Z"
+residuals_source: canon-hostinger-live
+
+policy:
+  soft_holds: banned
+  soft_steer_is_score: false
+  deny_local_qwen: true
+  deny_saul: true
+  pr_state: draft
+  gh_auth_pending_ok: true
+
+keep_gates:
+  github_release_gte_v2_2_0: pass
+  hostinger_h0_green: pass
+  install_sh_cockpit_path_alias: pass
+  pre_auth_splash_post_auth_staging: pass
+  themes_fieldset_dark_high_contrast: pass
+  foot_funnel_off: pass
+
+close_only:
+  distinct_action_frames_unique_md5:
+    gate: residual_hashes
+    count: 4
+    required: true
+  theme_ghui_cyan_proof:
+    file: theme-ghui-cyan.png
+    min_themes: 3
+    required: true
+  manifest_residuals_closed:
+    field: residuals_closed_at
+    required: true
+
+residuals:
+  gh_auth: pending
+  live_vps_certbot: script_ready
+  v2_2_1_merge: waits_dezocode
+
+verify:
+  - ./proofs/t12u/t384u-hostinger/verify-residuals.sh
+  - ./bench/cockpit/hostinger-h0-verify.sh
+  - ./bench/cockpit/capability-matrix.sh

@@ -1,0 +1,56 @@
+.root {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  height: 100%;
+  color: var(--cockpit-text);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  font-size: 0.75rem;
+  color: var(--cockpit-chrome);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(9rem, 1fr));
+  gap: 0.35rem;
+  overflow: auto;
+  flex: 1;
+}
+
+.card {
+  border: 1px solid var(--cockpit-border-muted);
+  background: color-mix(in srgb, var(--cockpit-surface) 80%, transparent);
+  padding: 0.35rem;
+  text-align: left;
+  font-size: 0.65rem;
+  cursor: pointer;
+  color: var(--cockpit-text);
+}
+
+.card:hover {
+  border-color: var(--cockpit-chrome);
+}
+
+.cardActive {
+  border-color: var(--cockpit-active);
+  box-shadow: 0 0 0 1px var(--cockpit-active);
+}
+
+.meta {
+  color: var(--cockpit-muted);
+  font-size: 0.6rem;
+}
+
+.badge {
+  color: var(--cockpit-chrome);
+}
+
+.badgeWarn {
+  color: var(--cockpit-accent-alt);
+}

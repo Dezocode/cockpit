@@ -1,0 +1,1 @@
+{"status":"green","product":"cockpit","seed":"cockpit-20260907","checks":{"tui":"ok","fixtures":"ok","gh_auth":"ok","web_build":"ok","api_server":"ok","hostinger":"configured"},"source":"app/dist-server/index.js","gh":{"authenticated":true,"user":"cursor","host":"github.com"},"timestamp":"2026-09-07T08:28:08.158Z"}

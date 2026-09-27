@@ -1,13 +1,18 @@
 #!/usr/bin/env bash
-# Hostinger install — separate Cockpit root at /opt/cockpit
+# Canonical Hostinger install — separate Cockpit root at /opt/cockpit.
 # Subscription envelope only. DENY /root/.grok · saul-go · local Qwen/sol-v1.7.1
+#
+# Deploy semantics (single path):
+#   rsync: -a --delete (mirror tree, drop removed files)
+#   systemd: packaging/systemd/cockpit-web.service → restart (fail if unit missing)
+#   nginx: packaging/nginx/cockpit.conf
 set -euo pipefail
 
 root="$(cd -- "$(dirname -- "$0")/.." && pwd)"
 COCKPIT_INSTALL_ROOT="${COCKPIT_INSTALL_ROOT:-/opt/cockpit}"
-export COCKPIT_INSTALL_HOSTINGER=1
-export COCKPIT_INSTALL_WEB_BUILD=1
 export COCKPIT_HOSTINGER=1
+# install.sh refuses the removed deploy gate; never forward it from the caller.
+unset COCKPIT_INSTALL_HOSTINGER
 
 case "$COCKPIT_INSTALL_ROOT" in
   /root/.grok*|*/saul-go*)
@@ -22,13 +27,15 @@ need_root() {
   [[ "$(id -u)" -eq 0 ]] || { printf 'Run as root for systemd/nginx: sudo %s\n' "$0"; exit 1; }
 }
 
-# User + TUI helpers (non-destructive to Surface tmux)
-export COCKPIT_INSTALL_WEB_BUILD=1
-"$root/install.sh"
-
-# Web build
 if [[ -d "$root/app" ]]; then
   command -v pnpm >/dev/null 2>&1 || { printf 'pnpm required\n'; exit 1; }
+fi
+
+# User-level helpers only. The web build runs exactly once, below, where a
+# failure aborts the deploy (install.sh's optional build swallows errors).
+COCKPIT_INSTALL_WEB_BUILD=0 "$root/install.sh"
+
+if [[ -d "$root/app" ]]; then
   (cd "$root/app" && pnpm install && pnpm build && pnpm exec tsc -p tsconfig.server.json)
 fi
 
@@ -41,6 +48,9 @@ rsync -a --delete \
   --exclude .git \
   --exclude app/node_modules \
   "$root/" "$COCKPIT_INSTALL_ROOT/"
+
+printf '  → pnpm install --prod in %s/app\n' "$COCKPIT_INSTALL_ROOT"
+(cd "$COCKPIT_INSTALL_ROOT/app" && pnpm install --prod --frozen-lockfile)
 
 chown -R cockpit:cockpit "$COCKPIT_INSTALL_ROOT"
 chmod +x "$COCKPIT_INSTALL_ROOT/packaging/systemd/cockpit-web-heal.sh"
@@ -61,16 +71,9 @@ else
   printf '  ~ nginx: configure certbot then reload\n'
 fi
 
-port="${COCKPIT_WEB_PORT:-8787}"
-for _ in $(seq 1 30); do
-  if curl -sf "http://127.0.0.1:$port/api/health" >/dev/null 2>&1; then
-    curl -s "http://127.0.0.1:$port/api/health" | python3 -m json.tool
-    printf 'Hostinger install: health green\n'
-    exit 0
-  fi
-  sleep 0.5
-done
-
-journalctl -u cockpit-web -n 20 --no-pager 2>/dev/null || true
-printf 'Hostinger install: /api/health not green\n'
-exit 1
+"$root/scripts/hostinger-health.sh" --wait 30 || {
+  journalctl -u cockpit-web -n 20 --no-pager 2>/dev/null || true
+  printf 'Hostinger install: /api/health not green\n'
+  exit 1
+}
+printf 'Hostinger install: health green\n'

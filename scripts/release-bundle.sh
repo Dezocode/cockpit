@@ -3,7 +3,7 @@
 set -euo pipefail
 
 root="$(cd -- "$(dirname -- "$0")/.." && pwd)"
-version="${COCKPIT_VERSION:-2.1.4}"
+version="${COCKPIT_VERSION:-2.3.0-dev}"
 out="$root/dist/release"
 name="cockpit-${version}"
 staging="$out/$name"
@@ -15,7 +15,7 @@ printf 'Building cockpit %s release bundle\n' "$version"
 
 # TUI (preserved)
 cp -a "$root/bin/cockpit"* "$staging/bin/" 2>/dev/null || true
-cp -a "$root/bin/codex-cockpit"* "$staging/bin/" 2>/dev/null || true
+cp -a "$root/bin/cockpit-legacy-alias" "$root/bin/cockpit-legacy-names.list" "$staging/bin/" 2>/dev/null || true
 cp -a "$root/bin/cpr" "$staging/bin/" 2>/dev/null || true
 cp -a "$root/install.sh" "$staging/"
 cp -a "$root/LICENSE" "$staging/"
@@ -25,9 +25,7 @@ cp -a "$root/stage" "$staging/stage"
 cp -a "$root/fixtures" "$staging/fixtures"
 cp -a "$root/packaging" "$staging/packaging" 2>/dev/null || true
 cp -a "$root/tmp/t847u" "$staging/tmp/t847u" 2>/dev/null || true
-cp -a "$root/deploy/cockpit-web.service" "$root/deploy/nginx-cockpit.conf" \
-  "$root/deploy/hostinger-grok-build-install.sh" "$staging/deploy/" 2>/dev/null || true
-cp -a "$root/scripts/install-hostinger.sh" "$root/scripts/hostinger-grok-build.sh" \
+cp -a "$root/scripts/install-hostinger.sh" \
   "$root/scripts/hostinger-health.sh" "$staging/scripts/" 2>/dev/null || true
 cp -a "$root/bench/cockpit" "$staging/bench/cockpit"
 cp -a "$root/marketing" "$staging/marketing"
@@ -50,9 +48,7 @@ Seed: cockpit-20260907
 Install TUI: ./install.sh
 Install web: COCKPIT_INSTALL_WEB_BUILD=1 ./install.sh
 Hostinger: ./scripts/install-hostinger.sh
-Hostinger grok-build: ./deploy/hostinger-grok-build-install.sh
-Hostinger grok-build (curl path): ./scripts/hostinger-grok-build.sh
-Health: ./scripts/hostinger-health.sh
+Health: ./scripts/hostinger-health.sh --wait
 Install root: /opt/cockpit (NOT /root/.grok or saul-go)
 EOF
 
@@ -68,10 +64,8 @@ cp -a "$staging/app/package.json" "$out/${name}-web/"
 cp -a "$root/packaging/systemd/cockpit-web.service" "$root/packaging/systemd/cockpit-web-heal.sh" \
   "$out/${name}-web/packaging/systemd/"
 cp -a "$root/packaging/nginx/cockpit.conf" "$out/${name}-web/packaging/nginx/"
-cp -a "$root/scripts/install-hostinger.sh" "$root/scripts/hostinger-grok-build.sh" \
+cp -a "$root/scripts/install-hostinger.sh" \
   "$root/scripts/hostinger-health.sh" "$out/${name}-web/scripts/"
-cp -a "$root/deploy/cockpit-web.service" "$root/deploy/nginx-cockpit.conf" \
-  "$root/deploy/hostinger-grok-build-install.sh" "$out/${name}-web/deploy/"
 tar -czf "$out/${name}-web.tar.gz" -C "$out" "${name}-web"
 
 printf 'Release artifacts:\n'

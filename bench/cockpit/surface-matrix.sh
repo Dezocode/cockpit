@@ -3,21 +3,12 @@
 set -euo pipefail
 
 root="$(cd -- "$(dirname -- "$0")/../.." && pwd)"
-pass=0
-fail=0
+# shellcheck source=lib/matrix.sh
+source "$root/bench/cockpit/lib/matrix.sh"
 
-check() {
-  local name=$1 result=$2
-  if [[ "$result" == ok ]]; then
-    printf '  ✓ %s\n' "$name"
-    pass=$((pass + 1))
-  else
-    printf '  ✗ %s\n' "$name"
-    fail=$((fail + 1))
-  fi
-}
+matrix_begin 'Surface capability matrix (TUI ↔ GUI)'
 
-printf 'Surface capability matrix (TUI ↔ GUI)\n\n'
+check() { matrix_check "$@"; }
 
 # Pages that must exist in BOTH surfaces
 declare -A tui gui
@@ -51,5 +42,4 @@ grep -rq 'sizeOwning\|size-owning' "$root/app" "$root/bin" 2>/dev/null && check 
 # Funnel OFF
 grep -rq 'Funnel OFF\|funnel.*OFF' "$root/app" 2>/dev/null && check "Funnel OFF" ok || check "Funnel OFF" fail
 
-printf '\nSurface: pass=%d fail=%d\n' "$pass" "$fail"
-[[ "$fail" -eq 0 ]]
+matrix_end

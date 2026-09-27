@@ -2,54 +2,82 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, cockpit-gtm-v2.3]
   pull_request:
-    branches: [main]
+    branches: [main, cockpit-gtm-v2.3]
 
 jobs:
+  # tests/*.sh in a clean sandbox (env -i, temp HOME/TMUX_TMPDIR, stdin </dev/null).
+  # Separate job so it never conflicts with steps appended to `verify`.
+  shell-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install ripgrep (tests/test-gev-provenance.sh needs rg in /usr/bin)
+        run: |
+          command -v rg >/dev/null 2>&1 || { sudo apt-get update -qq && sudo apt-get install -y -qq ripgrep; }
+          test -x /usr/bin/rg
+
+      - name: tests/*.sh (named skip list)
+        shell: bash
+        run: |
+          # Quarantine by exact name, never silently; a quarantined test is still
+          # run and the job fails once it passes. test-auth-setup, test-setup-flows
+          # and test-termius-touch were quarantined in C2 fix (d642070) from a
+          # workstation sandbox (its login shell resets PATH past the fakebin);
+          # on ubuntu-latest all three pass (run 36323026888), so the list is empty.
+          skip=()
+          sandbox() {
+            env -i PATH=/usr/bin:/bin HOME="$(mktemp -d)" TMUX_TMPDIR="$(mktemp -d)" TERM=xterm \
+              timeout 600 bash "$1" </dev/null
+          }
+          for s in "${skip[@]}"; do
+            [[ -f "tests/$s.sh" ]] || { echo "stale skip entry: $s"; exit 1; }
+          done
+          fail=0 ran=0 fixed=0
+          for t in tests/test-*.sh; do
+            n=$(basename "$t" .sh)
+            if [[ " ${skip[*]} " == *" $n "* ]]; then
+              # Quarantine must stay honest: a skipped test is still run, and
+              # the job fails if it now passes (it must leave the skip list).
+              if sandbox "$t" >"$RUNNER_TEMP/quarantine-$n.log" 2>&1; then
+                echo "::error::quarantined test now passes, remove from skip list: $n"
+                fixed=1
+              else
+                echo "SKIP $n (quarantined; still fails as recorded at e7a1687)"
+              fi
+              continue
+            fi
+            ran=$((ran + 1))
+            if sandbox "$t"; then
+              echo "PASS $n"
+            else
+              echo "FAIL $n"
+              fail=1
+            fi
+          done
+          echo "shell tests: ran=$ran skipped=${#skip[@]} failed=$fail quarantine_now_passing=$fixed"
+          [[ "$ran" -gt 0 && "$fail" -eq 0 && "$fixed" -eq 0 ]]
+
   verify:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 9
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          cache: 'pnpm'
-          cache-dependency-path: app/pnpm-lock.yaml
+      - uses: ./.github/actions/setup-node-pnpm
 
       - name: Build web + API
         working-directory: app
         run: |
           pnpm install --frozen-lockfile
           pnpm build
-          pnpm exec tsc -p tsconfig.server.json
+          pnpm run build:server
 
       - name: Capability matrix
         run: bash bench/cockpit/capability-matrix.sh
 
-      - name: Prove GET /api/health
-        run: |
-          COCKPIT_HOSTINGER=1 node app/dist-server/index.js &
-          pid=$!
-          trap 'kill $pid 2>/dev/null || true' EXIT
-          for _ in $(seq 1 40); do
-            curl -sf http://127.0.0.1:8787/api/health >/tmp/health.json && break
-            sleep 0.5
-          done
-          curl -sf http://127.0.0.1:8787/api/health | tee /tmp/health.json
-          python3 - <<'PY'
-          import json
-          d = json.load(open("/tmp/health.json"))
-          assert d["product"] == "cockpit"
-          assert d["status"] in ("green", "yellow")
-          assert d["checks"]["hostinger"] == "configured"
-          print("health ok:", d["status"])
-          PY
+      - uses: ./.github/actions/prove-health
 
       - name: Hostinger H0 verify
         run: bash bench/cockpit/hostinger-h0-verify.sh
@@ -57,7 +85,16 @@ jobs:
       - name: Surface matrix (TUI KEEP)
         run: bash bench/cockpit/surface-matrix.sh
 
-      - name: scripts/hostinger-grok-build → deploy wrapper
+      - name: C10 God's Eye panel tests
+        working-directory: app
         run: |
-          test -x scripts/hostinger-grok-build.sh
-          grep -q deploy/hostinger-grok-build-install.sh scripts/hostinger-grok-build.sh
+          pnpm exec playwright install --with-deps chromium
+          node --test 'src/panels/godseye/**/*.test.mjs'
+          node tests/godseye-bundle.check.mjs
+          xvfb-run -a node tests/godseye-panel.e2e.mjs
+
+      - name: Canonical Hostinger install script
+        run: |
+          test -x scripts/install-hostinger.sh
+          grep -q 'packaging/systemd/cockpit-web.service' scripts/install-hostinger.sh
+          grep -q 'scripts/hostinger-health.sh' scripts/install-hostinger.sh
