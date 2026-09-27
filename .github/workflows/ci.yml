@@ -14,6 +14,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Executable cockpit CLIs (git file mode must be 100755)
+        run: chmod +x bin/cockpit bin/cockpit-notify
+
       - uses: ./.github/actions/setup-node-pnpm
 
       - name: Build API for notify tests
