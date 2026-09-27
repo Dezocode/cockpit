@@ -1,0 +1,1062 @@
+{
+  "Europe/Andorra": {
+    "lat": 42.5,
+    "lon": 1.5166666666666666
+  },
+  "Asia/Dubai": {
+    "lat": 25.3,
+    "lon": 55.3
+  },
+  "Asia/Kabul": {
+    "lat": 34.516666666666666,
+    "lon": 69.2
+  },
+  "Europe/Tirane": {
+    "lat": 41.333333333333336,
+    "lon": 19.833333333333332
+  },
+  "Asia/Yerevan": {
+    "lat": 40.18333333333333,
+    "lon": 44.5
+  },
+  "Antarctica/Casey": {
+    "lat": -66.28333333333333,
+    "lon": 110.51666666666667
+  },
+  "Antarctica/Davis": {
+    "lat": -68.58333333333333,
+    "lon": 77.96666666666667
+  },
+  "Antarctica/Mawson": {
+    "lat": -67.6,
+    "lon": 62.88333333333333
+  },
+  "Antarctica/Palmer": {
+    "lat": -64.8,
+    "lon": -64.1
+  },
+  "Antarctica/Rothera": {
+    "lat": -67.56666666666666,
+    "lon": -68.13333333333334
+  },
+  "Antarctica/Vostok": {
+    "lat": -78.4,
+    "lon": 106.9
+  },
+  "America/Argentina/Buenos_Aires": {
+    "lat": -34.6,
+    "lon": -58.45
+  },
+  "America/Argentina/Cordoba": {
+    "lat": -31.4,
+    "lon": -64.18333333333334
+  },
+  "America/Argentina/Salta": {
+    "lat": -24.783333333333335,
+    "lon": -65.41666666666667
+  },
+  "America/Argentina/Jujuy": {
+    "lat": -24.183333333333334,
+    "lon": -65.3
+  },
+  "America/Argentina/Tucuman": {
+    "lat": -26.816666666666666,
+    "lon": -65.21666666666667
+  },
+  "America/Argentina/Catamarca": {
+    "lat": -28.466666666666665,
+    "lon": -65.78333333333333
+  },
+  "America/Argentina/La_Rioja": {
+    "lat": -29.433333333333334,
+    "lon": -66.85
+  },
+  "America/Argentina/San_Juan": {
+    "lat": -31.533333333333335,
+    "lon": -68.51666666666667
+  },
+  "America/Argentina/Mendoza": {
+    "lat": -32.88333333333333,
+    "lon": -68.81666666666666
+  },
+  "America/Argentina/San_Luis": {
+    "lat": -33.31666666666667,
+    "lon": -66.35
+  },
+  "America/Argentina/Rio_Gallegos": {
+    "lat": -51.63333333333333,
+    "lon": -69.21666666666667
+  },
+  "America/Argentina/Ushuaia": {
+    "lat": -54.8,
+    "lon": -68.3
+  },
+  "Pacific/Pago_Pago": {
+    "lat": -14.266666666666667,
+    "lon": -170.7
+  },
+  "Europe/Vienna": {
+    "lat": 48.21666666666667,
+    "lon": 16.333333333333332
+  },
+  "Australia/Lord_Howe": {
+    "lat": -31.55,
+    "lon": 159.08333333333334
+  },
+  "Antarctica/Macquarie": {
+    "lat": -54.5,
+    "lon": 158.95
+  },
+  "Australia/Hobart": {
+    "lat": -42.88333333333333,
+    "lon": 147.31666666666666
+  },
+  "Australia/Melbourne": {
+    "lat": -37.81666666666667,
+    "lon": 144.96666666666667
+  },
+  "Australia/Sydney": {
+    "lat": -33.86666666666667,
+    "lon": 151.21666666666667
+  },
+  "Australia/Broken_Hill": {
+    "lat": -31.95,
+    "lon": 141.45
+  },
+  "Australia/Brisbane": {
+    "lat": -27.466666666666665,
+    "lon": 153.03333333333333
+  },
+  "Australia/Lindeman": {
+    "lat": -20.266666666666666,
+    "lon": 149
+  },
+  "Australia/Adelaide": {
+    "lat": -34.916666666666664,
+    "lon": 138.58333333333334
+  },
+  "Australia/Darwin": {
+    "lat": -12.466666666666667,
+    "lon": 130.83333333333334
+  },
+  "Australia/Perth": {
+    "lat": -31.95,
+    "lon": 115.85
+  },
+  "Australia/Eucla": {
+    "lat": -31.716666666666665,
+    "lon": 128.86666666666667
+  },
+  "Asia/Baku": {
+    "lat": 40.38333333333333,
+    "lon": 49.85
+  },
+  "America/Barbados": {
+    "lat": 13.1,
+    "lon": -59.61666666666667
+  },
+  "Asia/Dhaka": {
+    "lat": 23.716666666666665,
+    "lon": 90.41666666666667
+  },
+  "Europe/Brussels": {
+    "lat": 50.833333333333336,
+    "lon": 4.333333333333333
+  },
+  "Europe/Sofia": {
+    "lat": 42.68333333333333,
+    "lon": 23.316666666666666
+  },
+  "Atlantic/Bermuda": {
+    "lat": 32.28333333333333,
+    "lon": -64.76666666666667
+  },
+  "America/La_Paz": {
+    "lat": -16.5,
+    "lon": -68.15
+  },
+  "America/Noronha": {
+    "lat": -3.85,
+    "lon": -32.416666666666664
+  },
+  "America/Belem": {
+    "lat": -1.45,
+    "lon": -48.483333333333334
+  },
+  "America/Fortaleza": {
+    "lat": -3.716666666666667,
+    "lon": -38.5
+  },
+  "America/Recife": {
+    "lat": -8.05,
+    "lon": -34.9
+  },
+  "America/Araguaina": {
+    "lat": -7.2,
+    "lon": -48.2
+  },
+  "America/Maceio": {
+    "lat": -9.666666666666666,
+    "lon": -35.71666666666667
+  },
+  "America/Bahia": {
+    "lat": -12.983333333333333,
+    "lon": -38.516666666666666
+  },
+  "America/Sao_Paulo": {
+    "lat": -23.533333333333335,
+    "lon": -46.61666666666667
+  },
+  "America/Campo_Grande": {
+    "lat": -20.45,
+    "lon": -54.61666666666667
+  },
+  "America/Cuiaba": {
+    "lat": -15.583333333333334,
+    "lon": -56.083333333333336
+  },
+  "America/Santarem": {
+    "lat": -2.4333333333333336,
+    "lon": -54.86666666666667
+  },
+  "America/Porto_Velho": {
+    "lat": -8.766666666666667,
+    "lon": -63.9
+  },
+  "America/Boa_Vista": {
+    "lat": 2.8166666666666664,
+    "lon": -60.666666666666664
+  },
+  "America/Manaus": {
+    "lat": -3.1333333333333333,
+    "lon": -60.016666666666666
+  },
+  "America/Eirunepe": {
+    "lat": -6.666666666666667,
+    "lon": -69.86666666666666
+  },
+  "America/Rio_Branco": {
+    "lat": -9.966666666666667,
+    "lon": -67.8
+  },
+  "Asia/Thimphu": {
+    "lat": 27.466666666666665,
+    "lon": 89.65
+  },
+  "Europe/Minsk": {
+    "lat": 53.9,
+    "lon": 27.566666666666666
+  },
+  "America/Belize": {
+    "lat": 17.5,
+    "lon": -88.2
+  },
+  "America/St_Johns": {
+    "lat": 47.56666666666667,
+    "lon": -52.71666666666667
+  },
+  "America/Halifax": {
+    "lat": 44.65,
+    "lon": -63.6
+  },
+  "America/Glace_Bay": {
+    "lat": 46.2,
+    "lon": -59.95
+  },
+  "America/Moncton": {
+    "lat": 46.1,
+    "lon": -64.78333333333333
+  },
+  "America/Goose_Bay": {
+    "lat": 53.333333333333336,
+    "lon": -60.416666666666664
+  },
+  "America/Toronto": {
+    "lat": 43.65,
+    "lon": -79.38333333333334
+  },
+  "America/Iqaluit": {
+    "lat": 63.733333333333334,
+    "lon": -68.46666666666667
+  },
+  "America/Winnipeg": {
+    "lat": 49.88333333333333,
+    "lon": -97.15
+  },
+  "America/Regina": {
+    "lat": 50.4,
+    "lon": -104.65
+  },
+  "America/Swift_Current": {
+    "lat": 50.28333333333333,
+    "lon": -107.83333333333333
+  },
+  "America/Edmonton": {
+    "lat": 53.55,
+    "lon": -113.46666666666667
+  },
+  "America/Dawson_Creek": {
+    "lat": 55.766666666666666,
+    "lon": -120.23333333333333
+  },
+  "America/Fort_Nelson": {
+    "lat": 58.8,
+    "lon": -122.7
+  },
+  "America/Whitehorse": {
+    "lat": 60.71666666666667,
+    "lon": -135.05
+  },
+  "America/Dawson": {
+    "lat": 64.06666666666666,
+    "lon": -139.41666666666666
+  },
+  "America/Vancouver": {
+    "lat": 49.266666666666666,
+    "lon": -123.11666666666666
+  },
+  "Europe/Zurich": {
+    "lat": 47.38333333333333,
+    "lon": 8.533333333333333
+  },
+  "Africa/Abidjan": {
+    "lat": 5.316666666666666,
+    "lon": -4.033333333333333
+  },
+  "Pacific/Rarotonga": {
+    "lat": -21.233333333333334,
+    "lon": -159.76666666666668
+  },
+  "America/Santiago": {
+    "lat": -33.45,
+    "lon": -70.66666666666667
+  },
+  "America/Coyhaique": {
+    "lat": -45.56666666666667,
+    "lon": -72.06666666666666
+  },
+  "America/Punta_Arenas": {
+    "lat": -53.15,
+    "lon": -70.91666666666667
+  },
+  "Pacific/Easter": {
+    "lat": -27.15,
+    "lon": -109.43333333333334
+  },
+  "Asia/Shanghai": {
+    "lat": 31.233333333333334,
+    "lon": 121.46666666666667
+  },
+  "Asia/Urumqi": {
+    "lat": 43.8,
+    "lon": 87.58333333333333
+  },
+  "America/Bogota": {
+    "lat": 4.6,
+    "lon": -74.08333333333333
+  },
+  "America/Costa_Rica": {
+    "lat": 9.933333333333334,
+    "lon": -84.08333333333333
+  },
+  "America/Havana": {
+    "lat": 23.133333333333333,
+    "lon": -82.36666666666666
+  },
+  "Atlantic/Cape_Verde": {
+    "lat": 14.916666666666666,
+    "lon": -23.516666666666666
+  },
+  "Asia/Nicosia": {
+    "lat": 35.166666666666664,
+    "lon": 33.36666666666667
+  },
+  "Asia/Famagusta": {
+    "lat": 35.11666666666667,
+    "lon": 33.95
+  },
+  "Europe/Prague": {
+    "lat": 50.083333333333336,
+    "lon": 14.433333333333334
+  },
+  "Europe/Berlin": {
+    "lat": 52.5,
+    "lon": 13.366666666666667
+  },
+  "America/Santo_Domingo": {
+    "lat": 18.466666666666665,
+    "lon": -69.9
+  },
+  "Africa/Algiers": {
+    "lat": 36.78333333333333,
+    "lon": 3.05
+  },
+  "America/Guayaquil": {
+    "lat": -2.1666666666666665,
+    "lon": -79.83333333333333
+  },
+  "Pacific/Galapagos": {
+    "lat": -0.9,
+    "lon": -89.6
+  },
+  "Europe/Tallinn": {
+    "lat": 59.416666666666664,
+    "lon": 24.75
+  },
+  "Africa/Cairo": {
+    "lat": 30.05,
+    "lon": 31.25
+  },
+  "Africa/El_Aaiun": {
+    "lat": 27.15,
+    "lon": -13.2
+  },
+  "Europe/Madrid": {
+    "lat": 40.4,
+    "lon": -3.6833333333333336
+  },
+  "Africa/Ceuta": {
+    "lat": 35.88333333333333,
+    "lon": -5.316666666666666
+  },
+  "Atlantic/Canary": {
+    "lat": 28.1,
+    "lon": -15.4
+  },
+  "Europe/Helsinki": {
+    "lat": 60.166666666666664,
+    "lon": 24.966666666666665
+  },
+  "Pacific/Fiji": {
+    "lat": -18.133333333333333,
+    "lon": 178.41666666666666
+  },
+  "Atlantic/Stanley": {
+    "lat": -51.7,
+    "lon": -57.85
+  },
+  "Pacific/Kosrae": {
+    "lat": 5.316666666666666,
+    "lon": 162.98333333333332
+  },
+  "Atlantic/Faroe": {
+    "lat": 62.016666666666666,
+    "lon": -6.766666666666667
+  },
+  "Europe/Paris": {
+    "lat": 48.86666666666667,
+    "lon": 2.3333333333333335
+  },
+  "Asia/Tbilisi": {
+    "lat": 41.71666666666667,
+    "lon": 44.81666666666667
+  },
+  "America/Cayenne": {
+    "lat": 4.933333333333334,
+    "lon": -52.333333333333336
+  },
+  "Europe/Gibraltar": {
+    "lat": 36.13333333333333,
+    "lon": -5.35
+  },
+  "America/Nuuk": {
+    "lat": 64.18333333333334,
+    "lon": -51.733333333333334
+  },
+  "America/Danmarkshavn": {
+    "lat": 76.76666666666667,
+    "lon": -18.666666666666668
+  },
+  "America/Scoresbysund": {
+    "lat": 70.48333333333333,
+    "lon": -21.966666666666665
+  },
+  "America/Thule": {
+    "lat": 76.56666666666666,
+    "lon": -68.78333333333333
+  },
+  "Europe/Athens": {
+    "lat": 37.96666666666667,
+    "lon": 23.716666666666665
+  },
+  "Atlantic/South_Georgia": {
+    "lat": -54.266666666666666,
+    "lon": -36.53333333333333
+  },
+  "America/Guatemala": {
+    "lat": 14.633333333333333,
+    "lon": -90.51666666666667
+  },
+  "Pacific/Guam": {
+    "lat": 13.466666666666667,
+    "lon": 144.75
+  },
+  "Africa/Bissau": {
+    "lat": 11.85,
+    "lon": -15.583333333333334
+  },
+  "America/Guyana": {
+    "lat": 6.8,
+    "lon": -58.166666666666664
+  },
+  "Asia/Hong_Kong": {
+    "lat": 22.283333333333335,
+    "lon": 114.15
+  },
+  "America/Tegucigalpa": {
+    "lat": 14.1,
+    "lon": -87.21666666666667
+  },
+  "America/Port-au-Prince": {
+    "lat": 18.533333333333335,
+    "lon": -72.33333333333333
+  },
+  "Europe/Budapest": {
+    "lat": 47.5,
+    "lon": 19.083333333333332
+  },
+  "Asia/Jakarta": {
+    "lat": -6.166666666666667,
+    "lon": 106.8
+  },
+  "Asia/Pontianak": {
+    "lat": -0.03333333333333333,
+    "lon": 109.33333333333333
+  },
+  "Asia/Makassar": {
+    "lat": -5.116666666666666,
+    "lon": 119.4
+  },
+  "Asia/Jayapura": {
+    "lat": -2.533333333333333,
+    "lon": 140.7
+  },
+  "Europe/Dublin": {
+    "lat": 53.333333333333336,
+    "lon": -6.25
+  },
+  "Asia/Kolkata": {
+    "lat": 22.533333333333335,
+    "lon": 88.36666666666666
+  },
+  "Indian/Chagos": {
+    "lat": -7.333333333333333,
+    "lon": 72.41666666666667
+  },
+  "Asia/Baghdad": {
+    "lat": 33.35,
+    "lon": 44.416666666666664
+  },
+  "Asia/Tehran": {
+    "lat": 35.666666666666664,
+    "lon": 51.43333333333333
+  },
+  "Europe/Rome": {
+    "lat": 41.9,
+    "lon": 12.483333333333333
+  },
+  "Asia/Amman": {
+    "lat": 31.95,
+    "lon": 35.93333333333333
+  },
+  "Africa/Nairobi": {
+    "lat": -1.2833333333333332,
+    "lon": 36.81666666666667
+  },
+  "Asia/Bishkek": {
+    "lat": 42.9,
+    "lon": 74.6
+  },
+  "Pacific/Tarawa": {
+    "lat": 1.4166666666666667,
+    "lon": 173
+  },
+  "Pacific/Kanton": {
+    "lat": -2.783333333333333,
+    "lon": -171.71666666666667
+  },
+  "Pacific/Kiritimati": {
+    "lat": 1.8666666666666667,
+    "lon": -157.33333333333334
+  },
+  "Asia/Pyongyang": {
+    "lat": 39.016666666666666,
+    "lon": 125.75
+  },
+  "Asia/Seoul": {
+    "lat": 37.55,
+    "lon": 126.96666666666667
+  },
+  "Asia/Almaty": {
+    "lat": 43.25,
+    "lon": 76.95
+  },
+  "Asia/Qyzylorda": {
+    "lat": 44.8,
+    "lon": 65.46666666666667
+  },
+  "Asia/Qostanay": {
+    "lat": 53.2,
+    "lon": 63.61666666666667
+  },
+  "Asia/Aqtobe": {
+    "lat": 50.28333333333333,
+    "lon": 57.166666666666664
+  },
+  "Asia/Aqtau": {
+    "lat": 44.516666666666666,
+    "lon": 50.266666666666666
+  },
+  "Asia/Atyrau": {
+    "lat": 47.11666666666667,
+    "lon": 51.93333333333333
+  },
+  "Asia/Oral": {
+    "lat": 51.21666666666667,
+    "lon": 51.35
+  },
+  "Asia/Beirut": {
+    "lat": 33.88333333333333,
+    "lon": 35.5
+  },
+  "Asia/Colombo": {
+    "lat": 6.933333333333334,
+    "lon": 79.85
+  },
+  "Africa/Monrovia": {
+    "lat": 6.3,
+    "lon": -10.783333333333333
+  },
+  "Europe/Vilnius": {
+    "lat": 54.68333333333333,
+    "lon": 25.316666666666666
+  },
+  "Europe/Riga": {
+    "lat": 56.95,
+    "lon": 24.1
+  },
+  "Africa/Tripoli": {
+    "lat": 32.9,
+    "lon": 13.183333333333334
+  },
+  "Africa/Casablanca": {
+    "lat": 33.65,
+    "lon": -7.583333333333333
+  },
+  "Europe/Chisinau": {
+    "lat": 47,
+    "lon": 28.833333333333332
+  },
+  "Pacific/Kwajalein": {
+    "lat": 9.083333333333334,
+    "lon": 167.33333333333334
+  },
+  "Asia/Yangon": {
+    "lat": 16.783333333333335,
+    "lon": 96.16666666666667
+  },
+  "Asia/Ulaanbaatar": {
+    "lat": 47.916666666666664,
+    "lon": 106.88333333333334
+  },
+  "Asia/Hovd": {
+    "lat": 48.016666666666666,
+    "lon": 91.65
+  },
+  "America/Martinique": {
+    "lat": 14.6,
+    "lon": -61.083333333333336
+  },
+  "Europe/Malta": {
+    "lat": 35.9,
+    "lon": 14.516666666666667
+  },
+  "Indian/Mauritius": {
+    "lat": -20.166666666666668,
+    "lon": 57.5
+  },
+  "Indian/Maldives": {
+    "lat": 4.166666666666667,
+    "lon": 73.5
+  },
+  "America/Mexico_City": {
+    "lat": 19.4,
+    "lon": -99.15
+  },
+  "America/Cancun": {
+    "lat": 21.083333333333332,
+    "lon": -86.76666666666667
+  },
+  "America/Merida": {
+    "lat": 20.966666666666665,
+    "lon": -89.61666666666666
+  },
+  "America/Monterrey": {
+    "lat": 25.666666666666668,
+    "lon": -100.31666666666666
+  },
+  "America/Matamoros": {
+    "lat": 25.833333333333332,
+    "lon": -97.5
+  },
+  "America/Chihuahua": {
+    "lat": 28.633333333333333,
+    "lon": -106.08333333333333
+  },
+  "America/Ciudad_Juarez": {
+    "lat": 31.733333333333334,
+    "lon": -106.48333333333333
+  },
+  "America/Ojinaga": {
+    "lat": 29.566666666666666,
+    "lon": -104.41666666666667
+  },
+  "America/Mazatlan": {
+    "lat": 23.216666666666665,
+    "lon": -106.41666666666667
+  },
+  "America/Bahia_Banderas": {
+    "lat": 20.8,
+    "lon": -105.25
+  },
+  "America/Hermosillo": {
+    "lat": 29.066666666666666,
+    "lon": -110.96666666666667
+  },
+  "America/Tijuana": {
+    "lat": 32.53333333333333,
+    "lon": -117.01666666666667
+  },
+  "Asia/Kuching": {
+    "lat": 1.55,
+    "lon": 110.33333333333333
+  },
+  "Africa/Maputo": {
+    "lat": -25.966666666666665,
+    "lon": 32.583333333333336
+  },
+  "Africa/Windhoek": {
+    "lat": -22.566666666666666,
+    "lon": 17.1
+  },
+  "Pacific/Noumea": {
+    "lat": -22.266666666666666,
+    "lon": 166.45
+  },
+  "Pacific/Norfolk": {
+    "lat": -29.05,
+    "lon": 167.96666666666667
+  },
+  "Africa/Lagos": {
+    "lat": 6.45,
+    "lon": 3.4
+  },
+  "America/Managua": {
+    "lat": 12.15,
+    "lon": -86.28333333333333
+  },
+  "Asia/Kathmandu": {
+    "lat": 27.716666666666665,
+    "lon": 85.31666666666666
+  },
+  "Pacific/Nauru": {
+    "lat": -0.5166666666666667,
+    "lon": 166.91666666666666
+  },
+  "Pacific/Niue": {
+    "lat": -19.016666666666666,
+    "lon": -169.91666666666666
+  },
+  "Pacific/Auckland": {
+    "lat": -36.86666666666667,
+    "lon": 174.76666666666668
+  },
+  "Pacific/Chatham": {
+    "lat": -43.95,
+    "lon": -176.55
+  },
+  "America/Panama": {
+    "lat": 8.966666666666667,
+    "lon": -79.53333333333333
+  },
+  "America/Lima": {
+    "lat": -12.05,
+    "lon": -77.05
+  },
+  "Pacific/Tahiti": {
+    "lat": -17.533333333333335,
+    "lon": -149.56666666666666
+  },
+  "Pacific/Marquesas": {
+    "lat": -9,
+    "lon": -139.5
+  },
+  "Pacific/Gambier": {
+    "lat": -23.133333333333333,
+    "lon": -134.95
+  },
+  "Pacific/Port_Moresby": {
+    "lat": -9.5,
+    "lon": 147.16666666666666
+  },
+  "Pacific/Bougainville": {
+    "lat": -6.216666666666667,
+    "lon": 155.56666666666666
+  },
+  "Asia/Karachi": {
+    "lat": 24.866666666666667,
+    "lon": 67.05
+  },
+  "Europe/Warsaw": {
+    "lat": 52.25,
+    "lon": 21
+  },
+  "America/Miquelon": {
+    "lat": 47.05,
+    "lon": -56.333333333333336
+  },
+  "Pacific/Pitcairn": {
+    "lat": -25.066666666666666,
+    "lon": -130.08333333333334
+  },
+  "Asia/Gaza": {
+    "lat": 31.5,
+    "lon": 34.46666666666667
+  },
+  "Europe/Lisbon": {
+    "lat": 38.71666666666667,
+    "lon": -9.133333333333333
+  },
+  "Atlantic/Madeira": {
+    "lat": 32.63333333333333,
+    "lon": -16.9
+  },
+  "Atlantic/Azores": {
+    "lat": 37.733333333333334,
+    "lon": -25.666666666666668
+  },
+  "Pacific/Palau": {
+    "lat": 7.333333333333333,
+    "lon": 134.48333333333332
+  },
+  "America/Asuncion": {
+    "lat": -25.266666666666666,
+    "lon": -57.666666666666664
+  },
+  "Asia/Qatar": {
+    "lat": 25.283333333333335,
+    "lon": 51.53333333333333
+  },
+  "Europe/Bucharest": {
+    "lat": 44.43333333333333,
+    "lon": 26.1
+  },
+  "Europe/Belgrade": {
+    "lat": 44.833333333333336,
+    "lon": 20.5
+  },
+  "Europe/Kaliningrad": {
+    "lat": 54.71666666666667,
+    "lon": 20.5
+  },
+  "Europe/Simferopol": {
+    "lat": 44.95,
+    "lon": 34.1
+  },
+  "Europe/Kirov": {
+    "lat": 58.6,
+    "lon": 49.65
+  },
+  "Europe/Volgograd": {
+    "lat": 48.733333333333334,
+    "lon": 44.416666666666664
+  },
+  "Europe/Astrakhan": {
+    "lat": 46.35,
+    "lon": 48.05
+  },
+  "Europe/Saratov": {
+    "lat": 51.56666666666667,
+    "lon": 46.03333333333333
+  },
+  "Europe/Ulyanovsk": {
+    "lat": 54.333333333333336,
+    "lon": 48.4
+  },
+  "Europe/Samara": {
+    "lat": 53.2,
+    "lon": 50.15
+  },
+  "Asia/Yekaterinburg": {
+    "lat": 56.85,
+    "lon": 60.6
+  },
+  "Asia/Omsk": {
+    "lat": 55,
+    "lon": 73.4
+  },
+  "Asia/Novosibirsk": {
+    "lat": 55.03333333333333,
+    "lon": 82.91666666666667
+  },
+  "Asia/Barnaul": {
+    "lat": 53.36666666666667,
+    "lon": 83.75
+  },
+  "Asia/Tomsk": {
+    "lat": 56.5,
+    "lon": 84.96666666666667
+  },
+  "Asia/Novokuznetsk": {
+    "lat": 53.75,
+    "lon": 87.11666666666666
+  },
+  "Asia/Krasnoyarsk": {
+    "lat": 56.016666666666666,
+    "lon": 92.83333333333333
+  },
+  "Asia/Irkutsk": {
+    "lat": 52.266666666666666,
+    "lon": 104.33333333333333
+  },
+  "Asia/Chita": {
+    "lat": 52.05,
+    "lon": 113.46666666666667
+  },
+  "Asia/Yakutsk": {
+    "lat": 62,
+    "lon": 129.66666666666666
+  },
+  "Asia/Vladivostok": {
+    "lat": 43.166666666666664,
+    "lon": 131.93333333333334
+  },
+  "Asia/Magadan": {
+    "lat": 59.56666666666667,
+    "lon": 150.8
+  },
+  "Asia/Sakhalin": {
+    "lat": 46.96666666666667,
+    "lon": 142.7
+  },
+  "Asia/Srednekolymsk": {
+    "lat": 67.46666666666667,
+    "lon": 153.71666666666667
+  },
+  "Asia/Kamchatka": {
+    "lat": 53.016666666666666,
+    "lon": 158.65
+  },
+  "Asia/Anadyr": {
+    "lat": 64.75,
+    "lon": 177.48333333333332
+  },
+  "Asia/Riyadh": {
+    "lat": 24.633333333333333,
+    "lon": 46.71666666666667
+  },
+  "Pacific/Guadalcanal": {
+    "lat": -9.533333333333333,
+    "lon": 160.2
+  },
+  "Africa/Khartoum": {
+    "lat": 15.6,
+    "lon": 32.53333333333333
+  },
+  "Asia/Singapore": {
+    "lat": 1.2833333333333332,
+    "lon": 103.85
+  },
+  "America/Paramaribo": {
+    "lat": 5.833333333333333,
+    "lon": -55.166666666666664
+  },
+  "Africa/Juba": {
+    "lat": 4.85,
+    "lon": 31.616666666666667
+  },
+  "Africa/Sao_Tome": {
+    "lat": 0.3333333333333333,
+    "lon": 6.733333333333333
+  },
+  "America/El_Salvador": {
+    "lat": 13.7,
+    "lon": -89.2
+  },
+  "Asia/Damascus": {
+    "lat": 33.5,
+    "lon": 36.3
+  },
+  "America/Grand_Turk": {
+    "lat": 21.466666666666665,
+    "lon": -71.13333333333334
+  },
+  "Africa/Ndjamena": {
+    "lat": 12.116666666666667,
+    "lon": 15.05
+  },
+  "Asia/Bangkok": {
+    "lat": 13.75,
+    "lon": 100.51666666666667
+  },
+  "Asia/Dushanbe": {
+    "lat": 38.583333333333336,
+    "lon": 68.8
+  },
+  "Pacific/Fakaofo": {
+    "lat": -9.366666666666667,
+    "lon": -171.23333333333332
+  },
+  "Asia/Dili": {
+    "lat": -8.55,
+    "lon": 125.58333333333333
+  },
+  "Asia/Ashgabat": {
+    "lat": 37.95,
+    "lon": 58.38333333333333
+  },
+  "Africa/Tunis": {
+    "lat": 36.8,
+    "lon": 10.183333333333334
+  },
+  "Europe/Istanbul": {
+    "lat": 41.016666666666666,
+    "lon": 28.966666666666665
+  },
+  "Asia/Taipei": {
+    "lat": 25.05,
+    "lon": 121.5
+  },
+  "Europe/Kyiv": {
+    "lat": 50.43333333333333,
+    "lon": 30.516666666666666
+  },
+  "Asia/Samarkand": {
+    "lat": 39.666666666666664,
+    "lon": 66.8
+  },
+  "Asia/Tashkent": {
+    "lat": 41.333333333333336,
+    "lon": 69.3
+  },
+  "America/Caracas": {
+    "lat": 10.5,
+    "lon": -66.93333333333334
+  },
+  "Asia/Ho_Chi_Minh": {
+    "lat": 10.75,
+    "lon": 106.66666666666667
+  },
+  "Pacific/Efate": {
+    "lat": -17.666666666666668,
+    "lon": 168.41666666666666
+  },
+  "Pacific/Apia": {
+    "lat": -13.833333333333334,
+    "lon": -171.73333333333332
+  },
+  "Africa/Johannesburg": {
+    "lat": -26.25,
+    "lon": 28
+  }
+}

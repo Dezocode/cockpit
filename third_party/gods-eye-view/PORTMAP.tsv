@@ -1,0 +1,13 @@
+# row	upstream_path	upstream_lines	cockpit_path	mode	card
+src/app/viewer.js	142	app/src/panels/godseye/gev/viewer.js	adapted	C10
+src/app/atmosphereCompat.js	189	app/src/panels/godseye/gev/atmosphereCompat.js	verbatim	C10
+src/renderGovernor.js	147	app/src/panels/godseye/gev/renderGovernor.js	verbatim	C10
+src/maps/imagery.js	29	app/src/panels/godseye/gev/maps/imagery.js	adapted	C10
+src/maps/terrain.js	35	app/src/panels/godseye/gev/maps/terrain.js	adapted	C10
+src/maps/credits.js	25	app/src/panels/godseye/gev/maps/credits.js	verbatim	C10
+src/maps/catalog.js	40	app/src/panels/godseye/gev/maps/catalog.js	adapted	C10
+src/maps/defaultSources.js	74	app/src/panels/godseye/gev/maps/defaultSources.js	adapted	C10
+src/layers/earthquakes/index.js	233	app/src/panels/godseye/layers/fleetNodes.ts	contract	C10
+src/layers/earthquakes/source.js	20	app/src/panels/godseye/layers/fleetSource.ts	contract	C10
+src/renderGovernor.test.mjs	100	app/src/panels/godseye/gev/renderGovernor.test.mjs	test	C10
+src/app/atmosphereCompat.test.mjs	221	app/src/panels/godseye/gev/atmosphereCompat.test.mjs	test	C10

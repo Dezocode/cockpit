@@ -19,7 +19,7 @@ jobs:
         run: |
           pnpm install --frozen-lockfile
           pnpm build
-          pnpm exec tsc -p tsconfig.server.json
+          pnpm run build:server
 
       - name: Capability matrix
         run: bash bench/cockpit/capability-matrix.sh
@@ -31,6 +31,16 @@ jobs:
 
       - name: Surface matrix (TUI KEEP)
         run: bash bench/cockpit/surface-matrix.sh
+
+      - name: C10 God's Eye panel tests
+        working-directory: app
+        run: |
+          pnpm exec playwright install --with-deps chromium
+          node --test 'src/panels/godseye/**/*.test.mjs'
+          pnpm build
+          pnpm run build:server
+          node tests/godseye-bundle.check.mjs
+          xvfb-run -a node tests/godseye-panel.e2e.mjs
 
       - name: Canonical Hostinger install script
         run: |
