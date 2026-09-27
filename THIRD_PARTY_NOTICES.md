@@ -2,7 +2,7 @@
 
 ## gods-eye-view
 
-Source: https://github.com/bilawalsidhu/gods-eye-view @ b210ab0fe4d71c7faa0268134e0aa5f3c53fc7fe
+Source: https://github.com/bilawalsidhu/gods-eye-view@b210ab0fe4d71c7faa0268134e0aa5f3c53fc7fe
 
 Licensed under the MIT License. **Code only:** no GEV data, models, or event packs are included in Cockpit.
 
