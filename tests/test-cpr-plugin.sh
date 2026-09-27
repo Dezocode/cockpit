@@ -24,6 +24,9 @@ printf '%s\n' "$*" >>"$FAKE_TMUX_LOG"
 if [[ "${1:-}" == -L ]]; then
   shift 2
 fi
+while [[ "${1:-}" == -f ]]; do
+  shift 2
+done
 case "${1:-}" in
   has-session|new-session|source-file|kill-server|set-option|set-hook|show-hooks) exit 0 ;;
   list-panes)
@@ -54,8 +57,18 @@ esac
 EOF
 chmod +x "$fakebin/tmux"
 
+set +e
 output="$(cockpit-plugin cpr --apply 2>&1)"
-grep -q '^overlay_validation=ok$' <<<"$output"
+cpr_rc=$?
+set -e
+[[ "$cpr_rc" == 0 ]] || {
+  printf 'CPR plugin exited %s:\n%s\n' "$cpr_rc" "$output" >&2
+  exit 1
+}
+grep -q '^overlay_validation=ok$' <<<"$output" || {
+  printf 'CPR output missing overlay_validation=ok:\n%s\n' "$output" >&2
+  exit 1
+}
 grep -q '^mode=applied$' <<<"$output"
 grep -q '^pane_processes_respawned=0$' <<<"$output"
 grep -q '^derived_processes_respawned=0$' <<<"$output"
@@ -65,6 +78,10 @@ if grep -Ev -- '(^| )-L ' "$log" | grep -Eq '(^| )(respawn-pane|kill-session|new
   sed -n '1,160p' "$log" >&2
   exit 1
 fi
-grep -q 'source-file /tmp/' "$log"
+grep -qE 'source-file .+cockpit\.conf' "$log" || {
+  printf 'CPR tmux log missing source-file cockpit.conf:\n' >&2
+  sed -n '1,80p' "$log" >&2
+  exit 1
+}
 
 printf '%s\n' 'CPR plugin regression: PASS'

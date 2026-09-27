@@ -100,8 +100,9 @@ if [[ "$(cockpit_watch_backend)" != none ]]; then
   got=
   if [[ "$(cockpit_watch_backend)" == "$COCKPIT_BACKEND_FSWATCH" ]]; then
     kill -USR1 "$$" 2>/dev/null || true
-    sleep 1
-    cockpit_event_drain | grep -q 'WAKE' && got=1
+    sleep 0.3
+    cockpit_event_drain >/dev/null || true
+    [[ "${COCKPIT_WAKE:-0}" == 1 ]] && got=1
   else
     sleep 0.5
     touch "$watchfile"
