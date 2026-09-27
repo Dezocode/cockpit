@@ -2,6 +2,7 @@
 set -euo pipefail
 
 repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+unset COCKPIT_SHELL_RC COCKPIT_INSTALL_HOSTINGER COCKPIT_INSTALL_SERVICE
 fail() {
   printf 'install-shells: FAIL (%s)\n' "$1"
   exit 1
@@ -11,7 +12,7 @@ run_install() {
   local shell_name=$1
   local home=$2
   HOME="$home" SHELL="/bin/$shell_name" COCKPIT_INSTALL_WEB_BUILD=0 \
-    /bin/bash "$repo_root/install.sh" </dev/null >/dev/null 2>&1
+    /bin/bash "$repo_root/install.sh" </dev/null >/dev/null 2>&1 || return 1
 }
 
 count_markers() {
@@ -32,8 +33,8 @@ for shell in bash zsh fish; do
   command -v "$shell" >/dev/null 2>&1 || continue
   home="$tmpdir/home-$shell"
   mkdir -p "$home"
-  run_install "$shell" "$home"
-  run_install "$shell" "$home"
+  run_install "$shell" "$home" || fail "install $shell"
+  run_install "$shell" "$home" || fail "install $shell retry"
   case "$shell" in
     bash)
       rcfile="$home/.bashrc"

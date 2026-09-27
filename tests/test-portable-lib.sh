@@ -58,13 +58,16 @@ ppid="$(cockpit_pid_ppid $$)"
   sleep 2
 ) &
 child=$!
-if cockpit_pid_environ "$child" 2>/dev/null | grep -q '^FOO=bar$'; then
+set +e
+env_blob="$(cockpit_pid_environ "$child" 2>/dev/null)"
+env_rc=$?
+set -e
+if grep -q '^FOO=bar$' <<<"$env_blob"; then
+  :
+elif [[ "$env_rc" == 2 ]]; then
   :
 else
-  rc=$?
-  if [[ "$rc" != 2 ]]; then
-    fail "pid environ"
-  fi
+  fail "pid environ"
 fi
 wait "$child" 2>/dev/null || true
 
