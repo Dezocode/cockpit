@@ -87,11 +87,33 @@ jobs:
 
       - name: C10 God's Eye panel tests
         working-directory: app
+        env:
+          # Screens come from the asserting e2e run itself; each PNG is re-read and
+          # must show a rendered globe (lit >= 0.08, colors >= 64) or the run fails.
+          GODSEYE_SHOT: ${{ runner.temp }}/godseye-screens/godseye-keyless.png
+          GODSEYE_ARCS_SHOT: ${{ runner.temp }}/godseye-screens/godseye-arcs.png
         run: |
+          mkdir -p "$RUNNER_TEMP/godseye-screens"
           pnpm exec playwright install --with-deps chromium
           node --test 'src/panels/godseye/**/*.test.mjs'
           node tests/godseye-bundle.check.mjs
-          xvfb-run -a node tests/godseye-panel.e2e.mjs
+          # America/Chicago (e2e default): the local node is placed by its tz centroid.
+          GODSEYE_EXPECT_NODES=1 GODSEYE_EXPECT_UNPLACED=3 xvfb-run -a node tests/godseye-panel.e2e.mjs
+          # Etc/UTC has no zone1970.tab centroid: every node stays unplaced (never invented).
+          GODSEYE_E2E_TZ=Etc/UTC GODSEYE_EXPECT_NODES=0 GODSEYE_EXPECT_UNPLACED=4 \
+            GODSEYE_SHOT="$RUNNER_TEMP/godseye-screens/godseye-utc.png" GODSEYE_ARCS_SHOT= \
+            xvfb-run -a node tests/godseye-panel.e2e.mjs
+          n=$(find "$RUNNER_TEMP/godseye-screens" -name '*.png' | wc -l)
+          echo "godseye-screens: $n png"
+          test "$n" -ge 2
+
+      - name: Upload God's Eye screenshots (artifact godseye-screens)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: godseye-screens
+          path: ${{ runner.temp }}/godseye-screens/*.png
+          if-no-files-found: error
 
       - name: Canonical Hostinger install script
         run: |
