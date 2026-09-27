@@ -92,25 +92,12 @@ if ((has_desktop == 1 && has_phone == 1)) && [[ "$modality" == "keyboard" || "$h
   fi
 fi
 
-pane_for() {
-  local role=$1
-  tmux list-panes -s -t "$session" -F '#{pane_id} #{@cockpit_role}' 2>/dev/null |
-    awk -v r="$role" '$2 == r { print $1; exit }'
-}
-
 window_for() {
   local pane=$1
   [[ -n "$pane" ]] || return 0
-  tmux display-message -p -t "$pane" '#{window_id}'
+  cockpit_window_of "$pane"
 }
 
-tmux_fg() {
-  local key=$1 fallback=$2
-  printf '#[fg=%s]' "$(cockpit_theme_hex "$key" "$fallback")"
-}
-
-# Refresh display-only labels on the cheap resize/cpr path. This deliberately
-# does not join panes, respawn processes, or alter the Files layout.
 refresh_display_labels() {
   tmux set-option -t "$session" status-left "#[fg=black,bg=blue,bold] ${workspace_label} #[bg=default] "
   if [[ "$modality" == "touch" ]]; then
@@ -124,35 +111,6 @@ refresh_display_labels() {
   fi
   tmux rename-window -t "$runtime" "$agent_label" 2>/dev/null || true
   tmux select-pane -t "$runtime" -T "$agent_label" 2>/dev/null || true
-}
-
-update_git_chrome() {
-  local runtime root git_root worktree branch status state state_style label
-  runtime="$(pane_for runtime)"
-  [[ -n "$runtime" ]] || return 0
-  root="$(tmux display-message -p -t "$runtime" '#{pane_current_path}' 2>/dev/null || true)"
-  [[ -n "$root" ]] || return 0
-  git_root="$(git -C "$root" rev-parse --show-toplevel 2>/dev/null || true)"
-  if [[ -n "$git_root" ]]; then
-    worktree="${git_root##*/}"
-    branch="$(git -C "$git_root" symbolic-ref --short -q HEAD 2>/dev/null ||
-      git -C "$git_root" rev-parse --short HEAD 2>/dev/null || true)"
-    [[ -n "$branch" ]] || branch=detached
-    status="$(git -C "$git_root" status --porcelain --untracked-files=normal 2>/dev/null || true)"
-    if [[ -n "$status" ]]; then
-      state='!'
-      state_style="$(tmux_fg accent '#798186')"
-    else
-      state='✓'
-      state_style="$(tmux_fg green '#2b6e4f')"
-    fi
-    label="$(tmux_fg accent '#798186')${worktree}$(tmux_fg muted '#4b4e55') ${branch} ${state_style}${state}#[default]"
-  else
-    worktree="${root##*/}"
-    label="$(tmux_fg muted '#4b4e55')${worktree} ?#[default]"
-  fi
-  tmux set-option -t "$session" @cockpit_worktree "$worktree"
-  tmux set-option -t "$session" @cockpit_git_label "$label"
 }
 
 # Termius treats BEL / title OSC / activity as haptics. Keep Codex spinner
@@ -228,7 +186,7 @@ layout_tabs() {
   local runtime=$1
   for spec in "files:FILES" "setup:SETUP" "diff:DIFF" "map:MAP"; do
     local role=${spec%%:*} name=${spec##*:} pane parent
-    pane="$(pane_for "$role")"
+    pane="$(cockpit_pane_for "$session" "$role")"
     [[ -n "$pane" ]] || continue
     parent="$(tmux display-message -p -t "$pane" '#{window_name}')"
     if [[ "$parent" == "AGENT" || "$parent" == "CODEX" || "$parent" == "cockpit" ]]; then
@@ -329,7 +287,7 @@ normalize_primary_tabs() {
     for spec in "files:2" "diff:3" "setup:4"; do
       role=${spec%%:*}
       target=${spec##*:}
-      pane="$(pane_for "$role")"
+      pane="$(cockpit_pane_for "$session" "$role")"
       [[ -n "$pane" ]] || continue
       window="$(window_for "$pane")"
       [[ -n "$window" && "$window" != "$runtime_win" ]] || continue
@@ -341,14 +299,14 @@ normalize_primary_tabs() {
   hide_auxiliary_tabs
 }
 
-runtime="$(pane_for runtime)"
-files="$(pane_for files)"
-diff="$(pane_for diff)"
-map="$(pane_for map)"
-setup="$(pane_for setup)"
+runtime="$(cockpit_pane_for "$session" runtime)"
+files="$(cockpit_pane_for "$session" files)"
+diff="$(cockpit_pane_for "$session" diff)"
+map="$(cockpit_pane_for "$session" map)"
+setup="$(cockpit_pane_for "$session" setup)"
 [[ -n "$runtime" ]] || exit 0
 tmux set-option -t "$session" @cockpit_runtime_pane "$runtime"
-update_git_chrome
+cockpit_update_git_chrome "$session" adapt
 
 # Termius shrinks the PTY when the keyboard slides up. Keep the one-row Agent
 # toolbar visible: the runtime pane is the flexible area and absorbs the

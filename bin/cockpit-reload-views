@@ -19,32 +19,6 @@ cockpit_session_is_managed "$session" || exit 0
 tmux has-session -t "$session" 2>/dev/null || exit 0
 export PATH="$HOME/.local/bin:$PATH"
 
-shell_quote() {
-  local value=$1
-  value=${value//\\/\\\\}
-  value=${value//\'/\'\\\'\'}
-  printf "'%s'" "$value"
-}
-
-pane_for() {
-  local role=$1
-  case "$role" in
-    runtime)
-      tmux list-panes -s -t "$session" -F '#{pane_id} #{@cockpit_role} #{window_name}' 2>/dev/null |
-        awk '$2 == "runtime" || ($2 == "" && ($3 == "AGENT" || $3 == "CODEX")) { print $1; exit }'
-      return 0
-      ;;
-  esac
-  local window
-  case "$role" in
-    diff) window=DIFF ;;
-    map) window=MAP ;;
-    *) window="${role^^}" ;;
-  esac
-  tmux list-panes -s -t "$session" -F '#{pane_id} #{@cockpit_role} #{window_name}' 2>/dev/null |
-    awk -v r="$role" -v w="$window" '$2 == r || ($2 == "" && $3 == w) { print $1; exit }'
-}
-
 setup_has_editor() {
   local pane=$1 pid
   pid="$(tmux display-message -p -t "$pane" '#{pane_pid}' 2>/dev/null || true)"
@@ -101,7 +75,7 @@ ensure_setup() {
     tmux set-option -w -t "$legacy" window-status-current-format '' 2>/dev/null || true
   done < <(tmux list-panes -s -t "$session" -F '#{pane_id} #{@cockpit_role}' 2>/dev/null || true)
   normalize_setup_edit_windows
-  setup="$(pane_for setup)"
+setup="$(cockpit_pane_for "$session" setup reload)"
   if [[ -n "$setup" ]]; then
     setup_version="$(tmux show-options -p -v -t "$setup" @cockpit_setup_version 2>/dev/null || true)"
     setup_editing=0
@@ -150,7 +124,7 @@ ensure_setup() {
 
   root="$(tmux display-message -p -t "$runtime" '#{pane_current_path}' 2>/dev/null || true)"
   [[ -n "$root" && -d "$root" ]] || return 0
-  command="cd -- $(shell_quote "$root") && exec cockpit-setup"
+  command="cd -- $(cockpit_shell_quote "$root") && exec cockpit-setup"
   tmux new-window -d -t "$session:" -n SETUP -c "$root" "$command" 2>/dev/null || return 0
   setup="$(tmux display-message -p -t "$session:SETUP" '#{pane_id}' 2>/dev/null || true)"
   [[ -n "$setup" ]] || return 0
@@ -163,7 +137,7 @@ ensure_setup() {
 
 reload_view() {
   local role=$1 pane root command start_command window title
-  pane="$(pane_for "$role")"
+  pane="$(cockpit_pane_for "$session" "$role" reload)"
   if [[ -n "$pane" ]]; then
     root="$(tmux display-message -p -t "$pane" '#{pane_current_path}' 2>/dev/null || true)"
   else
@@ -174,7 +148,7 @@ reload_view() {
   window=$([[ "$role" == diff ]] && printf 'DIFF' || printf 'MAP')
   title=$window
   if [[ "$role" == diff ]]; then
-    command="cd -- $(shell_quote "$root") && exec cockpit-diff $(shell_quote "$root")"
+    command="cd -- $(cockpit_shell_quote "$root") && exec cockpit-diff $(cockpit_shell_quote "$root")"
   else
     # Preserve a custom Mermaid path when the live pane exposes its original
     # command; otherwise use the project's canonical architecture map.
@@ -185,7 +159,7 @@ reload_view() {
     if [[ "$start_command" == *cockpit-mermaid-watch* ]]; then
       command="$start_command"
     else
-      command="cd -- $(shell_quote "$root") && exec cockpit-mermaid-watch $(shell_quote "$root")"
+      command="cd -- $(cockpit_shell_quote "$root") && exec cockpit-mermaid-watch $(cockpit_shell_quote "$root")"
     fi
   fi
 
@@ -205,7 +179,7 @@ reload_view() {
   tmux set-option -p -t "$pane" @cockpit_role "$role" 2>/dev/null || true
 }
 
-runtime="$(pane_for runtime)"
+runtime="$(cockpit_pane_for "$session" runtime reload)"
 [[ -n "$runtime" ]] || exit 0
 ensure_setup
 reload_view diff

@@ -3,16 +3,15 @@
 set -euo pipefail
 
 repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
-test_root="$(mktemp -d /tmp/cockpit-cpr.XXXXXX)"
-test_home="$test_root/home"
-fakebin="$test_root/bin"
+# shellcheck source=lib/fixture.sh
+source "$repo_root/tests/lib/fixture.sh"
+fixture_init cpr-plugin
+test_root="$FIXTURE_TEST_ROOT"
+test_home="$FIXTURE_HOME"
+fakebin="$FIXTURE_FAKEBIN"
 log="$test_root/tmux.log"
-mkdir -p "$test_home/.config/tmux" "$fakebin" "$test_root/project"
-cleanup() { rm -rf "$test_root"; }
-trap cleanup EXIT
+mkdir -p "$test_home/.config/tmux" "$test_root/project"
 
-export HOME="$test_home"
-export PATH="$fakebin:$repo_root/bin:/usr/bin:/bin"
 export FAKE_TMUX_LOG="$log"
 export FAKE_COCKPIT_PROJECT="$test_root/project"
 export COCKPIT_SESSION=cockpit-cpr-test

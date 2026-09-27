@@ -70,10 +70,6 @@ if [[ -n "$diagram" && "$diagram" != /* ]]; then
   diagram="$root/${diagram#./}"
 fi
 
-clear_screen() {
-  printf '\033[2J\033[H'
-}
-
 header() {
   printf '%sMAP%s  %sSHOWMEGRAPHS%s  %s%s%s\n\n' \
     "$(cockpit_theme_heading)" "$(cockpit_theme_reset)" \
@@ -136,7 +132,7 @@ render() {
   last_fp=$fp
   dirty=0
 
-  clear_screen
+  cockpit_clear_screen
   header
 
   if [[ -z "$diagram" || ! -f "$diagram" ]]; then
@@ -148,12 +144,8 @@ render() {
   render_graph || cat "$diagram"
 }
 
-maybe_render() {
-  if cockpit_view_visible; then
-    render
-  else
-    dirty=1
-  fi
+mark_dirty() {
+  dirty=1
 }
 
 if [[ "$root" == "$HOME" ]]; then
@@ -188,7 +180,7 @@ fi
 while cockpit_event_read; do
   if [[ "$COCKPIT_EVENT" == "WAKE" ]]; then
     last_fp=""
-    maybe_render
+    cockpit_maybe_render render mark_dirty
     continue
   fi
   sleep "$COCKPIT_DEBOUNCE"
@@ -201,12 +193,12 @@ while cockpit_event_read; do
         [[ "$diagram" == /* ]] || diagram="$watch_dir/$base"
       fi
       last_fp=""
-      maybe_render
+      cockpit_maybe_render render mark_dirty
       ;;
     *)
       if [[ "$COCKPIT_EVENT" == "$diagram" || "$base" == "$(basename -- "${diagram:-}")" ]]; then
         last_fp=""
-        maybe_render
+        cockpit_maybe_render render mark_dirty
       fi
       ;;
   esac
