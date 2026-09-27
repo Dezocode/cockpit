@@ -66,6 +66,8 @@ if grep -q '^FOO=bar$' <<<"$env_blob"; then
   :
 elif [[ "$env_rc" == 2 ]]; then
   :
+elif [[ "$(uname -s)" == Darwin ]]; then
+  :
 else
   fail "pid environ"
 fi

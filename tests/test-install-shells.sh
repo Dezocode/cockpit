@@ -11,7 +11,8 @@ fail() {
 run_install() {
   local shell_name=$1
   local home=$2
-  HOME="$home" SHELL="/bin/$shell_name" COCKPIT_INSTALL_WEB_BUILD=0 \
+  env -i HOME="$home" SHELL="/bin/$shell_name" PATH="/usr/bin:/bin" \
+    COCKPIT_INSTALL_WEB_BUILD=0 COCKPIT_INSTALL_SERVICE=0 COCKPIT_INSTALL_HOSTINGER=0 \
     /bin/bash "$repo_root/install.sh" </dev/null >/dev/null 2>&1 || return 1
 }
 
@@ -33,6 +34,7 @@ for shell in bash zsh fish; do
   command -v "$shell" >/dev/null 2>&1 || continue
   home="$tmpdir/home-$shell"
   mkdir -p "$home"
+  unset COCKPIT_SHELL_RC
   run_install "$shell" "$home" || fail "install $shell"
   run_install "$shell" "$home" || fail "install $shell retry"
   case "$shell" in
