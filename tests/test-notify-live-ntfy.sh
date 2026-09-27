@@ -27,7 +27,7 @@ out="$(cockpit notify --sink ntfy "live ntfy round-trip ${topic}")"
 
 poll_url="https://ntfy.sh/${topic}/json?poll=1"
 found=0
-for _ in $(seq 1 30); do
+for _ in $(seq 1 45); do
   body="$(curl --silent --max-time 10 "$poll_url" || true)"
   if printf '%s' "$body" | grep -q 'live ntfy round-trip'; then
     found=1
