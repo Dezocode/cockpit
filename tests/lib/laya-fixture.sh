@@ -5,8 +5,30 @@
 
 LAYA_TEST_STUB_PIDS=()
 LAYA_TEST_NAME=${LAYA_TEST_NAME:-laya}
-# The real python3, resolved before a test plants curl/python sentinels in fakebin.
-LAYA_TEST_PY="$(command -v python3)"
+
+# Python for stubs and MCP TOML checks. macOS /usr/bin/python3 is often 3.9 (no
+# tomllib); prefer Homebrew / explicit 3.11+ before fakebin sentinels land.
+laya_find_test_python() {
+  local cand path
+  for cand in python3.13 python3.12 python3.11; do
+    path="$(command -v "$cand" 2>/dev/null || true)"
+    [[ -n "$path" ]] || continue
+    if "$path" -c 'import tomllib' 2>/dev/null; then
+      printf '%s\n' "$path"
+      return 0
+    fi
+  done
+  for path in /opt/homebrew/bin/python3 /usr/local/bin/python3 "$(command -v python3 2>/dev/null || true)"; do
+    [[ -n "$path" && -x "$path" ]] || continue
+    if "$path" -c 'import tomllib' 2>/dev/null; then
+      printf '%s\n' "$path"
+      return 0
+    fi
+  done
+  command -v python3
+}
+
+LAYA_TEST_PY="$(laya_find_test_python)"
 
 laya_fail() {
   printf '%s: FAIL (%s)\n' "$LAYA_TEST_NAME" "$1"
