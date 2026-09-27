@@ -101,7 +101,9 @@ cockpit_auth_run_probe() {
   [[ -n "$command" ]] || return 1
   timeout_value="${COCKPIT_AUTH_TIMEOUT:-1.5s}"
   timeout_value="${timeout_value%s}"
-  cockpit_timeout "$timeout_value" bash -lc "$command" >/dev/null 2>&1
+  # Non-login bash: macOS login shells rebuild PATH via path_helper and drop
+  # fixture fakebin entries used in tests and minimal installs.
+  cockpit_timeout "$timeout_value" env HOME="$HOME" PATH="$PATH" bash -c "$command" >/dev/null 2>&1
 }
 
 cockpit_auth_utc_epoch() {
