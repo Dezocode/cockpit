@@ -158,12 +158,22 @@ jobs:
           "$bash_bin" tests/test-portability-lint.sh
           "$bash_bin" tests/test-install-shells.sh
           "$bash_bin" tests/test-launchd.sh
+          failed=()
           for t in tests/test-*.sh; do
             case "$t" in
               tests/test-portable-lib.sh|tests/test-portability-lint.sh|tests/test-install-shells.sh|tests/test-launchd.sh) continue ;;
             esac
-            "$bash_bin" "$t"
+            if ! "$bash_bin" "$t"; then
+              failed+=("$t")
+              echo "::error::$t failed on ${{ matrix.os }}; xtrace tail follows"
+              "$bash_bin" -x "$t" >"xtrace-$(basename "$t" .sh).log" 2>&1 || true
+              tail -n 60 "xtrace-$(basename "$t" .sh).log"
+            fi
           done
+          if ((${#failed[@]})); then
+            echo "regression failures: ${failed[*]}"
+            exit 1
+          fi
           bash bench/cockpit/capability-matrix.sh
           COCKPIT_HOSTINGER=1 node app/dist-server/index.js &
           pid=$!
@@ -173,10 +183,17 @@ jobs:
             sleep 0.5
           done
           if [[ "${{ matrix.os }}" == ubuntu-latest ]]; then
-            ss -ltnp | grep 127.0.0.1:8787
+            listen="$(ss -ltnp | grep ':8787 ')"
           else
-            lsof -nP -iTCP -sTCP:LISTEN | grep 127.0.0.1:8787
+            listen="$(lsof -nP -iTCP:8787 -sTCP:LISTEN)"
           fi
+          printf 'listen-proof (%s):\n%s\n' "${{ matrix.os }}" "$listen"
+          grep -q '127.0.0.1:8787' <<<"$listen"
+          if grep -E '(\*|0\.0\.0\.0|\[::\]|:::?):8787' <<<"$listen"; then
+            echo "::error::cockpit-web listens on a non-loopback address"
+            exit 1
+          fi
+          echo "listen-proof: loopback-only (127.0.0.1:8787)"
 
       - name: Upload portability log
         if: always()

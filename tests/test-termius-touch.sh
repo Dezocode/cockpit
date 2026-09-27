@@ -61,6 +61,9 @@ tmux_test set-option -t "$session" status on
 tmux_test set-option -t "$session" status-position bottom
 tmux_test set-option -t "$session" status-left-length 24
 tmux_test set-option -t "$session" status-left 'COCKPIT                 '
+# Pin status-right (tmux >= 3.5 gives the default right block priority over
+# overflowing window ranges); the touch layout under test sets its own.
+tmux_test set-option -t "$session" status-right ''
 tmux_test set-option -t "$session" window-status-separator ' '
 tmux_test set-option -t "$session" window-status-format '      #W      '
 tmux_test set-option -t "$session" window-status-current-format '      #W      '

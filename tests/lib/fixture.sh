@@ -24,7 +24,12 @@ fixture_init() {
   export HOME="$FIXTURE_HOME"
   export XDG_CONFIG_HOME="$FIXTURE_HOME/.config"
   mkdir -p "$XDG_CONFIG_HOME"
-  export PATH="$FIXTURE_HOME/.local/bin:$FIXTURE_FAKEBIN:$FIXTURE_REPO_ROOT/bin:/usr/bin:/bin"
+  # System dirs, plus the Homebrew bin dir when brew is installed (macOS keeps
+  # tmux, jq, fswatch and bash >= 4 there; nothing GNU-masking is added).
+  local sys_path="/usr/bin:/bin" brew_bin=''
+  brew_bin="$(command -v brew 2>/dev/null)" || brew_bin=''
+  [[ -n "$brew_bin" ]] && sys_path="$sys_path:$(dirname -- "$brew_bin")"
+  export PATH="$FIXTURE_HOME/.local/bin:$FIXTURE_FAKEBIN:$FIXTURE_REPO_ROOT/bin:$sys_path"
   unset ZDOTDIR COCKPIT_SESSION CODEX_COCKPIT_SESSION COCKPIT_AUTH_HOME COCKPIT_CONFIG_HOME
 
   fixture_cleanup() {
