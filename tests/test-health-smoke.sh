@@ -41,11 +41,13 @@ ok() { printf 'ok   %s\n' "$1"; pass=$((pass + 1)); }
 bad() { printf 'FAIL %s\n%s\n' "$1" "${2:-}"; fail=$((fail + 1)); }
 
 n=0
+# run_stub MODE RC PATTERN [TRIES]: answering stubs get 20 s (cold python on a
+# slow macOS Intel runner); the hang case keeps a short budget.
 run_stub() {
-  local mode=$1 want=$2 pattern=$3 out rc=0
+  local mode=$1 want=$2 pattern=$3 tries=${4:-40} out rc=0
   n=$((n + 1))
   pidfile="$tmpdir/pid.$n"
-  out="$(STUB_MODE="$mode" STUB_PIDFILE="$pidfile" COCKPIT_TEST_NODE=python3 HEALTH_SMOKE_TRIES=6 \
+  out="$(STUB_MODE="$mode" STUB_PIDFILE="$pidfile" COCKPIT_TEST_NODE=python3 HEALTH_SMOKE_TRIES="$tries" \
     "$smoke" "$tmpdir/stub.py" 2>&1 </dev/null)" || rc=$?
   if [[ "$rc" -eq "$want" ]] && grep -Eq -- "$pattern" <<<"$out"; then
     ok "$mode: rc=$rc"
@@ -69,7 +71,7 @@ else
 fi
 run_stub badproduct 1 "health-smoke: FAIL product 'codex' != 'cockpit'"
 run_stub exit 1 'health-smoke: FAIL server exited before answering'
-run_stub hang 1 'health-smoke: FAIL no /api/health answer on 127\.0\.0\.1:[0-9]+ after 6 tries'
+run_stub hang 1 'health-smoke: FAIL no /api/health answer on 127\.0\.0\.1:[0-9]+ after 6 tries' 6
 
 out="$("$smoke" "$tmpdir/missing.js" 2>&1)" && rc=0 || rc=$?
 [[ "$rc" -eq 1 && "$out" == *"no server at"* ]] && ok "missing server file -> 1" || bad "missing server file -> 1 (rc=$rc)" "$out"
