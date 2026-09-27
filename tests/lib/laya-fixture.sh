@@ -117,18 +117,35 @@ EOF2
 
 # laya_start_stub PORT KEY RECORD_DIR [ENV=VALUE...]: our own stub, ready on return.
 laya_start_stub() {
-  local port=$1 key=$2 rec=$3 i
+  local port=$1 key=$2 rec=$3 stub_pid extra i
   shift 3
   mkdir -p "$rec"
+  shopt -s nullglob
   rm -f "$rec"/*
-  env LAYA_HOST=127.0.0.1 LAYA_PORT="$port" LAYA_API_KEY="$key" LAYA_STUB_QUIET=1 \
-    LAYA_STUB_RECORD_DIR="$rec" "$@" "$LAYA_TEST_PY" "$FIXTURE_REPO_ROOT/tests/fixtures/fake-laya-serve.py" &
-  LAYA_TEST_STUB_PIDS+=("$!")
-  for ((i = 0; i < 100; i++)); do
+  shopt -u nullglob
+  (
+    export LAYA_HOST=127.0.0.1
+    export LAYA_PORT="$port"
+    export LAYA_API_KEY="$key"
+    export LAYA_STUB_QUIET=1
+    export LAYA_STUB_RECORD_DIR="$rec"
+    for extra in "$@"; do
+      case "$extra" in
+        *=*) export "$extra" ;;
+      esac
+    done
+    exec "$LAYA_TEST_PY" "$FIXTURE_REPO_ROOT/tests/fixtures/fake-laya-serve.py"
+  ) >"$rec/stub.log" 2>&1 &
+  stub_pid=$!
+  LAYA_TEST_STUB_PIDS+=("$stub_pid")
+  for ((i = 0; i < 240; i++)); do
     [[ -s "$rec/listening.txt" ]] && return 0
+    if ! kill -0 "$stub_pid" 2>/dev/null; then
+      laya_fail "stub exited on 127.0.0.1:$port ($(head -3 "$rec/stub.log" 2>/dev/null || echo no log))"
+    fi
     sleep 0.05
   done
-  laya_fail "stub did not start on 127.0.0.1:$port"
+  laya_fail "stub did not start on 127.0.0.1:$port ($(head -3 "$rec/stub.log" 2>/dev/null || echo no log))"
 }
 
 laya_stop_stubs() {

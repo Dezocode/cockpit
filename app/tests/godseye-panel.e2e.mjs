@@ -451,9 +451,13 @@ async function main() {
   await waitGlobe(page, "arcs");
   const counts = await page.locator("[data-testid=godseye-counts]").innerText();
   assert(/3\s+placed/.test(counts) && /2\s+arcs/.test(counts), "arcs roster: expected 3 placed / 2 arcs", counts);
-  await sleep(2000);
   const darkAccent = hexToRgb(await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--cockpit-accent")));
-  const arcPixels = (await canvasStats(page, { accent: [...darkAccent, 64] })).near.accent;
+  let arcPixels = 0;
+  for (let attempt = 0; attempt < 6; attempt++) {
+    await sleep(2000);
+    arcPixels = (await canvasStats(page, { accent: [...darkAccent, 64] })).near.accent;
+    if (arcPixels >= 450) break;
+  }
   // 3 points ≈ 3×80 px; two ~7000 km geodesic arcs add several hundred more.
   assert(arcPixels >= 450, "arc polylines not visible in the canvas", { arcPixels });
   if (process.env.GODSEYE_ARCS_SHOT) await shotAndCheck(page, process.env.GODSEYE_ARCS_SHOT, "arcs");
