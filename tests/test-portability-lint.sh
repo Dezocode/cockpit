@@ -36,6 +36,8 @@ scan -n 'readlink -f|chmod --reference|sed -i|find [^|]*-printf|xargs -r' bin in
 scan -n '/proc/' bin install.sh plugins -g '!tests/test-portability-lint.sh'; report "$(drop '^bin/cockpit-portable-lib:' <<<"$scan_out")"
 scan -n '\btimeout [0-9]|\bsha256sum\b' bin plugins tests -g '!tests/test-portability-lint.sh'; report "$(drop '^bin/cockpit-portable-lib:' <<<"$scan_out")"
 scan -n 'pgrep [^|]*-a\b' bin -g '!tests/test-portability-lint.sh'; report "$scan_out"
+# BSD date has no %N (sub-second); use cockpit_now_ms.
+scan -n 'date [^|]*%[0-9]*N' bin install.sh plugins tests -g '!tests/test-portability-lint.sh'; report "$(drop '^bin/cockpit-portable-lib:' <<<"$scan_out")"
 # Stock macOS ships true/false only in /usr/bin; /bin/true is a GNU/Linux-ism.
 scan -n '/bin/(true|false)\b' bin install.sh plugins tests -g '!tests/test-portability-lint.sh'; report "$(drop '/usr/bin/(true|false)' <<<"$scan_out")"
 scan -n 'declare -A|mapfile|readarray|\$\{[A-Za-z_]+(,,|\^\^)\}|exec \{' install.sh bin/cockpit-portable-lib -g '!tests/test-portability-lint.sh'; report "$scan_out"

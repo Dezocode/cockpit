@@ -238,6 +238,35 @@ jobs:
             exit 1
           fi
           echo "listen-proof: loopback-only (127.0.0.1:${port}, pid ${pid})"
+          kill "$pid" 2>/dev/null || :
+          wait "$pid" 2>/dev/null || :
+          # Default config (no COCKPIT_WEB_PORT / COCKPIT_WEB_HOST) = what nginx
+          # proxies to (127.0.0.1:8787). Refuse, naming the holder, if anything
+          # already listens there; never stop a process this step did not start.
+          if curl -s -o /dev/null --max-time 1 http://127.0.0.1:8787/; then
+            echo "::error::8787 already taken on the runner; not ours to stop"
+            (lsof -nP -iTCP:8787 -sTCP:LISTEN || ss -ltnp) 2>/dev/null || :
+            exit 1
+          fi
+          env -u COCKPIT_WEB_PORT -u COCKPIT_WEB_HOST COCKPIT_HOSTINGER=1 node app/dist-server/index.js >web-default.log 2>&1 &
+          pid=$!
+          for _ in $(seq 1 40); do
+            curl -sf http://127.0.0.1:8787/api/health >/dev/null && break
+            sleep 0.5
+          done
+          cat web-default.log
+          if [[ "${{ matrix.os }}" == ubuntu-latest ]]; then
+            listen="$(ss -ltnp | grep ':8787 ' || :)"
+          else
+            listen="$(lsof -nP -a -p "$pid" -iTCP:8787 -sTCP:LISTEN || :)"
+          fi
+          printf 'listen-proof default (%s):\n%s\n' "${{ matrix.os }}" "$listen"
+          grep -q '127.0.0.1:8787' <<<"$listen"
+          if grep -E '(\*|0\.0\.0\.0|\[::\]|:::?):8787' <<<"$listen"; then
+            echo "::error::cockpit-web default bind is not loopback"
+            exit 1
+          fi
+          echo "listen-proof: default bind loopback-only (127.0.0.1:8787, pid ${pid})"
 
       - name: Upload portability log
         if: always()

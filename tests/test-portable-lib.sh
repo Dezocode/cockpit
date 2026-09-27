@@ -107,6 +107,14 @@ set -e
 [[ "$(cockpit_utc_epoch 2099-01-01T00:00:00Z)" == 4070908800 ]] || fail "utc_epoch 2099"
 if cockpit_utc_epoch not-a-date >/dev/null 2>&1; then fail "utc_epoch garbage"; fi
 
+# Millisecond clock (debouncers): 13 digits, advances ~200 ms within a second.
+t0="$(cockpit_now_ms)"; sleep 0.2; t1="$(cockpit_now_ms)"
+[[ "$t0" =~ ^[0-9]{13}$ && "$t1" =~ ^[0-9]{13}$ ]] || fail "now_ms format ($t0 $t1)"
+(( t1 - t0 >= 150 && t1 - t0 < 1000 )) || fail "now_ms resolution ($t0 -> $t1)"
+t2="$(_cockpit_date_gnu=0; cockpit_now_ms)"; sleep 0.2; t3="$(_cockpit_date_gnu=0; cockpit_now_ms)"
+(( t3 - t2 >= 150 && t3 - t2 < 1000 )) || fail "now_ms non-GNU path ($t2 -> $t3)"
+printf 'now_ms: +%sms (active path), +%sms (non-GNU path)\n' "$((t1 - t0))" "$((t3 - t2))"
+
 # Plist data is written literally: & < > escaped under this bash and under the
 # system /bin/bash (3.2 on macOS; 5.2+ has patsub_replacement on by default).
 [[ "$(cockpit_xml_escape 'a&b<c>')" == 'a&amp;b&lt;c&gt;' ]] || fail "xml_escape"

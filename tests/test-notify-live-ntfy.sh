@@ -8,6 +8,8 @@ repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 # shellcheck source=lib/fixture.sh
 source "$repo_root/tests/lib/fixture.sh"
 fixture_init notify-live-ntfy
+# shellcheck source=../bin/cockpit-portable-lib
+source "$repo_root/bin/cockpit-portable-lib"
 
 if [[ "$(uname -s)" != Linux ]]; then
   echo "notify-live-ntfy: skip (Linux leg only)"
@@ -25,7 +27,7 @@ topic="cockpit-ci-${uuid}"
 export COCKPIT_NTFY_TOPIC="$topic" COCKPIT_NTFY_SERVER="https://ntfy.sh"
 msg="cockpit live ntfy round-trip ${uuid}"
 
-start_ms=$(date +%s%3N)
+start_ms=$(cockpit_now_ms)
 out="$(cockpit notify --sink ntfy --title "Cockpit CI" "$msg")" || { echo "notify-live-ntfy: FAIL (publish rc=$?: $out)"; exit 1; }
 [[ "$out" == "notify: delivered=ntfy sinks=telegram:skip:not-configured,ntfy:ok,desktop:skip:headless id="* ]] ||
   { echo "notify-live-ntfy: FAIL (bad stdout: $out)"; exit 1; }
@@ -39,7 +41,7 @@ for _ in $(seq 1 45); do
   fi
   sleep 1
 done
-elapsed=$(($(date +%s%3N) - start_ms))
+elapsed=$(($(cockpit_now_ms) - start_ms))
 if [[ "$found" -ne 1 ]]; then
   echo "notify-live-ntfy: FAIL (message not on topic after ${elapsed}ms)"
   exit 1

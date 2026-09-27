@@ -238,6 +238,26 @@ cockpit_timeout() {
   return "$rc"
 }
 
+# Epoch milliseconds. GNU `date +%s%3N`; BSD date has no %N (it printed
+# "<secs>3N", and the old whole-second fallback made every tap inside one
+# second look like a double tap to the 240-280 ms debouncers), so use bash 5's
+# EPOCHREALTIME, else python3, else whole seconds.
+cockpit_now_ms() {
+  local n
+  if [[ "$_cockpit_date_gnu" == 1 ]]; then
+    n="$(date +%s%3N 2>/dev/null)" || n=''
+    [[ "$n" =~ ^[0-9]+$ ]] && { printf '%s\n' "$n"; return 0; }
+  fi
+  if [[ -n "${EPOCHREALTIME:-}" ]]; then
+    n=${EPOCHREALTIME/[.,]/}
+    printf '%s\n' "${n:0:${#n}-3}"
+    return 0
+  fi
+  n="$(python3 -c 'import time; print(int(time.time() * 1000))' 2>/dev/null)" || n=''
+  [[ "$n" =~ ^[0-9]+$ ]] && { printf '%s\n' "$n"; return 0; }
+  printf '%s000\n' "$(date +%s)"
+}
+
 # ISO-8601 UTC timestamp -> epoch seconds. GNU `date -d`, else BSD
 # `date -j -f`, else python3. rc 1 when unparseable.
 cockpit_utc_epoch() {
