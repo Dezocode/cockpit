@@ -74,6 +74,7 @@ jobs:
   # Native tarball per target; each leg installs from its own extracted
   # tarball into a fresh HOME and serves /api/health from the artifact.
   bundle:
+    name: bundle (${{ matrix.target }})
     needs: versions
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
@@ -151,6 +152,7 @@ jobs:
   # Tauri bundles, natively per arch: .deb + AppImage on ubuntu-22.04 (older
   # glibc floor), .app/.dmg on macos-14 (arm64) and macos-15-intel (x64).
   desktop:
+    name: desktop (${{ matrix.os }})
     needs: versions
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
