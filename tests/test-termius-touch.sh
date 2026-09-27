@@ -128,8 +128,14 @@ def window() -> str:
         text=True,
     ).strip()
 
-def expect(name: str) -> None:
+def expect(name: str, within: float = 3.0) -> None:
+    # Taps run tmux run-shell hooks asynchronously; a slow runner (macOS
+    # Intel) can need more than one drain window before the switch lands.
+    deadline = time.monotonic() + within
     actual = window()
+    while actual != name and time.monotonic() < deadline:
+        drain(0.1)
+        actual = window()
     if actual != name:
         raise SystemExit(f"expected {name}, got {actual}")
     print(f"{name}: ok", flush=True)
@@ -178,10 +184,12 @@ select_window("AGENT")
 tap(5, -24)
 expect("PRS")
 
-# MouseUp alone is ignored; it cannot fire a second action.
+# MouseUp alone is ignored; it cannot fire a second action. Negative check:
+# give any (wrong) async action the full window to land, then look once.
 select_window("AGENT")
 release(5, 1)
-expect("AGENT")
+drain(3.0)
+expect("AGENT", within=0)
 
 # Keep draining the PTY while the client shuts down: tmux's exit sequences
 # otherwise fill the (small, on macOS) PTY buffer and block cockpit-client in
