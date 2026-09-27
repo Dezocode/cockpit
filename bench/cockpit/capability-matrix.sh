@@ -233,7 +233,8 @@ check "ResizeObserver charts" "$ro"
 grep -rq 'uplot\|uPlot' "$root/app/package.json" "$root/app/src" 2>/dev/null && chart=ok || chart=fail
 check "uPlot chart panel" "$chart"
 
-if grep -rq '# >>> cockpit >>>' "$root/install.sh" 2>/dev/null ||
+if grep -q 'cockpit_rc_write' "$root/install.sh" 2>/dev/null ||
+  grep -rq '# >>> cockpit >>>' "$root/install.sh" 2>/dev/null ||
   grep -rq '# Cockpit PATH' "$root/install.sh" 2>/dev/null; then
   path=ok
 else
