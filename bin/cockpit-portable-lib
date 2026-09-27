@@ -48,7 +48,11 @@ cockpit_require_bash4() {
   if [[ "${BASH_VERSINFO[0]:-0}" -ge 4 ]]; then
     return 0
   fi
-  local candidate entry="${BASH_SOURCE[1]:-$0}"
+  local candidate entry idx
+  # Re-exec the user-invoked entrypoint (e.g. bin/cockpit-agent-config), not an
+  # intermediate sourced file (cockpit-lib), and preserve the original argv.
+  idx=$((${#BASH_SOURCE[@]} - 1))
+  entry="${BASH_SOURCE[$idx]:-${BASH_SOURCE[1]:-$0}}"
   for candidate in ${COCKPIT_BASH4_CANDIDATES:-/opt/homebrew/bin/bash /usr/local/bin/bash}; do
     if [[ -x "$candidate" && "$candidate" != "$BASH" ]]; then
       export COCKPIT_BASH_REEXEC=1
