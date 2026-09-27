@@ -39,7 +39,7 @@ cat >"$project/.codex/AGENTS.md" <<'EOF'
 Keep this heading and paragraph intact.
 EOF
 
-detect="$($repo_root/bin/cockpit-agent-config detect "$project" codex" 2>&1)" || {
+detect="$("$repo_root/bin/cockpit-agent-config" detect "$project" codex 2>&1)" || {
   printf 'agent-profile: detect failed:\n%s\n' "$detect" >&2
   exit 1
 }

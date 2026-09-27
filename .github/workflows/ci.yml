@@ -154,15 +154,15 @@ jobs:
           shellcheck -x -S warning install.sh bin/cockpit-portable-lib bin/cockpit-lib bin/cockpit-agent-lib \
             bin/cockpit-mermaid-watch bin/cockpit-wake bin/cockpit-idle bin/cockpit-adapt bin/cockpit-profile \
             bin/cockpit-reload-views bin/cockpit-plugin
-          bash tests/test-portable-lib.sh
-          bash tests/test-portability-lint.sh
-          bash tests/test-install-shells.sh
-          bash tests/test-launchd.sh
+          "$bash_bin" tests/test-portable-lib.sh
+          "$bash_bin" tests/test-portability-lint.sh
+          "$bash_bin" tests/test-install-shells.sh
+          "$bash_bin" tests/test-launchd.sh
           for t in tests/test-*.sh; do
             case "$t" in
               tests/test-portable-lib.sh|tests/test-portability-lint.sh|tests/test-install-shells.sh|tests/test-launchd.sh) continue ;;
             esac
-            bash "$t"
+            "$bash_bin" "$t"
           done
           bash bench/cockpit/capability-matrix.sh
           COCKPIT_HOSTINGER=1 node app/dist-server/index.js &
