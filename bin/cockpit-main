@@ -249,12 +249,16 @@ state_file="$(cockpit_config_read_path state)"
 if [[ -f "$state_file" ]]; then
   runtime_id="$(awk -F= '/^runtime=/{print $2}' "$state_file" | tail -1)"
 fi
+# Optional Laya routing (cockpit route --launch, or COCKPIT_TASK for scripted
+# launches). Only a real Laya answer changes the runtime; absent/off/down/timeout
+# leave the launch exactly as it was.
 if [[ -n "${COCKPIT_ROUTE_RUNTIME:-}" ]]; then
   runtime_id="$COCKPIT_ROUTE_RUNTIME"
 elif [[ -n "${COCKPIT_TASK:-}" && -z "${COCKPIT_ROUTE_APPLIED:-}" ]]; then
   cockpit_route_run "$COCKPIT_TASK"
-  runtime_id="${COCKPIT_ROUTE_TOOL:-$(cockpit_route_default)}"
-  export COCKPIT_ROUTE_APPLIED=1
+  if [[ "$COCKPIT_ROUTE_LAYA" == ok ]]; then
+    runtime_id="$COCKPIT_ROUTE_TOOL"
+  fi
 fi
 [[ -n "$runtime_id" ]] || runtime_id="$(cockpit_route_default)"
 if [[ -n "${authlib:-}" ]] && ! cockpit_auth_check "$runtime_id" 2>/dev/null; then
