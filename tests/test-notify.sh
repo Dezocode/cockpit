@@ -4,9 +4,18 @@ set -euo pipefail
 repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 # shellcheck source=lib/fixture.sh
 source "$repo_root/tests/lib/fixture.sh"
+
+# fixture_init resets PATH to /usr/bin:/bin; CI node/pnpm live under setup-node-pnpm.
+_notify_tool_dirs=""
+for _tool in node pnpm; do
+  if command -v "$_tool" >/dev/null 2>&1; then
+    _notify_tool_dirs="$(dirname "$(command -v "$_tool")"):${_notify_tool_dirs}"
+  fi
+done
+
 fixture_init notify
 
-export PATH="$repo_root/bin:$FIXTURE_FAKEBIN:$PATH"
+export PATH="$repo_root/bin:$FIXTURE_FAKEBIN:${_notify_tool_dirs}${PATH}"
 mkdir -p "$FIXTURE_HOME/.config/cockpit" "$FIXTURE_HOME/.local/state/cockpit"
 install -m 0644 "$repo_root/stage/notify/notify.conf" "$FIXTURE_HOME/.config/cockpit/notify.conf"
 
