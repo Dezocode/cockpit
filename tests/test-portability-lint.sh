@@ -21,7 +21,7 @@ report "$(rg -n 'pgrep [^|]*-a\b' bin -g '!tests/test-portability-lint.sh' 2>/de
 report "$(rg -n 'declare -A|mapfile|readarray|\$\{[A-Za-z_]+(,,|\^\^)\}|exec \{' install.sh bin/cockpit-portable-lib -g '!tests/test-portability-lint.sh' 2>/dev/null || true)"
 report "$(rg -n 'COCKPIT_SHELL_RC:-\$\{HOME\}/\.bashrc|alias cockpit="cockpit"|^# Cockpit (PATH|cpr plugin)$' install.sh -g '!tests/test-portability-lint.sh' 2>/dev/null || true)"
 report "$(rg -n 'useradd|systemctl' install.sh bin -g '!tests/test-portability-lint.sh' 2>/dev/null | rg -v 'cockpit_service_install_systemd' || true)"
-report "$(rg -n 'brew install [^#]*(coreutils|gnu-sed|findutils|gawk|grep)' .github/workflows README.md -g '!tests/test-portability-lint.sh' 2>/dev/null || true)"
+report "$(rg -n 'brew install [^#]*(coreutils|gnu-sed|findutils|gawk|gnu-grep|grep-gnu)' .github/workflows README.md -g '!tests/test-portability-lint.sh' 2>/dev/null || true)"
 
 while IFS= read -r f; do
   [[ -n "$f" ]] || continue

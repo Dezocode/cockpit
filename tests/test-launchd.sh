@@ -23,13 +23,17 @@ plist="${HOME}/Library/LaunchAgents/com.dezocode.cockpit-web.plist"
 [[ -f "$plist" ]] || fail "plist missing"
 plutil -lint "$plist" >/dev/null 2>&1 || fail "plist lint"
 
-for _ in $(seq 1 40); do
+for _ in $(seq 1 80); do
   if curl -sf http://127.0.0.1:8787/api/health >/dev/null 2>&1; then
     break
   fi
   sleep 0.5
 done
-curl -sf http://127.0.0.1:8787/api/health >/dev/null 2>&1 || fail "health"
+if ! curl -sf http://127.0.0.1:8787/api/health >/dev/null 2>&1; then
+  logfile="${HOME}/Library/Logs/cockpit-web.log"
+  [[ -f "$logfile" ]] && sed -n '1,80p' "$logfile" >&2 || true
+  fail "health"
+fi
 
 uid="$(id -u)"
 launchctl bootout "gui/$uid" "$plist" 2>/dev/null || launchctl bootout "user/$uid" "$plist" 2>/dev/null || true

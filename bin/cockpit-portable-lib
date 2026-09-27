@@ -296,6 +296,7 @@ cockpit_service_install_launchd() {
   <true/>
   <key>KeepAlive</key>
   <true/>
+$( [[ -n "$install_root" ]] && printf '  <key>WorkingDirectory</key>\n  <string>%s</string>\n' "$install_root" )
   <key>StandardOutPath</key>
   <string>${logdir}/cockpit-web.log</string>
   <key>StandardErrorPath</key>
