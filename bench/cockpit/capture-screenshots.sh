@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# t384u screenshot capture — Cockpit 2.2 visual multiview evidence set
+# t384u screenshot capture — Cockpit visual multiview evidence set
+# from the live React SPA + dist-server API (NOT HTML stand-ins)
 set -euo pipefail
 
 root="$(cd -- "$(dirname -- "$0")/../.." && pwd)"
@@ -22,22 +23,44 @@ cleanup() {
 }
 trap cleanup EXIT
 
+ensure_build() {
+  command -v pnpm >/dev/null 2>&1 || { printf 'pnpm required\n'; exit 1; }
+  if [[ ! -f "$root/app/dist/index.html" ]]; then
+    printf 'building web dist…\n'
+    pnpm --dir "$root/app" build
+  fi
+  if [[ ! -f "$root/app/dist-server/index.js" ]]; then
+    printf 'compiling dist-server…\n'
+    pnpm --dir "$root/app" exec tsc -p tsconfig.server.json
+  fi
+}
+
 start_api() {
-  if curl -sf "$api_base/api/health" >/dev/null 2>&1; then return 0; fi
-  COCKPIT_HOSTINGER=1 pnpm --dir "$root/app" exec tsx server/index.ts &
+  if curl -sf "$api_base/api/health" >/dev/null 2>&1; then
+    local src
+    src=$(curl -sf "$api_base/api/health" | python3 -c "import sys,json; print(json.load(sys.stdin).get('source',''))" 2>/dev/null || true)
+    if [[ "$src" == "app/dist-server/index.js" ]]; then return 0; fi
+  fi
+  ensure_build
+  COCKPIT_INSTALL_ROOT="$root" COCKPIT_HOSTINGER=1 node "$root/app/dist-server/index.js" &
   web_pid=$!
-  for _ in $(seq 1 30); do
-    curl -sf "$api_base/api/health" >/dev/null 2>&1 && return 0
+  for _ in $(seq 1 40); do
+    if curl -sf "$api_base/api/health" >/dev/null 2>&1; then
+      src=$(curl -sf "$api_base/api/health" | python3 -c "import sys,json; print(json.load(sys.stdin).get('source',''))")
+      [[ "$src" == "app/dist-server/index.js" ]] && return 0
+    fi
     sleep 0.4
   done
+  printf 'dist-server failed to start\n'
   return 1
 }
 
 start_ui() {
   if curl -sf "$ui_base/" >/dev/null 2>&1; then return 0; fi
-  pnpm --dir "$root/app" exec vite --port "$ui_port" --strictPort &
+  ensure_build
+  pnpm --dir "$root/app" exec vite preview --port "$ui_port" --strictPort &
   vite_pid=$!
-  for _ in $(seq 1 30); do
+  for _ in $(seq 1 40); do
     curl -sf "$ui_base/" >/dev/null 2>&1 && return 0
     sleep 0.4
   done
@@ -47,6 +70,7 @@ start_ui() {
 start_api
 start_ui
 
+# JSON evidence (always) — from dist-server, not bootstrap health-server.js
 curl -sf "$api_base/api/health" >"$out/hostinger-health.json"
 curl -sf "$api_base/api/agents" >"$out/agents.json"
 curl -sf "$api_base/api/computers" >"$out/computers.json"
@@ -54,17 +78,25 @@ curl -sf "$api_base/api/memory" >"$out/memory.json"
 curl -sf "$api_base/api/auth/gh" >"$out/splash-gh-auth.json"
 
 agent_count=$(python3 -c "import json; print(len(json.load(open('$out/agents.json'))['agents']))")
+if [[ "$agent_count" -lt 20 ]]; then
+  printf 'FAIL: agents fixture count %s < 20\n' "$agent_count"
+  exit 1
+fi
 printf 'agents fixture count: %s (profile=%s)\n' "$agent_count" "$profile"
 
-if ! pnpm --dir "$root/app" exec playwright --version >/dev/null 2>&1; then
-  pnpm --dir "$root/app" add -D playwright@1.49.1 2>/dev/null || true
+health_source=$(python3 -c "import json; print(json.load(open('$out/hostinger-health.json')).get('source',''))")
+if [[ "$health_source" != "app/dist-server/index.js" ]]; then
+  printf 'FAIL: health source %s (expected app/dist-server/index.js)\n' "$health_source"
+  exit 1
 fi
+
+# PNG screenshots via Playwright (chromium) — live React SPA via vite preview
 pnpm --dir "$root/app" exec playwright install chromium 2>/dev/null || true
 
+# shot <url> <file> [selector | wait-ms]
 shot() {
   local url=$1 file=$2 wait=${3:-2500}
-  pnpm --dir "$root/app" exec playwright screenshot "$url" "$file" --wait-for-timeout "$wait" 2>/dev/null || \
-    npx --yes playwright screenshot "$url" "$file" --wait-for-timeout "$wait" 2>/dev/null || true
+  pnpm --dir "$root/app" exec node scripts/capture-page.mjs "$url" "$file" "$wait"
 }
 
 # Pre-auth login splash (hold redirect)
@@ -90,9 +122,10 @@ shot "$ui_base/splash/staging?demo=focus&reset=1" "$out/focus-rings.png" 4000
 shot "$ui_base/splash/staging?demo=theme-ghui-cyan&reset=1" "$out/theme-ghui-cyan.png" 4000
 
 # Legacy workspace parity (v2.1.4 baseline)
-shot "$ui_base/workspace#AGENT" "$out/agents-20plus.png" 6000
-shot "$ui_base/workspace#COMPUTERS" "$out/computers.png" 6000
-shot "$ui_base/workspace#MEMORY" "$out/memory.png" 6000
+shot "$ui_base/workspace" "$out/agents-20plus.png" "text=Agents ("
+shot "$ui_base/workspace#AGENT" "$out/live-term.png" "text=active:"
+shot "$ui_base/workspace#COMPUTERS" "$out/computers.png" "text=COMPUTERS"
+shot "$ui_base/workspace#MEMORY" "$out/memory.png" "text=MEMORY"
 
 python3 - "$out" "$profile" "$agent_count" "$api_base" <<'PY'
 import hashlib
@@ -144,6 +177,9 @@ if len(set(gate_hashes)) != len(unique_gate):
 
 manifest = {
     "seed": "cockpit-20260907",
+    "evidence_class": "live_spa_dist_server",
+    "ui_source": "vite preview (app/dist)",
+    "api_source": "app/dist-server/index.js",
     "version": "2.2.0",
     "profile": profile,
     "agent_count": agent_count,
@@ -162,5 +198,5 @@ if "theme-ghui-cyan.png" in md5:
     print(f"  theme-ghui-cyan.png: {md5['theme-ghui-cyan.png']}")
 PY
 
-printf 't384u evidence (%s): %s\n' "$profile" "$out"
+printf 't384u evidence (%s, live SPA + dist-server): %s\n' "$profile" "$out"
 ls -la "$out"

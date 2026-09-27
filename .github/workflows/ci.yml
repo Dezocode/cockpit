@@ -48,7 +48,8 @@ jobs:
           assert d["product"] == "cockpit"
           assert d["status"] in ("green", "yellow")
           assert d["checks"]["hostinger"] == "configured"
-          print("health ok:", d["status"])
+          assert d.get("source") == "app/dist-server/index.js"
+          print("health ok:", d["status"], "source:", d["source"])
           PY
 
       - name: Hostinger H0 verify

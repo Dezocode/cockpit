@@ -26,8 +26,10 @@ Canon draft alignment: `tmp/t847u/README.md`
 | `scripts/install-hostinger.sh` | full Hostinger install |
 | `deploy/hostinger-grok-build-install.sh` | grok-build subscription recipe (canonical) |
 | `scripts/hostinger-grok-build.sh` | thin wrapper → deploy recipe |
-| `packaging/health-server.js` | minimal GET `/api/health` bootstrap (optional) |
+| `packaging/health-server.js` | optional GET `/api/health` bootstrap (NOT full API — see H0-HEALTH-CONTRACT.md) |
+| `scripts/start-dist-server.sh` | local/systemd-equivalent dist-server start |
 | `scripts/hostinger-health.sh` | GET `/api/health` probe |
+| `bench/cockpit/H0-HEALTH-CONTRACT.md` | bootstrap vs full API contract |
 
 ## Health
 

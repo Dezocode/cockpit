@@ -19,6 +19,14 @@ export default defineConfig(() => ({
       "/ws": { target: "ws://localhost:8787", ws: true },
     },
   },
+  preview: {
+    port: 1420,
+    strictPort: true,
+    proxy: {
+      "/api": { target: "http://localhost:8787", changeOrigin: true },
+      "/ws": { target: "ws://localhost:8787", ws: true },
+    },
+  },
   build: {
     outDir: "dist",
     emptyOutDir: true,
