@@ -134,47 +134,52 @@ printf '1.0\n1.10\n2.0\n' | cockpit_sort_version | tail -1 | grep -q '^2.0$' || 
 backend="$(cockpit_watch_backend)"
 printf 'watch backend: %s\n' "$backend"
 if [[ "$backend" == none ]]; then
-  fail "no watch backend (install fswatch or inotify-tools)"
-fi
-# shellcheck source=../bin/cockpit-lib
-source "$repo_root/bin/cockpit-lib"
-export COCKPIT_EVENT_FD=
-wdir="$tmpdir/watch"
-mkdir -p "$wdir/.git"
-children_before=$(pgrep -P $$ 2>/dev/null | wc -l | tr -d '[:space:]')
-cockpit_event_open testsession WATCHTEST
-cockpit_event_watch "$wdir" -r -e close_write,moved_to,create --exclude "$cockpit_noise_exclude"
-sleep 1 # watcher warm-up (FSEvents stream start); not part of the 3 s budget
-edited="$wdir/edited.txt"
-printf 'x' >"$edited"
-want="$(cockpit_realpath "$edited")"
-got='' saw_git='' events=''
-t_end=$(($(date +%s) + 3))
-while (($(date +%s) <= t_end)); do
-  printf 'x' >"$wdir/.git/x"
-  while IFS= read -r -t 0.5 -u "$COCKPIT_EVENT_FD" ev; do
+  # Backend `none` is a supported, reported state (watchers wake on USR1 only).
+  # CI portability legs export COCKPIT_REQUIRE_WATCH_BACKEND=1 so it is never hidden there.
+  [[ "${COCKPIT_REQUIRE_WATCH_BACKEND:-0}" != 1 ]] || fail "no watch backend (install fswatch or inotify-tools)"
+  printf 'watch: skip (backend none; install inotify-tools or fswatch)\n'
+else
+  # shellcheck source=../bin/cockpit-lib
+  source "$repo_root/bin/cockpit-lib"
+  export COCKPIT_EVENT_FD=
+  wdir="$tmpdir/watch"
+  mkdir -p "$wdir/.git"
+  # BSD pgrep excludes its own ancestors and exits 1 on no match: count via || :.
+  children_before=$( (pgrep -P $$ 2>/dev/null || :) | wc -l | tr -d '[:space:]')
+  cockpit_event_open testsession WATCHTEST
+  cockpit_event_watch "$wdir" -r -e close_write,moved_to,create --exclude "$cockpit_noise_exclude"
+  sleep 1 # watcher warm-up (FSEvents stream start); not part of the 3 s budget
+  edited="$wdir/edited.txt"
+  printf 'x' >"$edited"
+  want="$(cockpit_realpath "$edited")"
+  got='' saw_git='' events=''
+  t_end=$(($(date +%s) + 3))
+  while (($(date +%s) <= t_end)); do
+    printf 'x' >"$wdir/.git/x"
+    while IFS= read -r -t 0.5 -u "$COCKPIT_EVENT_FD" ev; do
+      events+="$ev"$'\n'
+      [[ "$ev" == */.git/* ]] && saw_git=1
+      [[ "$ev" == "$want" ]] && got=1
+    done
+    [[ -n "$got" ]] && break
+    printf 'x' >>"$edited"
+  done
+  # Keep reading briefly so a late .git event would still be caught.
+  while IFS= read -r -t 0.7 -u "$COCKPIT_EVENT_FD" ev; do
     events+="$ev"$'\n'
     [[ "$ev" == */.git/* ]] && saw_git=1
-    [[ "$ev" == "$want" ]] && got=1
   done
-  [[ -n "$got" ]] && break
-  printf 'x' >>"$edited"
-done
-# Keep reading briefly so a late .git event would still be caught.
-while IFS= read -r -t 0.7 -u "$COCKPIT_EVENT_FD" ev; do
-  events+="$ev"$'\n'
-  [[ "$ev" == */.git/* ]] && saw_git=1
-done
-[[ -n "$got" ]] || fail "watch event path != $want within 3s (got: ${events//$'\n'/ })"
-[[ -z "$saw_git" ]] || fail "watch --exclude leaked .git/x"
-printf 'watch: %s event == realpath (%s)\n' "$backend" "$want"
-cockpit_event_close
-sleep 0.5
-leftover="$(pgrep -f -- "$wdir" 2>/dev/null || true)"
-[[ -z "$leftover" ]] || fail "watcher processes alive after close: $leftover"
-children_after=$(pgrep -P $$ 2>/dev/null | wc -l | tr -d '[:space:]')
-((children_after <= children_before)) ||
-  fail "watcher children after close ($children_after > $children_before)"
-printf 'watch: close left 0 watcher processes\n'
+  [[ -n "$got" ]] || fail "watch event path != $want within 3s (got: ${events//$'\n'/ })"
+  [[ -z "$saw_git" ]] || fail "watch --exclude leaked .git/x"
+  printf 'watch: %s event == realpath (%s)\n' "$backend" "$want"
+  cockpit_event_close
+  sleep 0.5
+  leftover="$(pgrep -f -- "$wdir" 2>/dev/null || true)"
+  [[ -z "$leftover" ]] || fail "watcher processes alive after close: $leftover"
+  children_after=$( (pgrep -P $$ 2>/dev/null || :) | wc -l | tr -d '[:space:]')
+  ((children_after <= children_before)) ||
+    fail "watcher children after close ($children_after > $children_before)"
+  printf 'watch: close left 0 watcher processes\n'
+fi
 
 printf 'portable-lib: ok\n'

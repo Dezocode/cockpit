@@ -191,7 +191,7 @@ jobs:
           shellcheck -x -S warning install.sh bin/cockpit-portable-lib bin/cockpit-lib bin/cockpit-agent-lib \
             bin/cockpit-mermaid-watch bin/cockpit-wake bin/cockpit-idle bin/cockpit-adapt bin/cockpit-profile \
             bin/cockpit-reload-views bin/cockpit-plugin
-          "$bash_bin" tests/test-portable-lib.sh
+          COCKPIT_REQUIRE_WATCH_BACKEND=1 "$bash_bin" tests/test-portable-lib.sh
           "$bash_bin" tests/test-portability-lint.sh
           "$bash_bin" tests/test-install-shells.sh
           "$bash_bin" tests/test-launchd.sh

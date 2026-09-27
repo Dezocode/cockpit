@@ -31,7 +31,9 @@ stop_ours() {
 trap 'stop_ours; fixture_cleanup' EXIT
 
 fail() { echo "notify: FAIL ($1)"; [[ -n "${2:-}" ]] && printf '%s\n' "$2" >&2; exit 1; }
-sha() { printf '%s' "$1" | { sha256sum 2>/dev/null || shasum -a 256; } | awk '{print $1}'; }
+# shellcheck source=../bin/cockpit-portable-lib
+source "$repo_root/bin/cockpit-portable-lib"
+sha() { printf '%s' "$1" | cockpit_sha256 /dev/stdin; }
 
 # start_stub LOG [--slow S] → sets stub_port, stub_pid
 start_stub() {
@@ -258,12 +260,12 @@ start_api() {
   api_port="$(free_port)"
   if curl -s -o /dev/null --max-time 1 "http://127.0.0.1:${api_port}/"; then fail "api: port $api_port taken"; fi
   env "$@" COCKPIT_WEB_PORT="$api_port" COCKPIT_NOTIFY_ENV_FILE="$COCKPIT_NOTIFY_ENV_FILE" \
-    "$node_bin" --import "$repo_root/app/tests/loopback-bind.mjs" "$repo_root/app/dist-server/index.js" >"$log" 2>&1 &
+    "$node_bin" "$repo_root/app/dist-server/index.js" >"$log" 2>&1 &
   api_pid=$!
   our_pids+=("$api_pid")
   for _ in $(seq 1 100); do
     kill -0 "$api_pid" 2>/dev/null || fail "api: server exited" "$(cat "$log")"
-    grep -q "listening on http://localhost:${api_port}" "$log" &&
+    grep -q "listening on http://127.0.0.1:${api_port}" "$log" &&
       curl -s -o /dev/null "http://127.0.0.1:${api_port}/api/health" && return 0
     sleep 0.1
   done
