@@ -8,7 +8,9 @@ Install root: **`/opt/cockpit`** — separate from Saul `/root/.grok` and `saul-
 ./scripts/install-hostinger.sh
 ```
 
-Curl one-liner (same recipe; tag-pinned v2.2.x URLs keep working on their tags):
+Tag-pinned curl one-liner (**v2.2.1 tag**: that tag carries the pre-v2.3.0
+script, which also ran the old `install.sh` Hostinger block, so deploy steps
+ran twice; on v2.3.0+ run `./scripts/install-hostinger.sh` from a checkout):
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Dezocode/cockpit/v2.2.1/scripts/install-hostinger.sh | sudo bash

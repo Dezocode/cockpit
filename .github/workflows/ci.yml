@@ -7,6 +7,42 @@ on:
     branches: [main, cockpit-gtm-v2.3]
 
 jobs:
+  # tests/*.sh in a clean sandbox (env -i, temp HOME/TMUX_TMPDIR, stdin </dev/null).
+  # Separate job so it never conflicts with steps appended to `verify`.
+  shell-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: tests/*.sh (named skip list)
+        shell: bash
+        run: |
+          # Pre-existing failures at base e7a1687 (also fail at e5c2eb8 in a clean
+          # sandbox: auth-needed / OAuth-ready asserts; termius "expected FILES, got AGENT").
+          # Quarantined by exact name, never silently. Remove a name once it is fixed.
+          skip=(test-auth-setup test-setup-flows test-termius-touch)
+          for s in "${skip[@]}"; do
+            [[ -f "tests/$s.sh" ]] || { echo "stale skip entry: $s"; exit 1; }
+          done
+          fail=0 ran=0
+          for t in tests/test-*.sh; do
+            n=$(basename "$t" .sh)
+            if [[ " ${skip[*]} " == *" $n "* ]]; then
+              echo "SKIP $n (pre-existing failure at e7a1687)"
+              continue
+            fi
+            ran=$((ran + 1))
+            if env -i PATH=/usr/bin:/bin HOME="$(mktemp -d)" TMUX_TMPDIR="$(mktemp -d)" TERM=xterm \
+                bash "$t" </dev/null; then
+              echo "PASS $n"
+            else
+              echo "FAIL $n"
+              fail=1
+            fi
+          done
+          echo "shell tests: ran=$ran skipped=${#skip[@]} failed=$fail"
+          [[ "$ran" -gt 0 && "$fail" -eq 0 ]]
+
   verify:
     runs-on: ubuntu-latest
     steps:
