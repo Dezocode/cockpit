@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC2088
 set -euo pipefail
 
 root="$(cd -- "$(dirname -- "$0")" && pwd)"
+# shellcheck source=bin/cockpit-portable-lib
+source "$root/bin/cockpit-portable-lib"
 
 # The Hostinger deploy gate left install.sh in v2.3.0 (single deploy path).
 # Fail loudly instead of silently doing only a user-level install.
@@ -38,7 +41,7 @@ while IFS= read -r legacy_name || [[ -n "$legacy_name" ]]; do
   ln -sf cockpit-legacy-alias "$bindir/$legacy_name"
 done <"$root/bin/cockpit-legacy-names.list"
 install -m 0644 "$root/bin/cockpit-lib" "$root/bin/cockpit-auth-lib" \
-  "$root/bin/cockpit-agent-lib" \
+  "$root/bin/cockpit-agent-lib" "$root/bin/cockpit-portable-lib" \
   "$bindir/"
 install -m 0755 "$root/bin/cpr" "$bindir/cpr"
 
@@ -74,7 +77,7 @@ normalize_canonical_namespace() {
   tmp="${file}.cockpit-migrate.$$"
   sed -e 's#~/.config/codex-cockpit#~/.config/cockpit#g' \
     -e 's#Codex Cockpit#Cockpit#g' "$file" >"$tmp"
-  chmod --reference="$file" "$tmp" 2>/dev/null || true
+  cockpit_copy_mode "$file" "$tmp"
   mv "$tmp" "$file"
 }
 
@@ -90,7 +93,7 @@ normalize_canonical_commands() {
   tmp="${file}.cockpit-commands.$$"
   sed -e 's/codex-cockpit-/cockpit-/g' \
     -e 's/codex-mermaid-watch/cockpit-mermaid-watch/g' "$file" >"$tmp"
-  chmod --reference="$file" "$tmp" 2>/dev/null || true
+  cockpit_copy_mode "$file" "$tmp"
   mv "$tmp" "$file"
 }
 
@@ -188,31 +191,7 @@ if [[ -f "$confdir/tmux/tmux.conf" ]] && ! grep -Fq "$canonical_overlay" "$confd
     "$canonical_overlay" "$canonical_overlay" >>"$confdir/tmux/tmux.conf"
 fi
 
-shellrc="${COCKPIT_SHELL_RC:-${HOME}/.bashrc}"
-# Existing installations may already contain the old reload function. Append
-# a separately marked canonical definition instead of rewriting shellrc.
-cpr_plugin_marker='# Cockpit cpr plugin'
-if [[ -f "$shellrc" ]] &&
-  ! grep -Fqx "$cpr_plugin_marker" "$shellrc"; then
-  printf '\n%s\n' "$cpr_plugin_marker" >>"$shellrc"
-  printf '%s\n' \
-    'unalias cockpit 2>/dev/null || true' \
-    'cpr() {' \
-    '  command -v cockpit >/dev/null 2>&1 || return 0' \
-    '  cockpit cpr "$@"' \
-    '}' >>"$shellrc"
-fi
-
-# Ensure ~/.local/bin is on PATH and `cockpit` resolves (2.2 alias verify)
-path_marker='# Cockpit PATH'
-if [[ -f "$shellrc" ]] && ! grep -Fqx "$path_marker" "$shellrc"; then
-  printf '\n%s\n' "$path_marker" >>"$shellrc"
-  printf '%s\n' \
-    'export PATH="$HOME/.local/bin:$PATH"' \
-    'if command -v cockpit >/dev/null 2>&1; then' \
-    '  alias cockpit="cockpit"' \
-    'fi' >>"$shellrc"
-fi
+cockpit_rc_write "$bindir"
 
 # Upgrade an active installation in place. Renaming the old session keeps
 # Agent/FILES alive; only derived views are refreshed afterward so their old
@@ -248,5 +227,18 @@ if [[ -d "$root/app" && -f "$root/app/package.json" ]]; then
   done
 fi
 
-printf 'Installed to %s\nRun: cockpit   (workspace)\n      cockpit agent   (jump to live Agent pane)\n      cockpit-web     (GUI API server)\n      codex           (Codex CLI)\nProfile sync: cockpit config push|pull (your gh login, secret gist)\nCanonical config: %s\n' \
-  "$bindir" "$config_home"
+if [[ "${COCKPIT_INSTALL_SERVICE:-0}" == 1 ]]; then
+  cockpit_service_install cockpit-web "$bindir" "$root" ||
+    printf 'service: install failed (rc %s); run %s/cockpit-web manually\n' "$?" "$bindir" >&2
+fi
+
+watch_backend="$(cockpit_watch_backend)"
+printf 'Installed to %s\nRun: cockpit   (workspace)\n      cockpit agent   (jump to live Agent pane)\n      cockpit-web     (GUI API server)\n      codex           (Codex CLI)\nProfile sync: cockpit config push|pull (your gh login, secret gist)\nCanonical config: %s\nwatch backend: %s\n' \
+  "$bindir" "$config_home" "$watch_backend"
+if [[ "$watch_backend" == none ]]; then
+  if command -v brew >/dev/null 2>&1; then
+    printf 'hint: brew install bash tmux fswatch\n'
+  elif command -v apt-get >/dev/null 2>&1; then
+    printf 'hint: sudo apt-get install -y inotify-tools tmux\n'
+  fi
+fi

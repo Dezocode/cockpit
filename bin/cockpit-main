@@ -116,7 +116,7 @@ elif (( explicit_root == 0 )) && [[ -t 0 && -t 1 ]] && command -v fzf >/dev/null
       --height=55% --layout=reverse --border=rounded \
       --prompt='project › ' \
       --header='Choose a project  •  Enter open  •  Esc cancel' \
-      --preview='git -C {} status --short --branch 2>/dev/null | head -20 || find {} -maxdepth 1 -type f -printf "%f\\n" | head -20' \
+      --preview='git -C {} status --short --branch 2>/dev/null | head -20 || ls -1 {} 2>/dev/null | head -20' \
       --preview-window=right:45%:wrap || true)"
     if [[ -z "$selected" ]]; then
       exit 0

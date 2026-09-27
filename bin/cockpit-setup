@@ -8,13 +8,12 @@ export PATH="$HOME/.local/bin:$PATH"
 
 script_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 authlib="$script_root/cockpit-auth-lib"
-theme_lib="$script_root/cockpit-lib"
 # shellcheck source=cockpit-auth-lib
 source "$authlib"
 # shellcheck source=cockpit-agent-lib
 source "$script_root/cockpit-agent-lib"
 # shellcheck source=cockpit-lib
-source "$theme_lib"
+source "$script_root/cockpit-lib"
 
 if [[ -n "${TMUX:-}" ]]; then
   session="$(tmux display-message -p '#{session_name}' 2>/dev/null || true)"
@@ -114,11 +113,7 @@ plugin_json() {
   local codex_bin
   codex_bin="$(command -v codex 2>/dev/null || true)"
   [[ -n "$codex_bin" ]] || return 1
-  if command -v timeout >/dev/null 2>&1; then
-    timeout 1.5s codex plugin list --available --json 2>/dev/null
-  else
-    codex plugin list --available --json 2>/dev/null
-  fi
+  cockpit_timeout 1.5 codex plugin list --available --json 2>/dev/null
 }
 
 plugin_summary() {
@@ -348,7 +343,7 @@ auth_flow() {
   printf '%sStarting the native CLI OAuth flow in this SETUP pane:%s\n\n  %s\n\n' "$bright" "$reset" "$login"
   printf '%sComplete it, or press Ctrl-C if the CLI offers cancellation.%s\n\n' "$muted" "$reset"
   set +e
-  bash -lc "$login"
+  bash -lc "$(cockpit_login_command "$login")"
   st=$?
   set -e
   if provider_oauth_ready "$id"; then
@@ -392,11 +387,7 @@ provider_models() {
     if [[ -n "$command" ]]; then
       # Discovery is opt-in and happens only when MODEL is opened. Keep a
       # misbehaving provider command from blocking the SETUP terminal.
-      if command -v timeout >/dev/null 2>&1; then
-        raw="$(timeout 1s bash -lc "$command" 2>/dev/null || true)"
-      else
-        raw="$(bash -lc "$command" 2>/dev/null || true)"
-      fi
+      raw="$(cockpit_timeout 1 bash -lc "$(cockpit_login_command "$command")" 2>/dev/null || true)"
     fi
   fi
   # `models=` accepts comma- or pipe-separated values; discovery commands may
@@ -483,7 +474,7 @@ select_catalog_model() {
   apply="$(cockpit_auth_field "$id" model_apply 2>/dev/null || true)"
   if [[ -n "$apply" ]]; then
     printf '%sApplying %s · %s...%s\n\n' "$muted" "$(provider_label "$id")" "$model" "$reset"
-    if COCKPIT_PROVIDER="$id" COCKPIT_MODEL="$model" bash -lc "$apply"; then
+    if COCKPIT_PROVIDER="$id" COCKPIT_MODEL="$model" bash -lc "$(cockpit_login_command "$apply")"; then
       message="Selected $(provider_label "$id") · $model."
     else
       message="The model_apply hook failed for $(provider_label "$id") · $model."
@@ -844,7 +835,7 @@ shell_command() {
   [[ -n "$command" ]] || return 0
   printf '\n%sRUN%s  %s\n\n' "$blue" "$reset" "$command"
   set +e
-  bash -lc "$command"
+  bash -lc "$(cockpit_login_command "$command")"
   status=$?
   set -e
   message="Command exited with status $status."

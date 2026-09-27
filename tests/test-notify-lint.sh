@@ -46,7 +46,7 @@ RG
 probe curl-token-argv-multiline "$probe5b_cmd"
 probe tracked-notify-env "git ls-files | rg '(^|/)notify\\.env\$'"
 probe local-trust-in-packaging "rg -n 'COCKPIT_LOCAL_TRUST' \$(ls -d packaging deploy scripts 2>/dev/null)"
-probe nonportable-bin-notify "rg -n '\\btimeout [0-9]|stat -c|readlink -f|sed -i|/proc/' bin/cockpit-notify"
+probe nonportable-bin-notify "rg -n '\\btimeout [0-9]|stat -c|readlink[ ]-f|sed[ ]-i|/proc/|\\bsha256sum\\b' bin/cockpit-notify"
 
 # Positive twins (>= 1 line each).
 rg -n 'EnvironmentFile=-/etc/cockpit/notify.env' packaging deploy >/dev/null 2>&1 ||

@@ -61,6 +61,9 @@ tmux_test set-option -t "$session" status on
 tmux_test set-option -t "$session" status-position bottom
 tmux_test set-option -t "$session" status-left-length 24
 tmux_test set-option -t "$session" status-left 'COCKPIT                 '
+# Pin status-right (tmux >= 3.5 gives the default right block priority over
+# overflowing window ranges); the touch layout under test sets its own.
+tmux_test set-option -t "$session" status-right ''
 tmux_test set-option -t "$session" window-status-separator ' '
 tmux_test set-option -t "$session" window-status-format '      #W      '
 tmux_test set-option -t "$session" window-status-current-format '      #W      '
@@ -125,8 +128,14 @@ def window() -> str:
         text=True,
     ).strip()
 
-def expect(name: str) -> None:
+def expect(name: str, within: float = 3.0) -> None:
+    # Taps run tmux run-shell hooks asynchronously; a slow runner (macOS
+    # Intel) can need more than one drain window before the switch lands.
+    deadline = time.monotonic() + within
     actual = window()
+    while actual != name and time.monotonic() < deadline:
+        drain(0.1)
+        actual = window()
     if actual != name:
         raise SystemExit(f"expected {name}, got {actual}")
     print(f"{name}: ok", flush=True)
@@ -175,16 +184,30 @@ select_window("AGENT")
 tap(5, -24)
 expect("PRS")
 
-# MouseUp alone is ignored; it cannot fire a second action.
+# MouseUp alone is ignored; it cannot fire a second action. Negative check:
+# give any (wrong) async action the full window to land, then look once.
 select_window("AGENT")
 release(5, 1)
-expect("AGENT")
+drain(3.0)
+expect("AGENT", within=0)
 
+# Keep draining the PTY while the client shuts down: tmux's exit sequences
+# otherwise fill the (small, on macOS) PTY buffer and block cockpit-client in
+# write(), so it never reaps tmux and a blocking waitpid() hangs forever.
 os.kill(pid, signal.SIGTERM)
-try:
-    os.waitpid(pid, 0)
-except ChildProcessError:
-    pass
+deadline = time.monotonic() + 10
+while True:
+    try:
+        done, _ = os.waitpid(pid, os.WNOHANG)
+    except ChildProcessError:
+        break
+    if done:
+        break
+    if time.monotonic() > deadline:
+        os.kill(pid, signal.SIGKILL)  # our own pty child, never a port/name match
+        os.waitpid(pid, 0)
+        raise SystemExit("cockpit-client did not exit within 10s of SIGTERM")
+    drain(0.1)
 PY
 
 printf '%s\n' 'Termius touch regression: PASS'

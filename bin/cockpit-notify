@@ -5,19 +5,11 @@
 # reads url/headers/body from a process-substitution config FD (ps shows /dev/fd/NN).
 set -euo pipefail
 
-if [[ "${BASH_VERSINFO[0]:-0}" -lt 4 ]]; then
-  echo "cockpit notify: bash 4+ required" >&2
-  exit 2
-fi
-
 script_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=cockpit-lib
 source "$script_root/cockpit-lib"
-# C3 portable lib (cockpit_sha256) when it has landed; never a second sha helper.
-if [[ -f "$script_root/cockpit-portable-lib" ]]; then
-  # shellcheck source=/dev/null
-  source "$script_root/cockpit-portable-lib"
-fi
+# cockpit-lib runs cockpit_require_bash4 (Homebrew bash re-exec or exit 64) and
+# sources cockpit-portable-lib (cockpit_sha256).
 
 cn_state_dir="${XDG_STATE_HOME:-$HOME/.local/state}/cockpit"
 cn_receipt_file="$cn_state_dir/notify.jsonl"
@@ -75,15 +67,7 @@ cn_cfg_quote() {
 }
 
 cn_sha256() {
-  if declare -F cockpit_sha256 >/dev/null 2>&1; then
-    printf '%s' "$1" | cockpit_sha256 /dev/stdin
-  elif command -v sha256sum >/dev/null 2>&1; then
-    printf '%s' "$1" | sha256sum | awk '{print $1}'
-  elif command -v shasum >/dev/null 2>&1; then
-    printf '%s' "$1" | shasum -a 256 | awk '{print $1}'
-  else
-    printf '%s' "$1" | openssl dgst -sha256 -r | awk '{print $1}'
-  fi
+  printf '%s' "$1" | cockpit_sha256 /dev/stdin
 }
 
 cn_uuid() {

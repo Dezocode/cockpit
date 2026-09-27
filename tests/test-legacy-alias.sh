@@ -84,7 +84,10 @@ while IFS= read -r -u 3 legacy_name || [[ -n "$legacy_name" ]]; do
   if [[ "$lib_names" == *" $legacy_name "* ]]; then
     # Sourced mode: canonical library loads through the symlink and the
     # caller's errexit/nounset/pipefail stay off (old shim behaviour).
-    if out=$(bash --norc --noprofile -c '
+    # Sourcing needs bash >= 4 (there is no script to re-exec), so use this
+    # test's own bash rather than whatever `bash` is first on the fixture PATH
+    # (/bin/bash 3.2 on macOS; that path is covered in test-install-shells).
+    if out=$("$BASH" --norc --noprofile -c '
         set +euo pipefail
         before="$-"
         source "$1" || exit 3

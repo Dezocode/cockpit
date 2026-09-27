@@ -45,7 +45,7 @@ fi
 modality="$(tmux show-options -v -t "$session" @cockpit_modality 2>/dev/null || true)"
 if [[ -z "$modality" ]]; then
   if [[ "$endpoint" == "termius-ios" ]]; then
-    modality=touch
+    modality='touch'
   else
     modality=keyboard
   fi
@@ -78,7 +78,7 @@ done < <(tmux list-clients -t "$session" -F '#{client_width} #{client_height} #{
 # Phone-only: always the touch tab row, even if a leftover @cockpit_modality
 # says keyboard (that left Termius with a top bar and empty tab formats).
 if ((has_phone == 1 && has_desktop == 0)); then
-  modality=touch
+  modality='touch'
 fi
 want_tabs=0
 if ((phone == 1 && has_desktop == 0)); then
@@ -343,7 +343,7 @@ fi
 lockdir="${XDG_RUNTIME_DIR:-/tmp}/cockpit-adapt-${session}.lock"
 if ! mkdir "$lockdir" 2>/dev/null; then
   stale="$(cat "$lockdir/pid" 2>/dev/null || true)"
-  if [[ -n "$stale" && ! -d "/proc/$stale" ]]; then
+  if [[ -n "$stale" ]] && ! cockpit_pid_alive "$stale"; then
     rm -rf "$lockdir"
     mkdir "$lockdir"
   else

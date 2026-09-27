@@ -60,7 +60,9 @@ cockpit agent                               # reattach safely from Termius
 ```
 
 Needs: `tmux`, and whichever agent CLIs she wants (`codex`, `grok`, `claude`,
-`cursor-agent`). Each CLI keeps its own login on **that** machine. The public
+`cursor-agent`). On macOS also install Homebrew `bash` (≥4), `fswatch`, and
+`tmux` (`brew install bash tmux fswatch`). Each CLI keeps its own login on
+**that** machine. The public
 tree has templates only — no API keys, no `auth.json`, no gists from other
 people. `cockpit config push` writes a **secret gist on the signed-in `gh`
 user**, never into this git repo.
