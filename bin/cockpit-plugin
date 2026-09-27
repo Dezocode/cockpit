@@ -101,6 +101,7 @@ run_plugin() {
     return 1
   }
   entry="$(manifest_field "$dir/plugin.conf" entrypoint)"
+  unset COCKPIT_BASH_REEXEC
   exec "$dir/$entry" "$@"
 }
 

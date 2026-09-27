@@ -65,8 +65,9 @@ cockpit_require_bash4() {
   entry="${BASH_SOURCE[$idx]:-${BASH_SOURCE[1]:-$0}}"
   for candidate in ${COCKPIT_BASH4_CANDIDATES:-/opt/homebrew/bin/bash /usr/local/bin/bash}; do
     if [[ -x "$candidate" && "$candidate" != "$BASH" ]]; then
-      export COCKPIT_BASH_REEXEC=1
-      exec "$candidate" "$entry" "$@"
+      # Scoped to the re-exec'd process only; exporting breaks child entrypoints
+      # (e.g. CPR plugin) that still run under /bin/bash 3.2 via shebang.
+      exec env COCKPIT_BASH_REEXEC=1 "$candidate" "$entry" "$@"
     fi
   done
   printf 'cockpit: bash >= 4 required. Install: brew install bash\n' >&2
