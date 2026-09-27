@@ -22,8 +22,10 @@ fixture_init() {
   mkdir -p "$TMUX_TMPDIR"
 
   export HOME="$FIXTURE_HOME"
+  export XDG_CONFIG_HOME="$FIXTURE_HOME/.config"
+  mkdir -p "$XDG_CONFIG_HOME"
   export PATH="$FIXTURE_HOME/.local/bin:$FIXTURE_FAKEBIN:$FIXTURE_REPO_ROOT/bin:/usr/bin:/bin"
-  unset COCKPIT_SESSION CODEX_COCKPIT_SESSION COCKPIT_AUTH_HOME COCKPIT_CONFIG_HOME
+  unset ZDOTDIR COCKPIT_SESSION CODEX_COCKPIT_SESSION COCKPIT_AUTH_HOME COCKPIT_CONFIG_HOME
 
   fixture_cleanup() {
     tmux kill-server 2>/dev/null || true
