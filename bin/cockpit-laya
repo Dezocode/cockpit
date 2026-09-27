@@ -1,0 +1,436 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+script_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=cockpit-lib
+source "$script_root/cockpit-lib"
+
+laya_usage() {
+  cat <<'EOF'
+Usage:
+  cockpit laya install [--device auto|cpu|cuda|mps] [--port N]
+  cockpit laya start|stop|restart|status [--json]
+  cockpit laya enable|disable
+  cockpit laya mcp register|unregister --client cursor|codex|hermes|all [--dry-run]
+EOF
+}
+
+laya_seed_config() {
+  local dest
+  dest="$(cockpit_laya_config_file)"
+  [[ -f "$dest" ]] && return 0
+  mkdir -p "$(dirname -- "$dest")"
+  local template=""
+  for template in \
+    "${COCKPIT_ROOT:-}/stage/laya/laya.conf" \
+    "$script_root/../stage/laya/laya.conf"; do
+    [[ -f "$template" ]] && {
+      install -m 0644 "$template" "$dest"
+      return 0
+    }
+  done
+  cat >"$dest" <<'EOF'
+enabled=0
+url=http://127.0.0.1:8765
+device=auto
+timeout_ms=400
+min_confidence=0.60
+default_tier=cheap
+max_tier=top
+EOF
+}
+
+laya_pick_python() {
+  local cand
+  for cand in python3.13 python3.12 python3.11 python3.10 python3; do
+    if command -v "$cand" >/dev/null 2>&1; then
+      if "$cand" -c 'import sys; raise SystemExit(0 if sys.version_info >= (3,10) else 1)' 2>/dev/null; then
+        printf '%s\n' "$(command -v "$cand")"
+        return 0
+      fi
+    fi
+  done
+  return 1
+}
+
+laya_detect_device() {
+  local want=${1:-auto}
+  local py="$2"
+  case "$want" in
+    cpu|cuda|mps) printf '%s\n' "$want"; return 0 ;;
+  esac
+  if "$py" -c 'import torch' 2>/dev/null; then
+    if "$py" -c 'import torch; raise SystemExit(0 if torch.cuda.is_available() else 1)' 2>/dev/null; then
+      printf 'cuda\n'
+      return 0
+    fi
+    if "$py" -c 'import torch; raise SystemExit(0 if torch.backends.mps.is_available() else 1)' 2>/dev/null; then
+      printf 'mps\n'
+      return 0
+    fi
+  fi
+  printf 'cpu\n'
+}
+
+laya_ensure_api_key() {
+  local dir keyfile
+  dir="$(cockpit_laya_state_home)"
+  mkdir -p "$dir"
+  keyfile="$dir/api.key"
+  if [[ ! -f "$keyfile" ]]; then
+    if command -v openssl >/dev/null 2>&1; then
+      openssl rand -hex 32 >"$keyfile"
+    else
+      "$(
+        laya_pick_python || true
+      )" -c 'import secrets; print(secrets.token_hex(32))' >"$keyfile" 2>/dev/null || printf '%032x' "$RANDOM$RANDOM$RANDOM$RANDOM" >"$keyfile"
+    fi
+    chmod 600 "$keyfile"
+  fi
+}
+
+laya_port() {
+  local p
+  p="$(cockpit_laya_conf_get url http://127.0.0.1:8765)"
+  p="${p##*:}"
+  p="${p%%/*}"
+  [[ -n "$p" ]] || p=8765
+  printf '%s\n' "$p"
+}
+
+laya_install_cmd() {
+  local device=${1:-auto} port=${2:-}
+  local py venv_root venv_py
+  py="$(laya_pick_python)" || {
+    printf 'laya: needs python>=3.10\n' >&2
+    exit 3
+  }
+  laya_seed_config
+  if [[ -n "$port" ]]; then
+    local cfg
+    cfg="$(cockpit_laya_config_file)"
+    if grep -q '^url=' "$cfg"; then
+      sed '/^url=/d' "$cfg" >"$cfg.tmp"
+      printf 'url=http://127.0.0.1:%s\n' "$port" >>"$cfg.tmp"
+      mv "$cfg.tmp" "$cfg"
+    fi
+  fi
+  venv_root="$(cockpit_laya_data_home)/venv"
+  if [[ ! -x "$venv_root/bin/python" ]]; then
+    "$py" -m venv "$venv_root"
+  fi
+  venv_py="$venv_root/bin/python"
+  "$venv_py" -m pip install -q --upgrade pip
+  "$venv_py" -m pip install -q 'laya[serve,mcp]>=0.3.17,<0.4'
+  device="$(laya_detect_device "$device" "$venv_py")"
+  printf 'device=%s\n' "$device" >>"$(cockpit_laya_config_file).device" 2>/dev/null || true
+  laya_ensure_api_key
+  printf 'laya: installed (first model download ~0.8-1.7 GB on start; cache in venv)\n'
+}
+
+laya_pidfile() {
+  printf '%s/laya-serve.pid\n' "$(cockpit_laya_state_home)"
+}
+
+laya_logfile() {
+  printf '%s/laya-serve.log\n' "$(cockpit_laya_state_home)"
+}
+
+laya_stop_cmd() {
+  local pidfile pid
+  pidfile="$(laya_pidfile)"
+  [[ -f "$pidfile" ]] || return 0
+  pid="$(tr -d ' \n' <"$pidfile")"
+  if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
+    kill "$pid" 2>/dev/null || true
+    wait "$pid" 2>/dev/null || true
+  fi
+  rm -f "$pidfile"
+}
+
+laya_probe() {
+  local url key
+  url="$(cockpit_laya_conf_get url http://127.0.0.1:8765)"
+  url="${url%/}/v1/systemone"
+  laya_ensure_api_key
+  printf '{}' | cockpit_laya_curl_post "$url" 2 >/dev/null
+}
+
+laya_start_cmd() {
+  local device threads serve_bin keyfile logfile pidfile start_ms
+  laya_seed_config
+  serve_bin="$(cockpit_laya_venv_bin laya-serve)"
+  [[ -n "$serve_bin" ]] || {
+    printf 'laya: not installed (run cockpit laya install)\n' >&2
+    exit 1
+  }
+  laya_stop_cmd
+  laya_ensure_api_key
+  keyfile="$(cockpit_laya_state_home)/api.key"
+  logfile="$(laya_logfile)"
+  pidfile="$(laya_pidfile)"
+  mkdir -p "$(cockpit_laya_state_home)"
+  device="$(cockpit_laya_conf_get device auto)"
+  if [[ "$device" == auto ]]; then
+    device="$(laya_detect_device auto "$(cockpit_laya_venv_bin python)")"
+  fi
+  threads="$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 2)"
+  if [[ "$threads" -gt 4 ]]; then threads=4; fi
+  export LAYA_HOST=127.0.0.1
+  export LAYA_PORT="$(laya_port)"
+  export LAYA_DEVICE="$device"
+  export LAYA_PRELOAD=1
+  export LAYA_MODELS=english
+  export LAYA_THREADS="$threads"
+  export LAYA_API_KEY="$(tr -d '\n' <"$keyfile")"
+  nohup "$serve_bin" >>"$logfile" 2>&1 &
+  printf '%s\n' "$!" >"$pidfile"
+  start_ms="$(cockpit_now_ms)"
+  while :; do
+    if laya_probe >/dev/null 2>&1; then
+      break
+    fi
+    if (( $(cockpit_now_ms) - start_ms > 60000 )); then
+      printf 'laya: start timeout (see %s)\n' "$logfile" >&2
+      exit 1
+    fi
+    sleep 0.5
+  done
+  ver="$("$serve_bin" --version 2>/dev/null | awk '{print $NF}' || echo 0.3.x)"
+  printf 'laya: serving 127.0.0.1:%s device=%s version=%s\n' "$LAYA_PORT" "$device" "$ver"
+}
+
+laya_status_json() {
+  local state url device version loopback=true
+  url="$(cockpit_laya_conf_get url http://127.0.0.1:8765)"
+  device="$(cockpit_laya_conf_get device auto)"
+  version=""
+  if ! cockpit_laya_installed; then
+    state=absent
+  elif [[ "${COCKPIT_LAYA:-}" == "0" ]] || [[ "$(cockpit_laya_conf_get enabled 0)" == "0" ]]; then
+    state=off
+  elif laya_probe >/dev/null 2>&1; then
+    state=serving
+    version="$("$(cockpit_laya_venv_bin laya-serve)" --version 2>/dev/null | awk '{print $NF}' || true)"
+    case "$url" in
+      http://127.0.0.1:*|http://localhost:*) loopback=true ;;
+      *) state=down; loopback=false ;;
+    esac
+  else
+    state=down
+  fi
+  printf '{"state":"%s","url":"%s","device":"%s","version":"%s","loopback":%s}\n' \
+    "$state" "$url" "$device" "$version" "$loopback"
+}
+
+laya_status_cmd() {
+  local json=${1:-0}
+  if [[ "$json" == 1 ]]; then
+    laya_status_json
+    return 0
+  fi
+  if ! cockpit_laya_installed; then
+    printf 'laya: absent (routing off)\n'
+    return 0
+  fi
+  if [[ "${COCKPIT_LAYA:-}" == "0" ]] || [[ "$(cockpit_laya_conf_get enabled 0)" == "0" ]]; then
+    printf 'laya: off (routing disabled)\n'
+    return 0
+  fi
+  if laya_probe >/dev/null 2>&1; then
+    printf 'laya: serving %s device=%s\n' "$(cockpit_laya_conf_get url http://127.0.0.1:8765)" \
+      "$(cockpit_laya_conf_get device auto)"
+    return 0
+  fi
+  printf 'laya: down\n'
+}
+
+laya_set_enabled() {
+  local val=$1
+  laya_seed_config
+  local cfg tmp
+  cfg="$(cockpit_laya_config_file)"
+  tmp="$(mktemp "${cfg}.XXXXXX")"
+  grep -v '^enabled=' "$cfg" >"$tmp" || true
+  printf 'enabled=%s\n' "$val" >>"$tmp"
+  mv "$tmp" "$cfg"
+}
+
+laya_backup_file() {
+  local f=$1
+  [[ -f "$f" ]] || return 0
+  cp "$f" "${f}.cockpit-bak.$(date +%s)"
+}
+
+laya_mcp_register_cursor() {
+  local dry=$1
+  local cfg="$HOME/.cursor/mcp.json"
+  local py
+  py="$(cockpit_laya_venv_bin python)"
+  [[ -n "$py" ]] || return 1
+  local serve mcp_bin
+  serve="$(cockpit_laya_venv_bin laya-serve || true)"
+  mcp_bin="$(cockpit_laya_venv_bin laya-mcp 2>/dev/null || cockpit_laya_venv_bin laya-mcp-server 2>/dev/null || true)"
+  [[ -n "$mcp_bin" ]] || mcp_bin="$(cockpit_laya_venv_bin python)"
+  [[ "$dry" == 1 ]] && return 0
+  laya_backup_file "$cfg"
+  mkdir -p "$(dirname -- "$cfg")"
+  "$py" - "$cfg" "$mcp_bin" <<'PY'
+import json, os, sys
+path, cmd = sys.argv[1], sys.argv[2]
+data = {}
+if os.path.isfile(path):
+    with open(path, encoding="utf-8") as fh:
+        data = json.load(fh)
+servers = data.setdefault("mcpServers", {})
+servers["laya"] = {
+    "command": cmd,
+    "args": ["-m", "laya.mcp"],
+    "env": {
+        "LAYA_HOST": "127.0.0.1",
+        "LAYA_PORT": os.environ.get("LAYA_PORT", "8765"),
+    },
+}
+with open(path, "w", encoding="utf-8") as fh:
+    json.dump(data, fh, indent=2)
+    fh.write("\n")
+with open(path, encoding="utf-8") as fh:
+    json.load(fh)
+PY
+}
+
+laya_mcp_register_codex() {
+  local dry=$1
+  local cfg="$HOME/.codex/config.toml"
+  [[ "$dry" == 1 ]] && return 0
+  laya_backup_file "$cfg"
+  mkdir -p "$(dirname -- "$cfg")"
+  local block
+  block='[mcp_servers.laya]
+command = "laya-mcp"
+args = ["serve"]
+'
+  if [[ -f "$cfg" ]] && grep -q '^\[mcp_servers\.laya\]' "$cfg"; then
+    return 0
+  fi
+  printf '\n# cockpit-laya\n%s' "$block" >>"$cfg"
+  if command -v python3 >/dev/null 2>&1; then
+    python3 -c 'import tomllib,sys; tomllib.load(open(sys.argv[1],"rb"))' "$cfg" 2>/dev/null || {
+      local bak
+      bak="$(ls -t "${cfg}.cockpit-bak."* 2>/dev/null | head -1)"
+      [[ -n "$bak" ]] && cp "$bak" "$cfg"
+      printf 'laya mcp: codex config parse failed; restored backup\n' >&2
+      return 1
+    }
+  fi
+}
+
+laya_mcp_register_hermes() {
+  local dry=$1
+  if [[ "$dry" == 1 ]]; then
+    return 0
+  fi
+  local helper
+  helper="$(cockpit_laya_venv_bin laya-mcp 2>/dev/null || true)"
+  if [[ -n "$helper" ]] && "$helper" --help 2>&1 | grep -qi hermes; then
+    "$helper" register hermes 2>/dev/null && return 0
+  fi
+  printf 'hermes: manual — see upstream Laya MCP docs for ~/.hermes/config.yaml snippet\n'
+}
+
+laya_mcp_unregister_cursor() {
+  local cfg="$HOME/.cursor/mcp.json"
+  local py
+  py="$(cockpit_laya_venv_bin python)" || return 0
+  [[ -f "$cfg" ]] || return 0
+  "$py" - "$cfg" <<'PY'
+import json, sys
+path = sys.argv[1]
+with open(path, encoding="utf-8") as fh:
+    data = json.load(fh)
+servers = data.get("mcpServers") or {}
+servers.pop("laya", None)
+data["mcpServers"] = servers
+with open(path, "w", encoding="utf-8") as fh:
+    json.dump(data, fh, indent=2)
+    fh.write("\n")
+PY
+}
+
+laya_mcp_unregister_codex() {
+  local cfg="$HOME/.codex/config.toml"
+  [[ -f "$cfg" ]] || return 0
+  awk 'BEGIN{skip=0} /^\[mcp_servers\.laya\]/{skip=1; next} skip && /^\[/{skip=0} !skip {print}' "$cfg" >"$cfg.tmp"
+  mv "$cfg.tmp" "$cfg"
+}
+
+laya_mcp_cmd() {
+  local action=$1
+  shift
+  local client=all dry=0
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --client) client=$2; shift 2 ;;
+      --dry-run) dry=1; shift ;;
+      *) shift ;;
+    esac
+  done
+  export LAYA_PORT="$(laya_port)"
+  case "$action" in
+    register)
+      case "$client" in
+        cursor) laya_mcp_register_cursor "$dry" ;;
+        codex) laya_mcp_register_codex "$dry" ;;
+        hermes) laya_mcp_register_hermes "$dry" ;;
+        all)
+          laya_mcp_register_cursor "$dry"
+          laya_mcp_register_codex "$dry"
+          laya_mcp_register_hermes "$dry"
+          ;;
+        *) printf 'unknown client %s\n' "$client" >&2; exit 2 ;;
+      esac
+      ;;
+    unregister)
+      case "$client" in
+        cursor|all) laya_mcp_unregister_cursor ;;
+        codex|all) laya_mcp_unregister_codex ;;
+        hermes|all) : ;;
+        *) printf 'unknown client %s\n' "$client" >&2; exit 2 ;;
+      esac
+      ;;
+    *) printf 'unknown mcp action\n' >&2; exit 2 ;;
+  esac
+}
+
+main() {
+  local cmd=${1:-}
+  shift || true
+  case "$cmd" in
+    install)
+      local device=auto port=""
+      while [[ $# -gt 0 ]]; do
+        case "$1" in
+          --device) device=$2; shift 2 ;;
+          --port) port=$2; shift 2 ;;
+          *) shift ;;
+        esac
+      done
+      laya_install_cmd "$device" "$port"
+      ;;
+    start) laya_start_cmd ;;
+    stop) laya_stop_cmd ;;
+    restart) laya_stop_cmd; laya_start_cmd ;;
+    status)
+      local j=0
+      [[ "${1:-}" == --json ]] && j=1
+      laya_status_cmd "$j"
+      ;;
+    enable) laya_set_enabled 1 ;;
+    disable) laya_set_enabled 0 ;;
+    mcp) laya_mcp_cmd "$1" "${@:2}" ;;
+    ''|-h|--help) laya_usage ;;
+    *) laya_usage; exit 2 ;;
+  esac
+}
+
+main "$@"

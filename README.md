@@ -34,6 +34,10 @@ cockpit notify "Cockpit v2.3.0 GTM done"
 
 Tokens live only on the Hostinger host (`/etc/cockpit/notify.env`), never in git or the browser bundle. See [docs/notify.md](docs/notify.md).
 
+## Laya-first routing (optional)
+
+Local [Laya](https://pypi.org/project/laya/) can pick tier + runtime before launch (`cockpit laya install`, `cockpit laya start`, `cockpit route --launch "task"`). Loopback-only sidecar; routing is off when Laya is absent, disabled, or `COCKPIT_LAYA=0`. Receipts store task SHA-256 only (`~/.local/state/cockpit/route.jsonl`).
+
 The browser terminal (`/ws/pty`) requires GitHub sign-in — no shared tokens.
 Operator setup (OAuth app + allowlist): [docs/terminal-auth.md](docs/terminal-auth.md).
 Until it is configured, the terminal refuses all connections (fail-closed).

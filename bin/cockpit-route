@@ -1,0 +1,77 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+script_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=cockpit-lib
+source "$script_root/cockpit-lib"
+
+json=0
+dry_run=0
+launch=0
+task=""
+project=""
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --json) json=1; shift ;;
+    --dry-run) dry_run=1; shift ;;
+    --launch) launch=1; shift ;;
+    -h|--help)
+      cat <<'EOF'
+Usage:
+  cockpit route [--json] [--dry-run] TASK
+  cockpit route --launch TASK [PROJECT]
+
+Optional Laya routing. Absent or disabled Laya is a silent no-op with defaults.
+EOF
+      exit 0
+      ;;
+    *)
+      if [[ -z "$task" ]]; then
+        task=$1
+      elif [[ -z "$project" ]]; then
+        project=$1
+      fi
+      shift
+      ;;
+  esac
+done
+
+[[ -n "$task" ]] || {
+  printf 'cockpit route: missing TASK\n' >&2
+  exit 2
+}
+
+cockpit_route_run "$task"
+
+if [[ "$json" == 1 ]]; then
+  printf '{"laya":"%s","tier":"%s","tool":"%s","conf":{"tier":%s,"tool":%s},"needs_review":%s,"is_sensitive":%s}\n' \
+    "${COCKPIT_ROUTE_LAYA:-absent}" \
+    "${COCKPIT_ROUTE_TIER:-cheap}" \
+    "${COCKPIT_ROUTE_TOOL:-$(cockpit_route_default)}" \
+    "$(if [[ -n "${COCKPIT_ROUTE_CONF_TIER:-}" ]]; then printf '"%s"' "${COCKPIT_ROUTE_CONF_TIER}"; else printf null; fi)" \
+    "$(if [[ -n "${COCKPIT_ROUTE_CONF_TOOL:-}" ]]; then printf '"%s"' "${COCKPIT_ROUTE_CONF_TOOL}"; else printf null; fi)" \
+    "$(if [[ "${COCKPIT_ROUTE_NEEDS_REVIEW:-0}" == 1 ]]; then printf true; else printf false; fi)" \
+    "$(if [[ "${COCKPIT_ROUTE_IS_SENSITIVE:-0}" == 1 ]]; then printf true; else printf false; fi)"
+elif [[ "$dry_run" != 1 ]]; then
+  if [[ "${COCKPIT_ROUTE_LAYA:-absent}" == ok ]]; then
+    printf 'route: tier=%s tool=%s (laya ok %sms, conf %s/%s)\n' \
+      "${COCKPIT_ROUTE_TIER}" "${COCKPIT_ROUTE_TOOL}" "${COCKPIT_ROUTE_LATENCY_MS:-0}" \
+      "${COCKPIT_ROUTE_CONF_TIER:-?}" "${COCKPIT_ROUTE_CONF_TOOL:-?}"
+  else
+    printf 'route: tier=%s tool=%s (laya %s)\n' \
+      "${COCKPIT_ROUTE_TIER}" "${COCKPIT_ROUTE_TOOL}" "${COCKPIT_ROUTE_LAYA:-absent}"
+  fi
+fi
+
+if [[ "$launch" == 1 ]]; then
+  export COCKPIT_TASK="$task"
+  export COCKPIT_ROUTE_RUNTIME="${COCKPIT_ROUTE_TOOL:-$(cockpit_route_default)}"
+  export COCKPIT_ROUTE_APPLIED=1
+  if [[ -n "$project" ]]; then
+    exec "$script_root/cockpit-main" "$project"
+  fi
+  exec "$script_root/cockpit-main"
+fi
+
+exit 0

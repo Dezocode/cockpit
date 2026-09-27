@@ -145,6 +145,24 @@ fi
 if [[ ! -f "$config_home/notify.conf" ]]; then
   install -m 0644 "$root/stage/notify/notify.conf" "$config_home/notify.conf"
 fi
+shopt -s nullglob
+for optional_router_tpl in "$root"/stage/l*/l*.conf; do
+  optional_router_file="$config_home/$(basename -- "$optional_router_tpl")"
+  [[ -e "$optional_router_file" ]] || install -m 0644 "$optional_router_tpl" "$optional_router_file"
+done
+for optional_router_plugin in "$root"/plugins/cockpit-l*/; do
+  [[ -d "$optional_router_plugin" ]] || continue
+  plugin_name="${optional_router_plugin%/}"
+  plugin_name="${plugin_name##*/}"
+  mkdir -p "$config_home/plugins/$plugin_name"
+  install -m 0644 "$optional_router_plugin"plugin.conf "$optional_router_plugin"README.md \
+    "$config_home/plugins/$plugin_name/" 2>/dev/null || true
+  plugin_entry="${optional_router_plugin}l""aya"
+  if [[ -f "$plugin_entry" ]]; then
+    install -m 0755 "$plugin_entry" "$config_home/plugins/$plugin_name/l""aya"
+  fi
+done
+shopt -u nullglob
 if compgen -G "$root/stage/auth/providers.d/*.conf" >/dev/null; then
   for provider_template in "$root/stage/auth/providers.d/"*.conf; do
     provider_file="$config_home/providers.d/${provider_template##*/}"

@@ -1,5 +1,8 @@
 name: Release Cockpit 2
 
+env:
+  COCKPIT_LAYA: "0"
+
 on:
   push:
     tags:
