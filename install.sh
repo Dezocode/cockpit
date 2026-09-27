@@ -145,6 +145,9 @@ fi
 if [[ ! -f "$config_home/providers.conf" ]]; then
   install -m 0644 "$root/stage/auth/providers.conf" "$config_home/providers.conf"
 fi
+if [[ ! -f "$config_home/notify.conf" ]]; then
+  install -m 0644 "$root/stage/notify/notify.conf" "$config_home/notify.conf"
+fi
 if compgen -G "$root/stage/auth/providers.d/*.conf" >/dev/null; then
   for provider_template in "$root/stage/auth/providers.d/"*.conf; do
     provider_file="$config_home/providers.d/${provider_template##*/}"
