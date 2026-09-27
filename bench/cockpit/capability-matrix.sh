@@ -95,6 +95,15 @@ check "MODELS sub-view inside COMPUTERS" "$models"
 [[ -f "$root/forge/cockpit-redesign-oneshot.md" ]] && forge=ok || forge=fail
 check "forge gospel on disk" "$forge"
 
+[[ -f "$root/bench/cursor/reports/t10u-cockpit-visual-multiview-gospel.md" ]] && g10=ok || g10=fail
+check "t10u visual multiview gospel (bench/cursor/reports)" "$g10"
+
+[[ -f "$root/forge/cockpit-visual-multiview-t10u.md" ]] && g10f=ok || g10f=fail
+check "t10u forge mirror (forge/cockpit-visual-multiview-t10u.md)" "$g10f"
+
+[[ -f "$root/proofs/t72u/t384u-live-spa/README.md" ]] && pr=ok || pr=fail
+check "t72u t384u-live-spa ugly baseline proofs manifest" "$pr"
+
 # Pages in source
 for page in MEMORY COMPUTERS BENCH SPLASH; do
   grep -rq "$page" "$root/app/src" 2>/dev/null && pg=ok || pg=fail
@@ -183,8 +192,55 @@ fi
 check "DENY local Qwen/sol-v1.7.1 (frontier envelope)" "$deny"
 
 # ghui chips
-grep -rq 'ghui-chip-cyan\|GhuiChip' "$root/app/src" 2>/dev/null && ghui=ok || ghui=fail
-check "ghui t533u cyan/yellow chips" "$ghui"
+grep -rq 'GhuiChip' "$root/app/src" 2>/dev/null && \
+grep -q 'magenta' "$root/app/src/components/GhuiChip.module.css" 2>/dev/null && ghui=ok || ghui=fail
+check "ghui chips cyan idle + magenta active (no yellow primary)" "$ghui"
+
+[[ -f "$root/bench/schemas/cards/cursor-cockpit2-visual-multiview-t12u.card.yaml" ]] && card=ok || card=fail
+check "proctor card cursor-cockpit2-visual-multiview-t12u" "$card"
+
+[[ -f "$root/aspects/cockpit2-visual-multiview-t12u.md" ]] && asp=ok || asp=fail
+check "aspect cockpit2-visual-multiview-t12u" "$asp"
+
+[[ -f "$root/bench/cursor/reports/t12u-cockpit-visual-multiview-kick-packet.md" ]] && kp=ok || kp=fail
+check "t12u kick packet" "$kp"
+
+# Cockpit 2.2 visual multiview
+[[ -f "$root/app/STYLE.md" ]] && style=ok || style=fail
+check "STYLE.md fieldset terminal guide" "$style"
+
+[[ -f "$root/app/src/styles/tokens.css" ]] && tok=ok || tok=fail
+check "tokens.css CSS vars (no hardcoded panel hex)" "$tok"
+
+grep -rq 'fieldset-dark\|ghui-cyan\|high-contrast' "$root/app/src/lib/theme.ts" 2>/dev/null && th=ok || th=fail
+check "≥3 themes (fieldset-dark, ghui-cyan, high-contrast)" "$th"
+
+grep -rq 'cockpit.theme' "$root/app/src" 2>/dev/null && tp=ok || tp=fail
+check "theme persist cockpit.theme" "$tp"
+
+grep -rq 'cockpit.layout.v3' "$root/app/src" 2>/dev/null && lv=ok || lv=fail
+check "layout persist cockpit.layout.v3" "$lv"
+
+grep -rq 'StagingPage\|/splash/staging' "$root/app/src" 2>/dev/null && stg=ok || stg=fail
+check "post-auth /splash/staging multiview" "$stg"
+
+grep -rq 'FieldsetPanel' "$root/app/src" 2>/dev/null && fs=ok || fs=fail
+check "fieldset panels (cyan border, title-in-border)" "$fs"
+
+grep -rq 'ResizeObserver' "$root/app/src" 2>/dev/null && ro=ok || ro=fail
+check "ResizeObserver charts" "$ro"
+
+grep -rq 'uplot\|uPlot' "$root/app/package.json" "$root/app/src" 2>/dev/null && chart=ok || chart=fail
+check "uPlot chart panel" "$chart"
+
+grep -rq '# Cockpit PATH' "$root/install.sh" 2>/dev/null && path=ok || path=fail
+check "install.sh cockpit PATH/alias" "$path"
+
+ls "$root/app/src/panels/"*.module.css >/dev/null 2>&1 && mod=ok || mod=fail
+check "CSS modules per panel" "$mod"
+
+[[ -f "$root/app/src/styles/density.css" ]] && den=ok || den=fail
+check "density.css hairline tables (style-ref chrome)" "$den"
 
 # Emulator registry
 grep -rq 'foot\|ghostty' "$root/app" 2>/dev/null && emu=ok || emu=fail

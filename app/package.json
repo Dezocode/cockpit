@@ -1,7 +1,7 @@
 {
   "name": "cockpit",
   "private": true,
-  "version": "2.1.0",
+  "version": "2.2.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -31,6 +31,7 @@
     "react-resizable-panels": "4.12.3",
     "react-router-dom": "^7.8.2",
     "ws": "^8.18.3",
+    "uplot": "^1.6.31",
     "zustand": "^5.0.8"
   },
   "devDependencies": {

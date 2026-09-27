@@ -28,7 +28,7 @@ The browser terminal (`/ws/pty`) requires GitHub sign-in — no shared tokens.
 Operator setup (OAuth app + allowlist): [docs/terminal-auth.md](docs/terminal-auth.md).
 Until it is configured, the terminal refuses all connections (fail-closed).
 
-Release: [v2.2.2](RELEASE_NOTES_v2.2.2.md) · matrix: `./bench/cockpit/capability-matrix.sh` · Canon map: `tmp/t847u/README.md`
+Release: [v2.2.2](RELEASE_NOTES_v2.2.2.md) · [v2.2.0 visual multiview](RELEASE_NOTES_v2.2.0.md) · gospel: [t10u visual multiview](bench/cursor/reports/t10u-cockpit-visual-multiview-gospel.md) · matrix: `./bench/cockpit/capability-matrix.sh` · proofs: `proofs/t72u/t384u-live-spa/` · Canon map: `tmp/t847u/README.md`
 
 ## New machine (for a human or an agent)
 

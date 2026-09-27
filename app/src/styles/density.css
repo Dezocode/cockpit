@@ -1,0 +1,35 @@
+/* Dense terminal tables — style-ref chrome only (no LMS content patterns) */
+
+.denseTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--cockpit-font-xs);
+  font-family: var(--cockpit-font);
+}
+
+.denseTable th,
+.denseTable td {
+  border: 1px solid var(--cockpit-border);
+  padding: 0.15rem 0.35rem;
+  text-align: left;
+  color: var(--cockpit-text);
+}
+
+.denseTable th {
+  color: var(--cockpit-chrome);
+  font-weight: 600;
+  border-bottom-width: 1px;
+}
+
+.denseRowActive {
+  color: var(--cockpit-active);
+}
+
+.hairline {
+  border: 1px solid var(--cockpit-border);
+}
+
+.hairlineActive {
+  border-color: var(--cockpit-active);
+  color: var(--cockpit-active);
+}

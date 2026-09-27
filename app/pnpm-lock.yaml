@@ -50,6 +50,9 @@ importers:
       react-router-dom:
         specifier: ^7.8.2
         version: 7.18.3(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      uplot:
+        specifier: ^1.6.31
+        version: 1.6.32
       ws:
         specifier: ^8.18.3
         version: 8.21.3
@@ -1240,6 +1243,9 @@ packages:
     peerDependencies:
       browserslist: '>= 4.21.0'
 
+  uplot@1.6.32:
+    resolution: {integrity: sha512-KIMVnG68zvu5XXUbC4LQEPnhwOxBuLyW1AHtpm6IKTXImkbLgkMy+jabjLgSLMasNuGGzQm/ep3tOkyTxpiQIw==}
+
   vite@6.4.3:
     resolution: {integrity: sha512-NTKlcQjlAK7MlQoyb6LgaqHc8sso/pVyUJYWMws3jg21uTJw/LddqIFPcPqP6PzpgbIcZyKI85sFE4HBrQDA8A==}
     engines: {node: ^18.0.0 || ^20.0.0 || >=22.0.0}
@@ -2200,6 +2206,8 @@ snapshots:
       browserslist: 4.28.9
       escalade: 3.2.0
       picocolors: 1.1.1
+
+  uplot@1.6.32: {}
 
   vite@6.4.3(@types/node@24.13.3)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.23.13):
     dependencies:
