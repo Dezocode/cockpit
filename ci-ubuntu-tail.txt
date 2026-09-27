@@ -1,0 +1,25 @@
++ curl -sf http://127.0.0.1:8787/api/health
++ sleep 0.5
++ for _ in $(seq 1 40)
++ curl -sf http://127.0.0.1:8787/api/health
++ sleep 0.5
++ for _ in $(seq 1 40)
++ curl -sf http://127.0.0.1:8787/api/health
++ sleep 0.5
++ for _ in $(seq 1 40)
++ curl -sf http://127.0.0.1:8787/api/health
++ sleep 0.5
++ for _ in $(seq 1 40)
++ curl -sf http://127.0.0.1:8787/api/health
++ sleep 0.5
++ for _ in $(seq 1 40)
++ curl -sf http://127.0.0.1:8787/api/health
++ sleep 0.5
++ for _ in $(seq 1 40)
++ curl -sf http://127.0.0.1:8787/api/health
++ sleep 0.5
++ [[ ubuntu-latest == ubuntu-latest ]]
++ grep 127.0.0.1:8787
++ ss -ltnp
++ kill 9361
++ true

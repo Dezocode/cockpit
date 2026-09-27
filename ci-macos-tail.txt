@@ -1,0 +1,23 @@
++ echo 'BASH_VERSION=5.3.15(1)-release'
+BASH_VERSION=5.3.15(1)-release
++ uname -sm
+Darwin arm64
+++ bash -c 'source bin/cockpit-portable-lib; cockpit_watch_backend'
++ echo 'watch backend: fswatch'
+watch backend: fswatch
++ export PATH=/Users/runner/work/cockpit/cockpit/bin:/Users/runner/hostedtoolcache/node/22.23.2/arm64/bin:/Users/runner/setup-pnpm/node_modules/.bin:/opt/homebrew/lib/ruby/gems/3.3.0/bin:/opt/homebrew/opt/ruby@3.3/bin:/Users/runner/.local/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/Users/runner/.cargo/bin:/usr/local/opt/curl/bin:/usr/local/bin:/usr/local/sbin:/Users/runner/bin:/Users/runner/.yarn/bin:/Users/runner/Library/Android/sdk/tools:/Users/runner/Library/Android/sdk/platform-tools:/Library/Frameworks/Python.framework/Versions/Current/bin:/Library/Frameworks/Mono.framework/Versions/Current/Commands:/usr/bin:/bin:/usr/sbin:/sbin:/Users/runner/.dotnet/tools
++ PATH=/Users/runner/work/cockpit/cockpit/bin:/Users/runner/hostedtoolcache/node/22.23.2/arm64/bin:/Users/runner/setup-pnpm/node_modules/.bin:/opt/homebrew/lib/ruby/gems/3.3.0/bin:/opt/homebrew/opt/ruby@3.3/bin:/Users/runner/.local/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/Users/runner/.cargo/bin:/usr/local/opt/curl/bin:/usr/local/bin:/usr/local/sbin:/Users/runner/bin:/Users/runner/.yarn/bin:/Users/runner/Library/Android/sdk/tools:/Users/runner/Library/Android/sdk/platform-tools:/Library/Frameworks/Python.framework/Versions/Current/bin:/Library/Frameworks/Mono.framework/Versions/Current/Commands:/usr/bin:/bin:/usr/sbin:/sbin:/Users/runner/.dotnet/tools
++ shellcheck -x -S warning install.sh bin/cockpit-portable-lib bin/cockpit-lib bin/cockpit-agent-lib bin/cockpit-mermaid-watch bin/cockpit-wake bin/cockpit-idle bin/cockpit-adapt bin/cockpit-profile bin/cockpit-reload-views bin/cockpit-plugin
++ bash tests/test-portable-lib.sh
+portable-lib: ok
++ bash tests/test-portability-lint.sh
+tests/test-portability-lint.sh: line 15: rg: command not found
+tests/test-portability-lint.sh: line 16: rg: command not found
+tests/test-portability-lint.sh: line 18: rg: command not found
+tests/test-portability-lint.sh: line 19: rg: command not found
+tests/test-portability-lint.sh: line 23: rg: command not found
+portability-lint: 0 findings
++ bash tests/test-install-shells.sh
+install-shells: ok (bash zsh fish)
++ bash tests/test-launchd.sh
+launchd: FAIL (health)

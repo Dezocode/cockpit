@@ -117,7 +117,7 @@ jobs:
             sudo apt-get update
             sudo apt-get install -y shellcheck tmux fish zsh inotify-tools ripgrep
           else
-            brew install fswatch shellcheck tmux fish bash
+            brew install fswatch shellcheck tmux fish bash ripgrep
             if echo "$PATH" | grep -qi gnubin; then
               echo "gnubin on PATH is forbidden"
               exit 1
@@ -132,7 +132,7 @@ jobs:
         run: |
           pnpm install --frozen-lockfile
           pnpm build
-          pnpm exec tsc -p tsconfig.server.json
+          pnpm run build:server
 
       - name: Portability suite
         run: |

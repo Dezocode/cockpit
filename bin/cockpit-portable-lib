@@ -266,11 +266,17 @@ cockpit_service_install_systemd() {
 
 cockpit_service_install_launchd() {
   local bindir=$1
+  local install_root=${2:-}
   local web="$bindir/cockpit-web"
   [[ -x "$web" ]] || return 1
-  local uid plist domain logdir
+  local uid plist domain logdir path_prefix node_bin
   uid="$(id -u)"
   logdir="${HOME}/Library/Logs"
+  path_prefix="/opt/homebrew/bin:/usr/local/bin"
+  node_bin="$(command -v node 2>/dev/null || true)"
+  if [[ -n "$node_bin" ]]; then
+    path_prefix="$(dirname "$node_bin"):$path_prefix"
+  fi
   mkdir -p "${HOME}/Library/LaunchAgents" "$logdir"
   plist="${HOME}/Library/LaunchAgents/com.dezocode.cockpit-web.plist"
   launchctl bootout "gui/$uid" "$plist" 2>/dev/null || true
@@ -297,9 +303,12 @@ cockpit_service_install_launchd() {
   <key>EnvironmentVariables</key>
   <dict>
     <key>PATH</key>
-    <string>/opt/homebrew/bin:/usr/local/bin:${HOME}/.local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <string>${path_prefix}:${HOME}/.local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
     <key>COCKPIT_WEB_HOST</key>
     <string>127.0.0.1</string>
+    <key>COCKPIT_HOSTINGER</key>
+    <string>1</string>
+$( [[ -n "$install_root" ]] && printf '    <key>COCKPIT_INSTALL_ROOT</key>\n    <string>%s</string>\n' "$install_root" )
   </dict>
 </dict>
 </plist>
@@ -320,7 +329,7 @@ cockpit_service_install() {
   local bindir=${2:-${HOME}/.local/bin}
   local root=${3:-}
   if cockpit_has_launchd; then
-    cockpit_service_install_launchd "$bindir"
+    cockpit_service_install_launchd "$bindir" "$root"
     return 0
   fi
   if cockpit_has_systemd; then
