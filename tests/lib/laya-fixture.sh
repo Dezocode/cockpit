@@ -5,8 +5,21 @@
 
 LAYA_TEST_STUB_PIDS=()
 LAYA_TEST_NAME=${LAYA_TEST_NAME:-laya}
-# The real python3, resolved before a test plants curl/python sentinels in fakebin.
-LAYA_TEST_PY="$(command -v python3)"
+# The real python (>= 3.11, tomllib), resolved before a test plants curl/python
+# sentinels in fakebin. macOS /usr/bin/python3 is 3.9, so versioned names first.
+LAYA_TEST_PY=""
+for _laya_py in python3.13 python3.12 python3.11 python3; do
+  _laya_py="$(command -v "$_laya_py" 2>/dev/null)" || continue
+  if "$_laya_py" -c 'import tomllib' 2>/dev/null; then
+    LAYA_TEST_PY=$_laya_py
+    break
+  fi
+done
+unset _laya_py
+if [[ -z "$LAYA_TEST_PY" ]]; then
+  printf '%s: FAIL (no python >= 3.11 with tomllib on PATH)\n' "$LAYA_TEST_NAME"
+  exit 1
+fi
 
 laya_fail() {
   printf '%s: FAIL (%s)\n' "$LAYA_TEST_NAME" "$1"

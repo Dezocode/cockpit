@@ -477,7 +477,9 @@ laya_mcp_codex() {
   local action=$1 dry=$2 mcp_bin=$3 device=$4 cfg py cand
   cfg="$HOME/.codex/config.toml"
   py=""
-  for cand in "$(cockpit_laya_venv_bin python || true)" "$(command -v python3 || true)"; do
+  # macOS /usr/bin/python3 is 3.9 (no tomllib): also try versioned pythons.
+  for cand in "$(cockpit_laya_venv_bin python || true)" python3.13 python3.12 python3.11 python3; do
+    command -v "$cand" >/dev/null 2>&1 || continue
     [[ -n "$cand" ]] || continue
     if "$cand" -c 'import tomllib' 2>/dev/null; then py=$cand; break; fi
   done

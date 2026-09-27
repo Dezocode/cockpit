@@ -96,16 +96,25 @@ down_port="$(laya_pick_port)"
 out="$(COCKPIT_LAYA_URL="http://127.0.0.1:$down_port" bash "$route" --json 'task' 2>&1)"
 [[ "$out" == *'"laya":"down"'* && "$out" == *'"tool":"codex"'* && "$out" == *curl_exit_7* ]] || laya_fail "down: $out"
 
-# --- timeout: stub delays 2000 ms, timeout_ms=300, whole call < 1 s ------------
+# --- timeout: stub delays 5000 ms, timeout_ms=300. The call must give up at the
+# timeout: its wall time stays within an ok call's time (same machine, same
+# process startup cost) + 300 ms + slack, far below the stub's 5 s.
+t0="$(laya_now_ms)"
+out="$(bash "$route" --json 'rename x')"
+t1="$(laya_now_ms)"
+[[ "$out" == *'"laya":"ok"'* ]] || laya_fail "timeout: baseline ok call $out"
+baseline=$((t1 - t0))
 slow_port="$(laya_pick_port)"
-laya_start_stub "$slow_port" "$key" "$FIXTURE_TEST_ROOT/rec-slow" LAYA_STUB_SLEEP_MS=2000
+laya_start_stub "$slow_port" "$key" "$FIXTURE_TEST_ROOT/rec-slow" LAYA_STUB_SLEEP_MS=5000
 t0="$(laya_now_ms)"
 rc=0
 out="$(COCKPIT_LAYA_URL="http://127.0.0.1:$slow_port" COCKPIT_LAYA_TIMEOUT_MS=300 bash "$route" --json 'rename x')" || rc=$?
 t1="$(laya_now_ms)"
 [[ "$rc" == 0 && "$out" == *'"laya":"timeout"'* && "$out" == *'"tier":"cheap"'* && "$out" == *'"tool":"codex"'* ]] ||
   laya_fail "timeout: rc=$rc $out"
-((t1 - t0 < 1000)) || laya_fail "timeout: took $((t1 - t0)) ms"
+latency="$(laya_json_get "$out" latency_ms)"
+((latency >= 250 && latency < 1000)) || laya_fail "timeout: curl waited ${latency} ms for timeout_ms=300"
+((t1 - t0 < baseline + 300 + 1200)) || laya_fail "timeout: took $((t1 - t0)) ms (ok call ${baseline} ms)"
 
 # --- low-confidence: conf 0.40 < 0.60 → defaults --------------------------------
 out="$(bash "$route" --json 'low-confidence architecture task')"
