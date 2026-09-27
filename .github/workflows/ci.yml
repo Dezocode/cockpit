@@ -6,10 +6,59 @@ on:
   pull_request:
     branches: [main, cockpit-gtm-v2.3]
 
+# A newer push to the same PR supersedes its run; branch pushes always finish.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
+  # Gate for every other job: committed exec bits, one version source, and the
+  # workflow must_absent/structure lint. Full history so the mode-drop check can
+  # diff against the C4 start commit.
+  versions:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Committed tree (exec bits, run by path)
+        run: ./scripts/check-exec-bits.sh
+
+      - name: Version guard
+        run: ./scripts/check-versions.sh | tee "$RUNNER_TEMP/versions.txt"
+
+      - name: Install ripgrep
+        run: |
+          command -v rg >/dev/null 2>&1 || { sudo apt-get update -qq && sudo apt-get install -y -qq ripgrep; }
+          rg --version | head -n 1
+
+      - name: Workflow lint (must_absent + yq structure + actionlint)
+        env:
+          COCKPIT_LINT_REQUIRE_BASE: '1'
+        run: ./tests/test-workflow-lint.sh | tee "$RUNNER_TEMP/workflow-lint.txt"
+
+      - name: Job summary
+        run: |
+          {
+            echo "### versions"
+            echo '| key | value |'
+            echo '|---|---|'
+            echo "| os | $(uname -s) $(uname -m) (${RUNNER_OS}) |"
+            echo "| bash | ${BASH_VERSION} |"
+            echo "| versions | $(head -n 1 "$RUNNER_TEMP/versions.txt") |"
+            echo "| exec bits | $(./scripts/check-exec-bits.sh) |"
+            echo "| workflow-lint | $(grep -E '^workflow-lint' "$RUNNER_TEMP/workflow-lint.txt" | tr '\n' ' ') |"
+          } >>"$GITHUB_STEP_SUMMARY"
+
   # tests/*.sh in a clean sandbox (env -i, temp HOME/TMUX_TMPDIR, stdin </dev/null).
   # Separate job so it never conflicts with steps appended to `verify`.
   shell-tests:
+    needs: versions
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -75,6 +124,7 @@ jobs:
           [[ "$ran" -gt 0 && "$fail" -eq 0 && "$fixed" -eq 0 ]]
 
   verify:
+    needs: versions
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -137,6 +187,7 @@ jobs:
           grep -q 'scripts/hostinger-health.sh' scripts/install-hostinger.sh
 
   portability:
+    needs: versions
     runs-on: ${{ matrix.os }}
     # Fail closed on a hung test instead of burning the 6 h default.
     timeout-minutes: 30
@@ -272,9 +323,107 @@ jobs:
           fi
           echo "listen-proof: default bind loopback-only (127.0.0.1:8787, pid ${pid})"
 
+      - name: Fresh-HOME install smoke (install.sh, login bash)
+        shell: bash
+        run: |
+          set -euo pipefail
+          home="$(mktemp -d)"
+          HOME="$home" SHELL=/bin/bash /bin/bash install.sh </dev/null >"$RUNNER_TEMP/install-smoke.log" 2>&1 ||
+            { tail -n 40 "$RUNNER_TEMP/install-smoke.log"; exit 1; }
+          tail -n 4 "$RUNNER_TEMP/install-smoke.log"
+          HOME="$home" bash -lc 'command -v cockpit && cockpit -h' </dev/null >"$RUNNER_TEMP/cockpit-h.txt" 2>&1 ||
+            { cat "$RUNNER_TEMP/cockpit-h.txt"; exit 1; }
+          sed -n '1,3p' "$RUNNER_TEMP/cockpit-h.txt"
+          grep -qx "$home/.local/bin/cockpit" "$RUNNER_TEMP/cockpit-h.txt"
+          grep -q '^Usage: cockpit' "$RUNNER_TEMP/cockpit-h.txt"
+          echo "install-smoke: ok (fresh HOME, bash -lc 'cockpit -h' rc 0)"
+
+      - name: API health (ephemeral loopback port, own PID)
+        shell: bash
+        run: ./scripts/health-smoke.sh app/dist-server/index.js | tee "$RUNNER_TEMP/health.txt"
+
+      - name: Job summary
+        shell: bash
+        run: |
+          {
+            echo "### portability (${{ matrix.os }})"
+            echo '| key | value |'
+            echo '|---|---|'
+            echo "| os | $(uname -s) $(uname -m) |"
+            echo "| bash (runner) | ${BASH_VERSION} |"
+            echo "| versions | $(./scripts/check-versions.sh | head -n 1) |"
+            echo "| exec bits | $(./scripts/check-exec-bits.sh) |"
+            echo "| health | $(cat "$RUNNER_TEMP/health.txt") |"
+            echo "| log | portability-${{ matrix.os }}.log |"
+          } >>"$GITHUB_STEP_SUMMARY"
+
       - name: Upload portability log
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: portability-${{ matrix.os }}
           path: portability-${{ matrix.os }}.log
+
+  # Tauri desktop build on every OS leg; required (no allowed-to-fail path, a
+  # timeout fails the leg). Integrity asserts run on the native bundle.
+  desktop:
+    needs: versions
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-14, macos-15-intel]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-node-pnpm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: app/src-tauri -> target
+
+      - name: Install Linux deps (Tauri)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf
+
+      - name: Install app deps
+        working-directory: app
+        run: pnpm install --frozen-lockfile
+
+      - name: Tauri build
+        working-directory: app
+        env:
+          BUNDLES: ${{ runner.os == 'Linux' && 'deb,appimage' || 'app,dmg' }}
+        run: pnpm tauri build --bundles "$BUNDLES"
+
+      - name: Bundle integrity
+        run: ./scripts/check-desktop-bundle.sh --collect "$RUNNER_TEMP/desktop" | tee "$RUNNER_TEMP/desktop.txt"
+
+      - name: Upload desktop bundle (inspection only, 3 days)
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-${{ matrix.os }}
+          path: ${{ runner.temp }}/desktop/*
+          if-no-files-found: error
+          retention-days: 3
+
+      - name: Job summary
+        run: |
+          {
+            echo "### desktop (${{ matrix.os }})"
+            echo '| key | value |'
+            echo '|---|---|'
+            echo "| os | $(uname -s) $(uname -m) |"
+            echo "| bash | ${BASH_VERSION} |"
+            echo "| versions | $(./scripts/check-versions.sh | head -n 1) |"
+            grep -E '^desktop-bundle: (asset|dpkg-deb|AppImage|codesign -dv: Signature|lipo|test -x|CFBundle)' "$RUNNER_TEMP/desktop.txt" |
+              sed -e 's/^desktop-bundle: //' -e 's/|/\\|/g' -e 's/^/| check | /' -e 's/$/ |/'
+          } >>"$GITHUB_STEP_SUMMARY"
