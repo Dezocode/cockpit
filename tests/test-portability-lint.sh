@@ -14,9 +14,13 @@ report() {
 
 report "$(rg -n '\binotifywait\b' bin install.sh scripts plugins -g '!tests/test-portability-lint.sh' 2>/dev/null | rg -v '^bin/cockpit-portable-lib:' || true)"
 report "$(rg -n 'stat -[cf] ' bin install.sh plugins tests -g '!tests/test-portability-lint.sh' 2>/dev/null | rg -v '^bin/cockpit-portable-lib:' || true)"
-report "$(rg -n 'readlink -f|chmod --reference|sed -i|find [^|]*-printf|xargs -r' bin install.sh plugins tests -g '!tests/test-portability-lint.sh' 2>/dev/null || true)"
+report "$(rg -n 'readlink -f|chmod --reference|sed -i|find [^|]*-printf|xargs -r' bin install.sh plugins tests \
+  -g '!tests/test-portability-lint.sh' -g '!tests/test-notify-lint.sh' 2>/dev/null || true)"
 report "$(rg -n '/proc/' bin install.sh plugins -g '!tests/test-portability-lint.sh' 2>/dev/null | rg -v '^bin/cockpit-portable-lib:' || true)"
-report "$(rg -n '\btimeout [0-9]|\bsha256sum\b' bin plugins tests -g '!tests/test-portability-lint.sh' 2>/dev/null | rg -v '^bin/cockpit-portable-lib:' || true)"
+# notify tests quote nonportable probes; cockpit-notify mirrors portable-lib fallbacks.
+report "$(rg -n '\btimeout [0-9]|\bsha256sum\b' bin plugins tests \
+  -g '!tests/test-portability-lint.sh' -g '!tests/test-notify-lint.sh' -g '!tests/test-notify.sh' \
+  2>/dev/null | rg -v '^bin/cockpit-portable-lib:|^bin/cockpit-notify:' || true)"
 report "$(rg -n 'pgrep [^|]*-a\b' bin -g '!tests/test-portability-lint.sh' 2>/dev/null || true)"
 report "$(rg -n 'declare -A|mapfile|readarray|\$\{[A-Za-z_]+(,,|\^\^)\}|exec \{' install.sh bin/cockpit-portable-lib -g '!tests/test-portability-lint.sh' 2>/dev/null || true)"
 report "$(rg -n 'COCKPIT_SHELL_RC:-\$\{HOME\}/\.bashrc|alias cockpit="cockpit"|^# Cockpit (PATH|cpr plugin)$' install.sh -g '!tests/test-portability-lint.sh' 2>/dev/null || true)"
