@@ -145,22 +145,22 @@ fi
 if [[ ! -f "$config_home/notify.conf" ]]; then
   install -m 0644 "$root/stage/notify/notify.conf" "$config_home/notify.conf"
 fi
+# Every other bundled Cockpit-native plugin (plugins/<dir>/plugin.conf, its
+# entrypoint and README) goes where `cockpit plugin` looks for installed plugins.
+# Optional plugins' own config is seeded by the plugin on first use, not here.
 shopt -s nullglob
-for optional_router_tpl in "$root"/stage/l*/l*.conf; do
-  optional_router_file="$config_home/$(basename -- "$optional_router_tpl")"
-  [[ -e "$optional_router_file" ]] || install -m 0644 "$optional_router_tpl" "$optional_router_file"
-done
-for optional_router_plugin in "$root"/plugins/cockpit-l*/; do
-  [[ -d "$optional_router_plugin" ]] || continue
-  plugin_name="${optional_router_plugin%/}"
-  plugin_name="${plugin_name##*/}"
-  mkdir -p "$config_home/plugins/$plugin_name"
-  install -m 0644 "$optional_router_plugin"plugin.conf "$optional_router_plugin"README.md \
-    "$config_home/plugins/$plugin_name/" 2>/dev/null || true
-  plugin_entry="${optional_router_plugin}l""aya"
-  if [[ -f "$plugin_entry" ]]; then
-    install -m 0755 "$plugin_entry" "$config_home/plugins/$plugin_name/l""aya"
+for bundled_manifest in "$root"/plugins/*/plugin.conf; do
+  bundled_dir="${bundled_manifest%/plugin.conf}"
+  bundled_name="${bundled_dir##*/}"
+  [[ "$bundled_name" == cockpit-cpr ]] && continue # installed explicitly above
+  bundled_entry="$(awk -F= '$1 == "entrypoint" { print $2; exit }' "$bundled_manifest")"
+  [[ -n "$bundled_entry" && "$bundled_entry" != */* && -f "$bundled_dir/$bundled_entry" ]] || continue
+  mkdir -p "$config_home/plugins/$bundled_name"
+  install -m 0644 "$bundled_manifest" "$config_home/plugins/$bundled_name/plugin.conf"
+  if [[ -f "$bundled_dir/README.md" ]]; then
+    install -m 0644 "$bundled_dir/README.md" "$config_home/plugins/$bundled_name/README.md"
   fi
+  install -m 0755 "$bundled_dir/$bundled_entry" "$config_home/plugins/$bundled_name/$bundled_entry"
 done
 shopt -u nullglob
 if compgen -G "$root/stage/auth/providers.d/*.conf" >/dev/null; then
