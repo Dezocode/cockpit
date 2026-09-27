@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# shellcheck disable=SC2034
+# shellcheck disable=SC2034,SC2088,SC2221,SC2222
 # Shared, provider-aware project instruction/profile helpers.
 #
 # This file is sourced by the validator, SETUP, and the tmux hook.  It never

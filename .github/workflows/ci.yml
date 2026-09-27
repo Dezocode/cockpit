@@ -90,7 +90,7 @@ jobs:
           uname -sm
           if [[ "${{ matrix.os }}" == ubuntu-latest ]]; then
             sudo apt-get update
-            sudo apt-get install -y shellcheck tmux fish zsh inotify-tools
+            sudo apt-get install -y shellcheck tmux fish zsh inotify-tools ripgrep
           else
             brew install fswatch shellcheck tmux fish bash
             if echo "$PATH" | grep -qi gnubin; then

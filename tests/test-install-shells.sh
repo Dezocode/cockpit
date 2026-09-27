@@ -16,7 +16,7 @@ run_install() {
 
 count_markers() {
   local file=$1
-  rg -c '# >>> cockpit >>>' "$file" 2>/dev/null || echo 0
+  grep -c '# >>> cockpit >>>' "$file" 2>/dev/null || echo 0
 }
 
 tmpdir="$(mktemp -d)"
