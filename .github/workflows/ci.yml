@@ -416,7 +416,25 @@ jobs:
         working-directory: app
         env:
           BUNDLES: ${{ runner.os == 'Linux' && 'deb,appimage' || 'app,dmg' }}
-        run: pnpm tauri build --bundles "$BUNDLES" -- --locked
+        run: |
+          # Hosted macOS runners intermittently fail hdiutil inside Tauri's
+          # bundle_dmg.sh (desktop (macos-15-intel), run 36339154565, after a
+          # clean compile). macOS gets up to 3 attempts of the same command: the
+          # compile is fresh after the first, so a retry re-bundles only; each
+          # attempt must succeed on its own and a third failure fails the leg.
+          # Retries are --verbose so a real bundler error is in the log.
+          attempts=1
+          [[ "$RUNNER_OS" == macOS ]] && attempts=3
+          for attempt in $(seq 1 "$attempts"); do
+            verbose=()
+            ((attempt > 1)) && verbose=(--verbose)
+            if pnpm tauri build ${verbose[@]+"${verbose[@]}"} --bundles "$BUNDLES" -- --locked; then
+              exit 0
+            fi
+            echo "::warning::tauri build attempt ${attempt}/${attempts} failed on ${RUNNER_OS}"
+            sleep 15
+          done
+          exit 1
 
       - name: Bundle integrity
         run: ./scripts/check-desktop-bundle.sh --collect "$RUNNER_TEMP/desktop" | tee "$RUNNER_TEMP/desktop.txt"

@@ -241,8 +241,11 @@ twin "macos-15-intel in ci.yml" -n 'macos-15-intel' "$ci"
 twin "macos-15-intel in release-cockpit2.yml" -n 'macos-15-intel' "$rel"
 twin 'tauri.conf "version": "../package.json"' -n '"version": "\.\./package\.json"' app/src-tauri/tauri.conf.json
 twin "check-exec-bits in ci.yml" -n 'check-exec-bits' "$ci"
-twin "ci.yml desktop builds against the committed Cargo.lock (--locked)" -n 'pnpm tauri build --bundles "\$BUNDLES" -- --locked' "$ci"
-twin "release desktop builds against the committed Cargo.lock (--locked)" -n 'pnpm tauri build --bundles "\$BUNDLES" -- --locked' "$rel"
+twin "ci.yml desktop builds against the committed Cargo.lock (--locked)" -n 'pnpm tauri build .*--bundles "\$BUNDLES" -- --locked' "$ci"
+twin "release desktop builds against the committed Cargo.lock (--locked)" -n 'pnpm tauri build .*--bundles "\$BUNDLES" -- --locked' "$rel"
+for f in "$ci" "$rel"; do
+  twin "$f: tauri build retry loop fails the leg after its last attempt (exit 1)" -U -n 'failed on \$\{RUNNER_OS\}"\n\s+sleep 15\n\s+done\n\s+exit 1\n' "$f"
+done
 job_lines="$(rg -c '^  shell-tests:|^  verify:|^  portability:|^  desktop:|^  versions:' "$ci" 2>&1 || :)"
 [[ "$job_lines" == 5 ]] || finding "missing positive twin: 5 job lines in ci.yml" "got ${job_lines:-0}"
 by_path="$(rg -c '^\s+run: \./scripts/check-exec-bits\.sh$' "$ci" 2>&1 || :)"
@@ -382,7 +385,9 @@ mutate publish-on-any-event '^structure: release: publish gated' "$rel" \
 mutate unmatched-files-ok '^fail_on_unmatched_files: false' "$rel" \
   'fail_on_unmatched_files: true' 'fail_on_unmatched_files: false'
 mutate tauri-or-true '^optional / allowed-to-fail Tauri build' "$ci" \
-  'run: pnpm tauri build --bundles "$BUNDLES"' 'run: pnpm tauri build --bundles "$BUNDLES" || true'
+  '-- --locked; then' '-- --locked || true; then'
+mutate retry-loop-exits-0 '^missing positive twin: .*ci.yml: tauri build retry loop' "$ci" \
+  $'          sleep 15\n          done\n          exit 1\n' $'          sleep 15\n          done\n          exit 0\n'
 mutate extra-secret '^secrets beyond GITHUB_TOKEN' "$rel" \
   'GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}' 'GITHUB_TOKEN: ${{ secrets.RELEASE_PAT }}'
 mutate tauri-literal-version '^literal tauri.conf version' app/src-tauri/tauri.conf.json \
