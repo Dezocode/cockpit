@@ -1,13 +1,15 @@
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 import { cors } from "hono/cors";
 import { getRequestListener } from "@hono/node-server";
+import { getConnInfo } from "@hono/node-server/conninfo";
 import { readFileSync, existsSync, writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { execSync } from "node:child_process";
+import { execSync, execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { createServer } from "node:http";
 import { WebSocketServer } from "ws";
-import { createHmac, timingSafeEqual, randomBytes } from "node:crypto";
+import { createHmac, timingSafeEqual, randomBytes, createHash } from "node:crypto";
 import { fleetNodesApp } from "./fleet/nodes.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -68,7 +70,7 @@ const GH_CLI_CLIENT_ID = "178c6fc778ccc68e1d6a";
 
 const deviceSessions = new Map<string, { interval: number; expires: number }>();
 
-app.get("/api/health", (c) => c.json(healthCheck())); // green contract — see deploy/README.md
+app.get("/api/health", (c) => c.json(healthCheck()));
 app.get("/api/agents", (c) => c.json(readJson("agents.json", { agents: [], seed: "cockpit-20260907" })));
 app.get("/api/layout", (c) => c.json(readJson("layout.json", { panels: [], activePanel: "AGENT" })));
 app.get("/api/auth/gh", (c) => c.json(ghAuthStatus()));
@@ -158,7 +160,6 @@ app.get("/api/memory", (c) =>
   }),
 );
 
-// --- cockpit#16: GitHub-OAuth-tied terminal auth (no pre-shared tokens) ---
 const GH_CLIENT_ID = process.env.GITHUB_CLIENT_ID ?? "";
 const GH_CLIENT_SECRET = process.env.GITHUB_CLIENT_SECRET ?? "";
 const GH_REDIRECT_URI = process.env.GITHUB_REDIRECT_URI ?? "";
@@ -274,14 +275,127 @@ app.post("/api/auth/logout", (c) => {
   return c.json({ ok: true });
 });
 
+const execFileAsync = promisify(execFile);
+const NOTIFY_KEY = process.env.COCKPIT_NOTIFY_KEY ?? "";
+const notifyRateBuckets = new Map<string, { count: number; resetAt: number }>();
+
+function notifyPrincipal(c: Context): string | null {
+  const sess = readSessionCookie(c);
+  if (sess && terminalGranted(sess)) return `sess:${sess.u}`;
+  const auth = c.req.header("authorization") ?? "";
+  const m = auth.match(/^Bearer\s+(.+)$/i);
+  if (m && NOTIFY_KEY) {
+    const got = createHash("sha256").update(m[1]).digest();
+    const expect = createHash("sha256").update(NOTIFY_KEY).digest();
+    if (got.length === expect.length && timingSafeEqual(got, expect)) return "bearer";
+  }
+  if (process.env.COCKPIT_HOSTINGER === "1") return null;
+  if (process.env.COCKPIT_LOCAL_TRUST !== "1") return null;
+  const peer = getConnInfo(c).remote.address ?? "";
+  if (peer === "127.0.0.1" || peer === "::1" || peer === "::ffff:127.0.0.1") return "local";
+  return null;
+}
+
+function notifyRateOk(principal: string): boolean {
+  const now = Date.now();
+  const windowMs = 60_000;
+  const limit = 10;
+  let b = notifyRateBuckets.get(principal);
+  if (!b || now >= b.resetAt) {
+    b = { count: 0, resetAt: now + windowMs };
+    notifyRateBuckets.set(principal, b);
+  }
+  if (b.count >= limit) return false;
+  b.count += 1;
+  return true;
+}
+
+async function runCockpitNotify(args: string[]): Promise<{ stdout: string; stderr: string; code: number }> {
+  try {
+    const { stdout, stderr } = await execFileAsync(join(root, "bin", "cockpit-notify"), args, {
+      env: process.env,
+      timeout: 20_000,
+      maxBuffer: 2 * 1024 * 1024,
+    });
+    return { stdout, stderr, code: 0 };
+  } catch (e) {
+    const err = e as { stdout?: string; stderr?: string; code?: number };
+    return {
+      stdout: err.stdout ?? "",
+      stderr: err.stderr ?? "",
+      code: typeof err.code === "number" ? err.code : 1,
+    };
+  }
+}
+
+function parseNotifyJson(stdout: string): Record<string, unknown> | null {
+  const line = stdout.trim().split("\n").pop() ?? "";
+  try {
+    return JSON.parse(line) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
+app.get("/api/notify/status", async (c) => {
+  const principal = notifyPrincipal(c);
+  if (!principal) return c.json({ error: "unauthorized" }, 401);
+  if (!notifyRateOk(principal)) return c.json({ error: "rate limited" }, 429);
+  const { stdout, code } = await runCockpitNotify(["--check", "--json"]);
+  if (code !== 0) return c.json({ error: "status check failed" }, 502);
+  const st = parseNotifyJson(stdout);
+  if (!st) return c.json({ error: "invalid status" }, 502);
+  return c.json({
+    telegram: st.telegram === "ready",
+    ntfy: st.ntfy === "configured",
+    desktop: st.desktop === "available",
+  });
+});
+
+app.post("/api/notify", async (c) => {
+  const principal = notifyPrincipal(c);
+  if (!principal) return c.json({ error: "unauthorized" }, 401);
+  if (!notifyRateOk(principal)) return c.json({ error: "rate limited" }, 429);
+  let body: {
+    message?: string;
+    title?: string;
+    sink?: string;
+    priority?: string;
+    link?: string;
+    id?: string;
+  };
+  try {
+    body = (await c.req.json()) as typeof body;
+  } catch {
+    return c.json({ error: "invalid json" }, 400);
+  }
+  const message = (body.message ?? "").replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, "").trim();
+  if (message.length < 1 || message.length > 4000) {
+    return c.json({ error: "invalid message" }, 400);
+  }
+  const title = (body.title ?? "Cockpit").trim();
+  if (title.length > 120) return c.json({ error: "invalid title" }, 400);
+  if (body.link && !/^https:\/\//.test(body.link)) return c.json({ error: "invalid link" }, 400);
+  const args = ["--json", "--via", "local", "--title", title];
+  if (body.sink) args.push("--sink", body.sink);
+  if (body.priority) args.push("--priority", body.priority);
+  if (body.link) args.push("--link", body.link);
+  if (body.id) args.push("--id", body.id);
+  args.push("--", message);
+  const { stdout, code } = await runCockpitNotify(args);
+  const receipt = parseNotifyJson(stdout);
+  if (!receipt) return c.json({ error: "notify failed" }, 502);
+  if (code !== 0 && (receipt.delivered === "none" || !receipt.delivered)) {
+    return c.json(receipt, 502);
+  }
+  return c.json(receipt, 200);
+});
+
 const port = Number(process.env.COCKPIT_WEB_PORT ?? 8787);
 const nodeServer = createServer(getRequestListener(app.fetch));
 const wss = new WebSocketServer({ server: nodeServer, path: "/ws/pty" });
 
 wss.on("connection", (ws, req) => {
-  // cockpit#16: every terminal session is tied to a GitHub-OAuth session.
-  // Agents hold no terminal credentials of their own; they act inside the
-  // owning user's session (user + agentId logged together below).
   if (!oauthConfigured) { ws.close(4401, "terminal auth not configured"); return; }
   const cookie = req.headers.cookie ?? "";
   const m = cookie.match(/(?:^|;\s*)cockpit_sess=([^;]+)/);
@@ -303,7 +417,6 @@ wss.on("connection", (ws, req) => {
   };
   let pty: PtyLike | null = null;
   try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const nodePty = require("node-pty") as { spawn: (...args: unknown[]) => PtyLike };
     pty = nodePty.spawn(process.env.SHELL || "bash", ["-l"], {
       name: "xterm-256color",
