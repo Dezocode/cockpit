@@ -37,7 +37,7 @@ else
   finding secrets-in-dist "app/dist not built (need pnpm or a prebuilt app/dist) — cannot prove the bundle clean"
 fi
 
-probe curl-token-argv "rg -n 'curl [^\\n]*bot\\\$|curl [^\\n]*/bot\\\$\\{' bin"
+probe curl-token-argv "rg -n 'curl [^\\n]*(bot\\\$|/bot\\\$\\{|Bearer \\\$|-u [^ ]*:\\\$)' bin"
 probe tracked-notify-env "git ls-files | rg '(^|/)notify\\.env\$'"
 probe local-trust-in-packaging "rg -n 'COCKPIT_LOCAL_TRUST' \$(ls -d packaging deploy scripts 2>/dev/null)"
 probe nonportable-bin-notify "rg -n '\\btimeout [0-9]|stat -c|readlink -f|sed -i|/proc/' bin/cockpit-notify"
