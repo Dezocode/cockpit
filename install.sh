@@ -31,7 +31,6 @@ mkdir -p "$bindir" "$tmuxdir" \
 shopt -s nullglob
 for cockpit_bin in "$root/bin"/cockpit*; do
   [[ "$cockpit_bin" == *.list ]] && continue
-  [[ -f "$cockpit_bin" ]] && chmod +x "$cockpit_bin" 2>/dev/null || true
   install -m 0755 "$cockpit_bin" "$bindir/"
 done
 shopt -u nullglob
