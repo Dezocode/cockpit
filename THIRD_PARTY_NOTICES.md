@@ -30,7 +30,7 @@ Ported modules are listed in `third_party/gods-eye-view/PORTMAP.tsv`.
 
 ## CesiumJS 1.138.0
 
-Licensed under the Apache License, Version 2.0. Cesium ships no separate NOTICE file; third-party attributions are in the built copy at `dist/cesium/LICENSE.md` (copied from `node_modules/cesium/LICENSE.md`).
+CesiumJS is licensed under the Apache License, Version 2.0. Cesium ships no separate NOTICE file; third-party attributions are in the built copy at `dist/cesium/LICENSE.md` (copied from `node_modules/cesium/LICENSE.md`).
 
 ## Natural Earth II
 
