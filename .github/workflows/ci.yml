@@ -103,7 +103,7 @@ jobs:
         working-directory: app
         env:
           # Screens come from the asserting e2e run itself; each PNG is re-read and
-          # must show a rendered globe (lit >= 0.08, colors >= 64) or the run fails.
+          # must show a rendered globe (lit >= 0.08, colors >= 300) or the run fails.
           GODSEYE_SHOT: ${{ runner.temp }}/godseye-screens/godseye-keyless.png
           GODSEYE_ARCS_SHOT: ${{ runner.temp }}/godseye-screens/godseye-arcs.png
         run: |
@@ -119,7 +119,8 @@ jobs:
             xvfb-run -a node tests/godseye-panel.e2e.mjs
           n=$(find "$RUNNER_TEMP/godseye-screens" -name '*.png' | wc -l)
           echo "godseye-screens: $n png"
-          test "$n" -ge 2
+          # exactly keyless + arcs (America/Chicago run) + utc (Etc/UTC run)
+          test "$n" -eq 3
 
       - name: Upload God's Eye screenshots (artifact godseye-screens)
         if: always()
