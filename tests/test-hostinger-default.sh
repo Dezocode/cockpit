@@ -172,12 +172,19 @@ p3rc=0; p3out="$(proctor3 "$repo_root")" || p3rc=$?
 check must-absent-proctor-probe3-clean test "$p3rc" = 1
 [[ "$p3rc" == 1 ]] || printf '%s\n' "$p3out" >&2
 
-# Negative twin: correct code (the real unit + installer + launcher, plus pure reads) must not match.
+# Negative twin: a static correct-code fixture (independent of the tree under test) must
+# not match: the documented Hostinger unit line, the installer export, a launcher that
+# only inherits, and pure reads.
 twin="$FIXTURE_TEST_ROOT/twin"
 mkdir -p "$twin/bin" "$twin/packaging/systemd" "$twin/scripts"
-cp "$repo_root/bin/cockpit-web" "$twin/bin/cockpit-web"
-cp "$unit" "$twin/packaging/systemd/cockpit-web.service"
-cp "$inst" "$twin/scripts/install-hostinger.sh"
+cat >"$twin/bin/cockpit-web" <<'SH'
+export COCKPIT_WEB_PORT="${COCKPIT_WEB_PORT:-8787}"
+export COCKPIT_WEB_HOST="${COCKPIT_WEB_HOST:-127.0.0.1}"
+exec node "$dist"
+SH
+printf '[Service]\nEnvironment=COCKPIT_INSTALL_ROOT=/opt/cockpit\nEnvironment=COCKPIT_HOSTINGER=1\nEnvironment=COCKPIT_WEB_PORT=8787\n' \
+  >"$twin/packaging/systemd/cockpit-web.service"
+printf 'COCKPIT_INSTALL_ROOT="${COCKPIT_INSTALL_ROOT:-/opt/cockpit}"\nexport COCKPIT_HOSTINGER=1\n' >"$twin/scripts/install-hostinger.sh"
 cat >"$twin/bin/reads" <<'SH'
 [[ "${COCKPIT_HOSTINGER:-0}" == 1 ]] && echo hostinger
 [[ "${COCKPIT_HOSTINGER:-}" == 1 ]] && echo hostinger
