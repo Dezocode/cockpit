@@ -8,6 +8,7 @@ import { execSync } from "node:child_process";
 import { createServer } from "node:http";
 import { WebSocketServer } from "ws";
 import { createHmac, timingSafeEqual, randomBytes } from "node:crypto";
+import { fleetNodesApp } from "./fleet/nodes.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = join(__dirname, "../..");
@@ -145,18 +146,8 @@ app.post("/api/emulators/:id/launch", (c) => {
   });
 });
 
-app.get("/api/computers", (c) =>
-  c.json({
-    computers: [
-      { id: "local", name: "Local Dev", status: "online", latencyMs: 0, tailnet: false },
-      { id: "hermes", name: "Hermes Deck", status: "online", latencyMs: 12, tailnet: true, role: "hermes" },
-      { id: "hostinger", name: "Hostinger VPS", status: "online", latencyMs: 42, tailnet: true },
-      { id: "omarchy", name: "Omarchy Pad", status: "online", latencyMs: 8, tailnet: false },
-    ],
-    offlineThresholdMs: 3000,
-    hermesNote: "Deck receipt / COMPUTERS node — NOT an AGENT provider",
-  }),
-);
+app.route("/", fleetNodesApp);
+
 app.get("/api/memory", (c) =>
   c.json({
     entries: [

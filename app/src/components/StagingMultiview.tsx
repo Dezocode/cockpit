@@ -24,11 +24,13 @@ import {
 } from "../lib/layout-v3";
 import { loadTheme, saveTheme, applyTheme, type CockpitTheme } from "../lib/theme";
 import type { AgentBarChip } from "../lib/types";
+import { GodsEyePanelEntry } from "./panels/GodsEyePanelEntry";
 import styles from "./StagingMultiview.module.css";
 
-const PALETTE: StagingPanelType[] = ["AGENTS", "COMPUTERS", "FILES"];
+const PALETTE: StagingPanelType[] = ["AGENTS", "COMPUTERS", "FILES", "GODSEYE"];
 
 function panelTitle(type: StagingPanelType): string {
+  if (type === "GODSEYE") return "GOD'S EYE";
   return type;
 }
 
@@ -42,6 +44,8 @@ function PanelBody({ type }: { type: StagingPanelType }) {
       return <FilesPanelContent />;
     case "GRAPH":
       return <GraphPanelContent />;
+    case "GODSEYE":
+      return <GodsEyePanelEntry />;
     default:
       return null;
   }
@@ -163,6 +167,9 @@ export function StagingMultiview() {
       }
       syncCount(event.api);
       event.api.onDidLayoutChange(() => persistLayout());
+      if (typeof window !== "undefined") {
+        (window as unknown as { __cockpitDockviewApi?: DockviewApi }).__cockpitDockviewApi = event.api;
+      }
       event.api.onDidRemovePanel(() => persistLayout());
 
       if (demoMode === "3panels") {
