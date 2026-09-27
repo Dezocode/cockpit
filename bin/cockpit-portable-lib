@@ -409,6 +409,9 @@ cockpit_service_install_launchd() {
   x_root="$(cockpit_xml_escape "$install_root")"
   mkdir -p "${HOME}/Library/LaunchAgents" "$logdir"
   plist="${HOME}/Library/LaunchAgents/com.dezocode.cockpit-web.plist"
+  # EnvironmentVariables carries only the keys docs/service-env.md names for
+  # launchd. COCKPIT_HOSTINGER is never written: a LaunchAgent is a local launch,
+  # and Hostinger mode belongs to the systemd unit (tests/test-hostinger-default.sh).
   launchctl bootout "gui/$uid" "$plist" 2>/dev/null || true
   launchctl bootout "user/$uid" "$plist" 2>/dev/null || true
   cat >"$plist" <<EOF
@@ -437,8 +440,6 @@ $( [[ -n "$install_root" ]] && printf '  <key>WorkingDirectory</key>\n  <string>
     <string>${x_path}</string>
     <key>COCKPIT_WEB_HOST</key>
     <string>127.0.0.1</string>
-    <key>COCKPIT_HOSTINGER</key>
-    <string>1</string>
 $( [[ -n "$install_root" ]] && printf '    <key>COCKPIT_INSTALL_ROOT</key>\n    <string>%s</string>\n' "$x_root" )
 ${port_entry}
   </dict>

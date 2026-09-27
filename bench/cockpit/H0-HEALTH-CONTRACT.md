@@ -14,7 +14,7 @@ Authority: t847u residuals t72u · Hostinger install root `/opt/cockpit`
 Started by:
 
 - systemd: `packaging/systemd/cockpit-web.service`
-- local: `./scripts/start-dist-server.sh`
+- local: `COCKPIT_HOSTINGER=1 ./scripts/start-dist-server.sh` (without it the script runs in local mode and `checks.hostinger` is `local`)
 - bench: `COCKPIT_HOSTINGER=1 node app/dist-server/index.js`
 
 Required response fields:

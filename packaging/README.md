@@ -30,7 +30,7 @@ Canon draft alignment: `tmp/t847u/README.md`
 | `packaging/nginx/cockpit.conf` | TLS + `/api/health` proxy |
 | `scripts/install-hostinger.sh` | canonical Hostinger install (single deploy path) |
 | `packaging/health-server.js` | optional GET `/api/health` bootstrap (NOT full API — see H0-HEALTH-CONTRACT.md) |
-| `scripts/start-dist-server.sh` | local/systemd-equivalent dist-server start |
+| `scripts/start-dist-server.sh` | local dist-server start (`COCKPIT_HOSTINGER=1` in front = systemd-equivalent; see `docs/service-env.md`) |
 | `scripts/hostinger-health.sh` | GET `/api/health` probe (`--wait N`) |
 | `bench/cockpit/H0-HEALTH-CONTRACT.md` | bootstrap vs full API contract |
 

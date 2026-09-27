@@ -64,7 +64,12 @@ plist="${HOME}/Library/LaunchAgents/${label}.plist"
 plutil -lint "$plist" >/dev/null || fail "plist lint"
 [[ "$(plutil -extract EnvironmentVariables.COCKPIT_WEB_HOST raw "$plist")" == 127.0.0.1 ]] || fail "plist COCKPIT_WEB_HOST"
 [[ "$(plutil -extract EnvironmentVariables.COCKPIT_WEB_PORT raw "$plist")" == "$port" ]] || fail "plist COCKPIT_WEB_PORT"
+# A LaunchAgent is a local launch: never Hostinger mode (docs/service-env.md).
+if plutil -extract EnvironmentVariables.COCKPIT_HOSTINGER raw "$plist" >/dev/null 2>&1; then fail "plist sets COCKPIT_HOSTINGER"; fi
 wait_health first
+mode="$(curl -s "http://127.0.0.1:${port}/api/health" | python3 -c 'import json,sys; print(json.load(sys.stdin)["checks"]["hostinger"])')"
+printf 'launchd: health checks.hostinger=%s\n' "$mode"
+[[ "$mode" == local ]] || fail "launchd agent reports checks.hostinger=$mode (want local)"
 agent_pid="$(job_pid)"
 [[ "$agent_pid" =~ ^[0-9]+$ ]] || fail "agent pid"
 listen="$(lsof -nP -a -p "$agent_pid" -iTCP:"$port" -sTCP:LISTEN 2>/dev/null || :)"
@@ -80,4 +85,4 @@ wait_health "re-install"
 agent_pid="$(job_pid)"
 unload_ours
 
-printf 'launchd: ok (plist lint, bootstrap, /api/health)\n'
+printf 'launchd: ok (plist lint, bootstrap, /api/health, local mode)\n'

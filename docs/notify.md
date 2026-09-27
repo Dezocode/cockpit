@@ -101,7 +101,10 @@ anything other than Telegram must count as failure.
 Accepted callers, in order: a GitHub-OAuth session cookie that passes the terminal
 allowlist; `Authorization: Bearer $COCKPIT_NOTIFY_KEY` (compared as SHA-256 digests with
 `timingSafeEqual`); `COCKPIT_LOCAL_TRUST=1` **and** a loopback socket peer (never a header).
-`COCKPIT_HOSTINGER=1` disables local trust outright, and no server unit sets it.
+`COCKPIT_HOSTINGER=1` disables local trust outright. Only the Hostinger systemd unit
+(`packaging/systemd/cockpit-web.service`, installed by `scripts/install-hostinger.sh`) sets it;
+`cockpit-web`, the macOS LaunchAgent and `scripts/start-dist-server.sh` leave it unset, so local
+trust works on a local launch. See [service-env.md](service-env.md).
 
 Remote clients (laptops, cloud agents) never hold the bot token: set
 `COCKPIT_NOTIFY_URL=https://<host>/api/notify` and `COCKPIT_NOTIFY_KEY`, then
