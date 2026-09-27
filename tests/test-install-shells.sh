@@ -111,6 +111,12 @@ if [[ "$bash3_major" -lt 4 ]]; then
   set -e
   [[ "$rc" == 64 ]] || fail "bash3 hint rc"
   grep -q 'bash >= 4 required' <<<"$out" || fail "bash3 hint text"
+  # Sourced into a bash-3.2 shell: no script to re-exec, so the lib reports and
+  # returns 64 instead of exec'ing the sourced file or killing the shell.
+  out="$(/bin/bash --norc --noprofile -c 'source "$1"; echo "alive rc=$?"' _ "$repo_root/bin/cockpit-lib" 2>&1)"
+  grep -q 'bash >= 4 required' <<<"$out" || fail "bash3 sourced hint"
+  grep -q '^alive rc=64$' <<<"$out" || fail "bash3 sourced return ($out)"
+  printf 'install-shells: bash3 guard (%s): script rc 64 + hint; sourced rc 64, shell alive\n' "$(/bin/bash -c 'echo $BASH_VERSION')"
 fi
 
 if command -v /opt/homebrew/bin/bash >/dev/null 2>&1 ||

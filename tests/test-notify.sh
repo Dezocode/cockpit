@@ -91,7 +91,11 @@ chmod +x "$FIXTURE_FAKEBIN/hermes"
 export HERMES_LOG="$FIXTURE_TEST_ROOT/hermes.log"
 : >"$HERMES_LOG"
 out="$(cockpit notify "Cockpit v2.3.0 GTM done")" || fail hermes "$out"
-[[ "$out" == "notify: delivered=telegram sinks=telegram:ok,ntfy:skip:not-configured,desktop:skip:headless id="* ]] || fail hermes-line "$out"
+# The best-effort toast is real where osascript exists (macOS runner, see the
+# desktop section); a headless Linux sandbox skips it.
+desk_expect=skip:headless
+command -v osascript >/dev/null 2>&1 && desk_expect=ok
+[[ "$out" == "notify: delivered=telegram sinks=telegram:ok,ntfy:skip:not-configured,desktop:${desk_expect} id="* ]] || fail hermes-line "$out"
 [[ "$(head -1 "$HERMES_LOG" | tr '\0' '|')" == "send|--to|telegram|-q|Cockpit v2.3.0 GTM done|" ]] ||
   fail hermes-argv "$(tr '\0' '|' <"$HERMES_LOG")"
 cockpit notify --check --json | grep -q '"telegram":"ready"' || fail hermes-check

@@ -183,11 +183,23 @@ select_window("AGENT")
 release(5, 1)
 expect("AGENT")
 
+# Keep draining the PTY while the client shuts down: tmux's exit sequences
+# otherwise fill the (small, on macOS) PTY buffer and block cockpit-client in
+# write(), so it never reaps tmux and a blocking waitpid() hangs forever.
 os.kill(pid, signal.SIGTERM)
-try:
-    os.waitpid(pid, 0)
-except ChildProcessError:
-    pass
+deadline = time.monotonic() + 10
+while True:
+    try:
+        done, _ = os.waitpid(pid, os.WNOHANG)
+    except ChildProcessError:
+        break
+    if done:
+        break
+    if time.monotonic() > deadline:
+        os.kill(pid, signal.SIGKILL)  # our own pty child, never a port/name match
+        os.waitpid(pid, 0)
+        raise SystemExit("cockpit-client did not exit within 10s of SIGTERM")
+    drain(0.1)
 PY
 
 printf '%s\n' 'Termius touch regression: PASS'

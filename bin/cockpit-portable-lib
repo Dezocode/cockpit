@@ -60,17 +60,24 @@ cockpit_require_bash4() {
     unset COCKPIT_BASH_REEXEC
     return 0
   fi
+  local candidate entry idx
+  # Re-exec the user-invoked entrypoint (e.g. bin/cockpit-agent-config), not an
+  # intermediate sourced file (cockpit-lib), and preserve the original argv.
+  idx=$((${#BASH_SOURCE[@]} - 1))
+  entry="${BASH_SOURCE[$idx]:-${BASH_SOURCE[1]:-$0}}"
   if [[ "${COCKPIT_BASH_REEXEC:-}" == 1 ]]; then
     # A re-exec already happened and still landed on bash < 4: stop, no loop.
     unset COCKPIT_BASH_REEXEC
     printf 'cockpit: bash >= 4 required. Install: brew install bash\n' >&2
     exit 64
   fi
-  local candidate entry idx
-  # Re-exec the user-invoked entrypoint (e.g. bin/cockpit-agent-config), not an
-  # intermediate sourced file (cockpit-lib), and preserve the original argv.
-  idx=$((${#BASH_SOURCE[@]} - 1))
-  entry="${BASH_SOURCE[$idx]:-${BASH_SOURCE[1]:-$0}}"
+  if [[ "$entry" != "$0" ]]; then
+    # Sourced into an interactive shell or `bash -c`: there is no script to
+    # re-exec (exec'ing the sourced file would run it as a program), and exit
+    # would kill the caller's shell. Report and let the caller return.
+    printf 'cockpit: bash >= 4 required. Install: brew install bash\n' >&2
+    return 64
+  fi
   for candidate in ${COCKPIT_BASH4_CANDIDATES:-/opt/homebrew/bin/bash /usr/local/bin/bash}; do
     if [[ -x "$candidate" && "$candidate" != "$BASH" ]]; then
       # Scoped to the re-exec'd process only; exporting breaks child entrypoints

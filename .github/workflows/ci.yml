@@ -138,6 +138,8 @@ jobs:
 
   portability:
     runs-on: ${{ matrix.os }}
+    # Fail closed on a hung test instead of burning the 6 h default.
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
