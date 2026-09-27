@@ -16,6 +16,10 @@ Privacy: the server binds 127.0.0.1 only and needs a bearer key kept in
 `~/.local/state/cockpit/laya/api.key` (0600, never printed, never on argv).
 Receipts in `~/.local/state/cockpit/route.jsonl` store the task's sha256, never its text.
 
+Latency: `timeout_ms` defaults to 400. On CPU the four route questions took
+~550 ms warm (laya 0.3.20, 8 vCPU); set `timeout_ms=1000` or
+`COCKPIT_LAYA_TIMEOUT_MS=1000` there, or routing silently times out to defaults.
+
 Turn it off: `cockpit laya disable` or `COCKPIT_LAYA=0`. Absent, disabled, down
 or slow Laya is a silent no-op: launches use the usual runtime and model.
 
