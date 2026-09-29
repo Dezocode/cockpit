@@ -1,64 +1,353 @@
 name: Release Cockpit 2
 
+# One pipeline, three entry points:
+#   push tag v2.*        -> build, verify 9/9, publish the GitHub release
+#   workflow_dispatch    -> same build + verify; publishes nothing (dry run)
+#   pull_request (paths) -> same build + verify on the PR head (dry run)
 on:
   push:
     tags:
       - 'v2.*'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Build and verify every asset without publishing
+        type: boolean
+        default: true
+  pull_request:
+    branches: [main, cockpit-gtm-v2.3]
+    paths:
+      - .github/workflows/release-cockpit2.yml
+      - scripts/release-bundle.sh
+      - scripts/verify-release-assets.sh
+      - scripts/check-versions.sh
+      - scripts/check-exec-bits.sh
+      - scripts/check-desktop-bundle.sh
+      - scripts/health-smoke.sh
+      - app/src-tauri/**
+      - app/package.json
+      - packaging/release/**
 
 permissions:
-  contents: write
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+defaults:
+  run:
+    shell: bash
 
 jobs:
-  release:
+  versions:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Committed tree (exec bits, run by path)
+        run: ./scripts/check-exec-bits.sh
+
+      # On a tag push GITHUB_REF_TYPE=tag, so check-versions also asserts
+      # ${GITHUB_REF_NAME#v} == app/package.json version.
+      - name: Version guard (tag must match app/package.json)
+        id: v
+        run: |
+          ./scripts/check-versions.sh | tee "$RUNNER_TEMP/versions.txt"
+          version="$(python3 -c 'import json; print(json.load(open("app/package.json"))["version"])')"
+          echo "version=$version" >>"$GITHUB_OUTPUT"
+
+      - name: Job summary
+        run: |
+          {
+            echo "### versions"
+            echo '| key | value |'
+            echo '|---|---|'
+            echo "| event | ${GITHUB_EVENT_NAME} (${GITHUB_REF_TYPE:-} ${GITHUB_REF_NAME}) |"
+            echo "| os | $(uname -s) $(uname -m), bash ${BASH_VERSION} |"
+            echo "| versions | $(head -n 1 "$RUNNER_TEMP/versions.txt") |"
+          } >>"$GITHUB_STEP_SUMMARY"
+
+  # Native tarball per target; each leg installs from its own extracted
+  # tarball into a fresh HOME and serves /api/health from the artifact.
+  bundle:
+    name: bundle (${{ matrix.target }})
+    needs: versions
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: linux-x64
+            os: ubuntu-latest
+          - target: darwin-arm64
+            os: macos-14
+          - target: darwin-x64
+            os: macos-15-intel
+    env:
+      COCKPIT_TARGET: ${{ matrix.target }}
+      VERSION: ${{ needs.versions.outputs.version }}
     steps:
       - uses: actions/checkout@v4
 
       - uses: ./.github/actions/setup-node-pnpm
 
+      # bash >= 4 is Cockpit's documented macOS prerequisite (brew install bash).
+      - name: Install bash 4+ (macOS)
+        if: runner.os == 'macOS'
+        run: brew install bash
+
       - name: Build release bundle
-        env:
-          COCKPIT_VERSION: ${{ github.ref_name }}
-        run: |
-          export COCKPIT_VERSION="${COCKPIT_VERSION#v}"
-          chmod +x scripts/release-bundle.sh scripts/*.sh packaging/systemd/*.sh bench/cockpit/*.sh marketing/*.sh
-          bash scripts/release-bundle.sh
+        run: ./scripts/release-bundle.sh
 
       - name: Capability matrix
+        if: runner.os == 'Linux'
         run: bash bench/cockpit/capability-matrix.sh
 
-      - uses: ./.github/actions/prove-health
-
-      - name: Stage release assets
+      - name: Install from the extracted tarball (fresh HOME, login bash)
         run: |
-          mkdir -p /tmp/release-assets
-          cp dist/release/cockpit-*-linux-x64.tar.gz dist/release/cockpit-*-web.tar.gz /tmp/release-assets/
-          ls -lh /tmp/release-assets/
+          set -euo pipefail
+          tarball="dist/release/cockpit-${VERSION}-${COCKPIT_TARGET}.tar.gz"
+          test -s "$tarball"
+          extract="$(mktemp -d)"
+          tar -xzf "$tarball" -C "$extract"
+          grep -qx "Target: ${COCKPIT_TARGET}" "$extract/cockpit-${VERSION}/RELEASE.txt"
+          home="$(mktemp -d)"
+          HOME="$home" SHELL=/bin/bash /bin/bash "$extract/cockpit-${VERSION}/install.sh" </dev/null >"$RUNNER_TEMP/install.log" 2>&1 ||
+            { tail -n 40 "$RUNNER_TEMP/install.log"; exit 1; }
+          HOME="$home" bash -lc 'command -v cockpit && cockpit -h' </dev/null >"$RUNNER_TEMP/cockpit-h.txt" 2>&1 ||
+            { cat "$RUNNER_TEMP/cockpit-h.txt"; exit 1; }
+          sed -n '1,3p' "$RUNNER_TEMP/cockpit-h.txt"
+          grep -qx "$home/.local/bin/cockpit" "$RUNNER_TEMP/cockpit-h.txt"
+          echo "bundle-install: ok (${COCKPIT_TARGET}, fresh HOME, bash -lc 'cockpit -h' rc 0)"
+          # install.sh ran pnpm install inside the extracted app; serve it.
+          ./scripts/health-smoke.sh "$extract/cockpit-${VERSION}/app/dist-server/index.js" | tee "$RUNNER_TEMP/health.txt"
+
+      - name: Upload bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-bundle-${{ matrix.target }}
+          path: dist/release/*.tar.gz
+          if-no-files-found: error
+          retention-days: 3
+
+      - name: Committed tree unchanged (tracked files)
+        run: |
+          changed="$(git status --porcelain --untracked-files=no)"
+          if [[ -n "$changed" ]]; then
+            printf '%s\n' "$changed"
+            echo "::error::this job modified tracked files of the checkout"
+            exit 1
+          fi
+          echo "tree: tracked files unchanged at $(git rev-parse --short HEAD)"
+
+      - name: Job summary
+        run: |
+          {
+            echo "### bundle (${COCKPIT_TARGET})"
+            echo '| key | value |'
+            echo '|---|---|'
+            echo "| os | $(uname -s) $(uname -m), bash ${BASH_VERSION} |"
+            echo "| versions | $(./scripts/check-versions.sh | head -n 1) |"
+            echo "| health | $(cat "$RUNNER_TEMP/health.txt") |"
+            for f in dist/release/*.tar.gz; do
+              echo "| asset | ${f##*/} $(wc -c <"$f" | tr -d ' ') bytes |"
+            done
+          } >>"$GITHUB_STEP_SUMMARY"
+
+  # Tauri bundles, natively per arch: .deb + AppImage on ubuntu-22.04 (older
+  # glibc floor), .app/.dmg on macos-14 (arm64) and macos-15-intel (x64).
+  desktop:
+    name: desktop (${{ matrix.os }})
+    needs: versions
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            bundles: deb,appimage
+          - os: macos-14
+            bundles: app,dmg
+          - os: macos-15-intel
+            bundles: app,dmg
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-node-pnpm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      # rust-cache keys on job id + OS + arch, not the runner image: the
+      # desktop jobs on ubuntu-latest and ubuntu-22.04 would cross-restore.
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: app/src-tauri -> target
+          key: release-${{ matrix.os }}
+
+      - name: Install Linux deps (Tauri)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf
+
+      - name: Install app deps
+        working-directory: app
+        run: pnpm install --frozen-lockfile
+
+      - name: Tauri build
+        working-directory: app
+        env:
+          BUNDLES: ${{ matrix.bundles }}
+        run: |
+          # Hosted macOS runners intermittently fail hdiutil inside Tauri's
+          # bundle_dmg.sh (desktop (macos-15-intel), run 36339154565, after a
+          # clean compile). macOS gets up to 3 attempts of the same command: the
+          # compile is fresh after the first, so a retry re-bundles only; each
+          # attempt must succeed on its own and a third failure fails the leg.
+          # Retries are --verbose so a real bundler error is in the log.
+          attempts=1
+          [[ "$RUNNER_OS" == macOS ]] && attempts=3
+          for attempt in $(seq 1 "$attempts"); do
+            verbose=()
+            ((attempt > 1)) && verbose=(--verbose)
+            if pnpm tauri build ${verbose[@]+"${verbose[@]}"} --bundles "$BUNDLES" -- --locked; then
+              exit 0
+            fi
+            echo "::warning::tauri build attempt ${attempt}/${attempts} failed on ${RUNNER_OS}"
+            sleep 15
+          done
+          exit 1
+
+      - name: Bundle integrity
+        run: ./scripts/check-desktop-bundle.sh --collect "$RUNNER_TEMP/desktop" | tee "$RUNNER_TEMP/desktop.txt"
+
+      - name: Upload desktop bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-desktop-${{ matrix.os }}
+          path: ${{ runner.temp }}/desktop/*
+          if-no-files-found: error
+          retention-days: 3
+
+      - name: Committed tree unchanged (tracked files)
+        run: |
+          changed="$(git status --porcelain --untracked-files=no)"
+          if [[ -n "$changed" ]]; then
+            printf '%s\n' "$changed"
+            echo "::error::this job modified tracked files of the checkout"
+            exit 1
+          fi
+          echo "tree: tracked files unchanged at $(git rev-parse --short HEAD)"
+
+      - name: Job summary
+        run: |
+          {
+            echo "### desktop (${{ matrix.os }})"
+            echo '| key | value |'
+            echo '|---|---|'
+            echo "| os | $(uname -s) $(uname -m), bash ${BASH_VERSION} |"
+            echo "| versions | $(./scripts/check-versions.sh | head -n 1) |"
+            grep -E '^desktop-bundle: (asset|dpkg-deb|AppImage|codesign -dv: Signature|lipo|test -x|CFBundle)' "$RUNNER_TEMP/desktop.txt" |
+              sed -e 's/^desktop-bundle: //' -e 's/|/\\|/g' -e 's/^/| check | /' -e 's/$/ |/'
+          } >>"$GITHUB_STEP_SUMMARY"
+
+  verify-assets:
+    needs: [versions, bundle, desktop]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      VERSION: ${{ needs.versions.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          path: release-assets
+          merge-multiple: true
+
+      - name: SHA256SUMS + 9/9 asset contract
+        run: |
+          ./scripts/verify-release-assets.sh --write-sums release-assets
+          ./scripts/verify-release-assets.sh release-assets "$VERSION" | tee "$RUNNER_TEMP/verify.txt"
+          echo "::notice title=verify-assets::$(head -n 1 "$RUNNER_TEMP/verify.txt")"
+
+      - name: Upload release assets (9)
+        uses: actions/upload-artifact@v4
+        with:
+          name: publish-assets
+          path: release-assets/*
+          if-no-files-found: error
+          retention-days: 3
+
+      - name: Job summary (asset list + sizes)
+        run: |
+          {
+            echo "### verify-assets"
+            echo
+            echo "\`$(head -n 1 "$RUNNER_TEMP/verify.txt")\`"
+            echo
+            echo "event: ${GITHUB_EVENT_NAME}; publish runs only on a v2.* tag push"
+            echo
+            echo '| asset | bytes | sha256 |'
+            echo '|---|---:|---|'
+            for f in release-assets/*; do
+              n="${f##*/}"
+              sum="$(awk -v n="$n" '$2 == n { print $1 }' release-assets/SHA256SUMS)"
+              echo "| ${n} | $(wc -c <"$f" | tr -d ' ') | ${sum:-(this file)} |"
+            done
+          } >>"$GITHUB_STEP_SUMMARY"
+          # Step summaries need a signed-in viewer; notices also show on the
+          # public run page (one per asset, within the 10-per-step limit).
+          for f in release-assets/*; do
+            n="${f##*/}"
+            sum="$(awk -v n="$n" '$2 == n { print $1 }' release-assets/SHA256SUMS)"
+            echo "::notice title=release asset::${n} $(wc -c <"$f" | tr -d ' ') bytes${sum:+ sha256 ${sum}}"
+          done
+
+  publish:
+    needs: [versions, verify-assets]
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.versions.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: publish-assets
+          path: release-assets
+
+      - name: Re-verify before publishing
+        run: ./scripts/verify-release-assets.sh release-assets "$VERSION"
+
+      - name: Release body
+        run: sed "s/@VERSION@/${VERSION}/g" packaging/release/release-body.md >"$RUNNER_TEMP/release-body.md"
 
       - name: GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true
-          fail_on_unmatched_files: false
+          body_path: ${{ runner.temp }}/release-body.md
+          fail_on_unmatched_files: true
           files: |
-            /tmp/release-assets/*
+            release-assets/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Install Rust
-        continue-on-error: true
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Install Linux deps (Tauri)
-        continue-on-error: true
+      - name: Post-publish verify (published asset names)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf
-
-      - name: Build Tauri (optional, non-blocking)
-        continue-on-error: true
-        timeout-minutes: 20
-        working-directory: app
-        run: |
-          pnpm install
-          pnpm tauri build --bundles deb,appimage
+          gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --json assets -q '.assets[].name' |
+            ./scripts/verify-release-assets.sh --names-from-stdin "$VERSION"

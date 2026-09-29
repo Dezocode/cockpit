@@ -146,6 +146,19 @@ def select_window(name: str) -> None:
                    check=True)
     time.sleep(0.1)
 
+def tmux_out(*args: str) -> str:
+    return subprocess.check_output(
+        ["env", "-u", "TMUX", "-u", "TMUX_PANE", "tmux", *args], text=True
+    ).strip()
+
+def runtime_pane() -> str:
+    for line in tmux_out("list-panes", "-s", "-t", session,
+                         "-F", "#{pane_id} #{@cockpit_role}").splitlines():
+        pane_id, _, role = line.partition(" ")
+        if role == "runtime":
+            return pane_id
+    raise SystemExit("no runtime pane")
+
 def tap(x: int, y: int, release: bool = True) -> None:
     packet = f"\x1b[<0;{x};{y}M".encode()
     if release:
@@ -169,7 +182,18 @@ select_window("AGENT")
 tap(45, 1)
 expect("SETUP")
 select_window("AGENT")
+runtime = runtime_pane()
+runtime_pid = tmux_out("display-message", "-p", "-t", runtime, "#{pane_pid}")
 tap(65, 1)
+# RESTART runs cockpit-restart in the background: it respawns the runtime
+# pane, then select-windows it. Wait for the respawn and let that trailing
+# select-window land, or on a slow runner it undoes the next tap's switch.
+deadline = time.monotonic() + 10
+while tmux_out("display-message", "-p", "-t", runtime, "#{pane_pid}") == runtime_pid:
+    if time.monotonic() > deadline:
+        raise SystemExit("RESTART did not respawn the runtime pane within 10s")
+    drain(0.1)
+drain(1.0)
 expect("AGENT")
 
 # The bottom status row remains canonical and uses the window under the tap.
