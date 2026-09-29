@@ -15,7 +15,8 @@ export COCKPIT_WEB_PORT="${COCKPIT_WEB_PORT:-8787}"
 export COCKPIT_WEB_HOST="${COCKPIT_WEB_HOST:-127.0.0.1}"
 dist="$root/app/dist-server/index.js"
 if [[ -f "$dist" ]]; then
-  export COCKPIT_HOSTINGER="${COCKPIT_HOSTINGER:-1}"
+  # COCKPIT_HOSTINGER is inherited, never defaulted: a local launch is not
+  # Hostinger mode. Only the Hostinger systemd unit sets it (docs/service-env.md).
   cd "$root"
   exec node "$dist"
 fi

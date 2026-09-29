@@ -72,6 +72,7 @@ curl -sf https://cockpit.example.com/api/health | jq .
 - `status` must be `"green"` for done-line pass
 - `source` must be `"app/dist-server/index.js"` — bootstrap `packaging/health-server.js` is **not** full API PASS
 - `checks.hostinger` is `"configured"` when `COCKPIT_HOSTINGER=1`
+- `COCKPIT_HOSTINGER=1` is set only by `packaging/systemd/cockpit-web.service`; local and launchd launches report `"local"` ([docs/service-env.md](../docs/service-env.md))
 - Contract: `bench/cockpit/H0-HEALTH-CONTRACT.md`
 - Implemented in `app/server/index.ts` (`GET /api/health`) → compiled `app/dist-server/index.js`
 
