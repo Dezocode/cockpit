@@ -134,10 +134,14 @@ check installer-exports-hostinger-1 grep -q '^export COCKPIT_HOSTINGER=1$' "$ins
 check installer-installs-that-unit grep -q 'packaging/systemd/cockpit-web.service' "$inst"
 
 # ------------------------------------------------------------ must_absent probe
-# Any "defaults to 1 / set to 1 / plist key" form in launchers and units. The two
-# explicit Hostinger lines (unit Environment= and install-hostinger.sh export) are
-# the only allowed hits, matched by file and full line. Markdown and shell comment
-# lines are prose, not configuration, and are not scanned.
+# Any "defaults to 1 / set to 1 / plist key" form in launchers and units. Allowed
+# explicit sets (not defaults), matched by file and full line:
+#   packaging/systemd/cockpit-web.service Environment=COCKPIT_HOSTINGER=1
+#   scripts/install-hostinger.sh export COCKPIT_HOSTINGER=1
+#   scripts/health-smoke.sh `env COCKPIT_HOSTINGER=1` — C4's Hostinger health
+#     contract smoke (checks.hostinger=configured). Not a launcher default.
+# Local launchers (bin/cockpit-web, the launchd plist, scripts/start-dist-server.sh)
+# stay must_absent. Markdown and shell comment lines are prose and are not scanned.
 hostinger_probe() {  # ROOT → offending lines on stdout; rc 0 clean, 1 findings, 2 scanner error
   local root=$1 out rc=0 paths=()
   local p
@@ -151,6 +155,7 @@ hostinger_probe() {  # ROOT → offending lines on stdout; rc 0 clean, 1 finding
   out="$(printf '%s\n' "$out" | grep -Ev \
     -e '^packaging/systemd/cockpit-web\.service:[0-9]+:Environment=COCKPIT_HOSTINGER=1$' \
     -e '^scripts/install-hostinger\.sh:[0-9]+:export COCKPIT_HOSTINGER=1$' \
+    -e '^scripts/health-smoke\.sh:[0-9]+:env COCKPIT_HOSTINGER=1 ' \
     -e '^[^:]+:[0-9]+:[[:space:]]*#' \
     -e '^$' || true)"
   [[ -z "$out" ]] && return 0
