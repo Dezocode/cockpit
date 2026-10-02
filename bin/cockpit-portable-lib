@@ -409,6 +409,9 @@ cockpit_service_install_launchd() {
   x_root="$(cockpit_xml_escape "$install_root")"
   mkdir -p "${HOME}/Library/LaunchAgents" "$logdir"
   plist="${HOME}/Library/LaunchAgents/com.dezocode.cockpit-web.plist"
+  # EnvironmentVariables carries only the keys docs/service-env.md names for
+  # launchd. COCKPIT_HOSTINGER is never written: a LaunchAgent is a local launch,
+  # and Hostinger mode belongs to the systemd unit (tests/test-hostinger-default.sh).
   launchctl bootout "gui/$uid" "$plist" 2>/dev/null || true
   launchctl bootout "user/$uid" "$plist" 2>/dev/null || true
   cat >"$plist" <<EOF
@@ -437,8 +440,6 @@ $( [[ -n "$install_root" ]] && printf '  <key>WorkingDirectory</key>\n  <string>
     <string>${x_path}</string>
     <key>COCKPIT_WEB_HOST</key>
     <string>127.0.0.1</string>
-    <key>COCKPIT_HOSTINGER</key>
-    <string>1</string>
 $( [[ -n "$install_root" ]] && printf '    <key>COCKPIT_INSTALL_ROOT</key>\n    <string>%s</string>\n' "$x_root" )
 ${port_entry}
   </dict>
@@ -538,6 +539,27 @@ cockpit_rc_write_marked() {
   rm -f "$block_file"
 }
 
+# A login bash (macOS Terminal, ssh, `bash -l`) reads only the first existing
+# of ~/.bash_profile, ~/.bash_login, ~/.profile, never ~/.bashrc by itself.
+# ~/.profile is also read by sh, so the loader line is POSIX and bash-gated;
+# ~/.bash_profile is created only when none exists (it would shadow ~/.profile).
+cockpit_rc_login_loads_bashrc() {
+  local f login_rc="${HOME}/.bash_profile"
+  for f in "${HOME}/.bash_profile" "${HOME}/.bash_login" "${HOME}/.profile"; do
+    if [[ -f "$f" ]]; then
+      login_rc=$f
+      break
+    fi
+  done
+  if [[ -f "$login_rc" ]]; then
+    grep -Eq '(^|[[:space:];&|])(\.|source)[[:space:]]+"?(~|\$HOME|\$\{HOME\})/\.bashrc' "$login_rc" && return 0
+    grep -Fq ". ${HOME}/.bashrc" "$login_rc" && return 0
+  fi
+  # shellcheck disable=SC2016 # expanded by the login shell, not here
+  printf '\n# Cockpit: login shell loads ~/.bashrc\nif [ -n "$BASH_VERSION" ] && [ -f "$HOME/.bashrc" ]; then . "$HOME/.bashrc"; fi\n' \
+    >>"$login_rc"
+}
+
 cockpit_rc_write() {
   local bindir=${1:-${HOME}/.local/bin}
   if [[ -n "${COCKPIT_SHELL_RC:-}" ]]; then
@@ -549,14 +571,7 @@ cockpit_rc_write() {
   case "$shell_name" in
     bash)
       cockpit_rc_write_marked "${HOME}/.bashrc" "$bindir"
-      if [[ -f "${HOME}/.bash_profile" ]] || [[ ! -f "${HOME}/.bashrc" ]]; then
-        if [[ -f "${HOME}/.bash_profile" ]] &&
-          ! grep -Fq 'source ~/.bashrc' "${HOME}/.bash_profile" 2>/dev/null &&
-          ! grep -Fq '. ~/.bashrc' "${HOME}/.bash_profile" 2>/dev/null; then
-          printf '\n# Cockpit: login shell loads %s/.bashrc\n[[ -f %s/.bashrc ]] && . %s/.bashrc\n' \
-            "$HOME" "$HOME" "$HOME" >>"${HOME}/.bash_profile"
-        fi
-      fi
+      cockpit_rc_login_loads_bashrc
       ;;
     zsh)
       local zshrc="${ZDOTDIR:-$HOME}/.zshrc"

@@ -56,7 +56,6 @@ printf '  → pnpm install --prod in %s/app\n' "$COCKPIT_INSTALL_ROOT"
 (cd "$COCKPIT_INSTALL_ROOT/app" && pnpm install --prod --frozen-lockfile)
 
 chown -R cockpit:cockpit "$COCKPIT_INSTALL_ROOT"
-chmod +x "$COCKPIT_INSTALL_ROOT/packaging/systemd/cockpit-web-heal.sh"
 
 install -m 0644 "$COCKPIT_INSTALL_ROOT/packaging/systemd/cockpit-web.service" \
   /etc/systemd/system/cockpit-web.service

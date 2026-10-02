@@ -23,6 +23,7 @@ sudo ./scripts/install-hostinger.sh        # canonical deploy (single script)
 ```
 
 Health probe: `GET /api/health` — see [deploy/README.md](deploy/README.md)
+Env vars each launcher, plist and unit sets: [docs/service-env.md](docs/service-env.md)
 
 ## Notifications
 
