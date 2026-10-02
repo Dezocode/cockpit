@@ -917,7 +917,7 @@ def write_samples(heal, outdir):
         ("wrapper-func", 'run() { "$@"; }\nrun %s %s %s' % (f, k, tgt)),
         ("kill-port-subst", "kill $(ss -ltnpH \"sport = :${PORT}\" | sed -n 's/.*pid=\\([0-9]*\\).*/\\1/p')"),
         ("kill-port-backtick", "kill -9 `ss -ltnpH | sed -n 's/.*pid=\\([0-9]*\\).*/\\1/p'`"),
-        ("xargs-kill", "ss -ltnpH | sed -n 's/.*pid=\\([0-9]*\\).*/\\1/p' | xargs -r kill"),
+        ("xargs-kill", "ss -ltnpH | sed -n 's/.*pid=\\([0-9]*\\).*/\\1/p' | xargs kill"),
         ("printf-joined-name", 'tool="$(printf %s %s %s)"' % (joined, a, b)),
         ("token-part", "%sA=%s" % (unbracket(TOKEN_PART.pattern), a)),
     ] + [("by-name-%d" % n, "%s -f cockpit-web" % name) for n, name in enumerate(by_name)]

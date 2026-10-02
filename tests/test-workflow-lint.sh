@@ -242,7 +242,7 @@ twin "macos-15-intel in ci.yml" -n 'macos-15-intel' "$ci"
 twin "macos-15-intel in release-cockpit2.yml" -n 'macos-15-intel' "$rel"
 twin 'tauri.conf "version": "../package.json"' -n '"version": "\.\./package\.json"' app/src-tauri/tauri.conf.json
 twin "check-exec-bits in ci.yml" -n 'check-exec-bits' "$ci"
-twin 'shell-tests sandbox runs each test by path (./"$1")' -n 'timeout 600 \./"\$1" </dev/null' "$ci"
+twin 'shell-tests sandbox runs each test by path (./"$1")' -n ' \./"\$1" </dev/null' "$ci"
 twin 'portability runs each test by path (./"$t")' -n 'if ! \./"\$t"; then' "$ci"
 twin "ci.yml desktop builds against the committed Cargo.lock (--locked)" -n 'pnpm tauri build .*--bundles "\$BUNDLES" -- --locked' "$ci"
 twin "release desktop builds against the committed Cargo.lock (--locked)" -n 'pnpm tauri build .*--bundles "\$BUNDLES" -- --locked' "$rel"
@@ -398,7 +398,7 @@ mutate tauri-literal-version '^literal tauri.conf version' app/src-tauri/tauri.c
 mutate godseye-count-dropped '^missing positive twin: exactly 3 godseye PNGs' "$ci" \
   'test "$n" -eq 3' 'test "$n" -ge 1'
 mutate shell-tests-through-bash '^tests run through bash instead of by their exec bit' "$ci" \
-  'timeout 600 ./"$1" </dev/null' 'timeout 600 bash "$1" </dev/null'
+  ' ./"$1" </dev/null' ' bash "$1" </dev/null'
 mutate portability-through-bash '^tests run through bash instead of by their exec bit' "$ci" \
   'if ! ./"$t"; then' 'if ! "$bash_bin" "$t"; then'
 mutate portability-named-test-through-bash '^tests run through bash instead of by their exec bit' "$ci" \
