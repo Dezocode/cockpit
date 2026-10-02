@@ -152,7 +152,7 @@ switch_to() {
   slot="$(runtime_pane)"
   [[ -n "$slot" ]] || exit 1
   current="$(tmux display-message -p -t "$slot" '#{@cockpit_runtime_id}')"
-  [[ -n "$current" ]] || current=codex
+  [[ -n "$current" ]] || current="$(cockpit_route_default)"
   if [[ "$current" == "$id" ]]; then
     resume_pane "$slot"
     save_runtime "$id"
@@ -239,7 +239,7 @@ cockpit_runtime_agent_pick() {
     exit 1
   fi
   local active
-  active="$(tmux show-options -v -t "$session" @cockpit_runtime 2>/dev/null || echo codex)"
+  active="$(tmux show-options -v -t "$session" @cockpit_runtime 2>/dev/null || cockpit_route_default)"
   printf '%sAGENT PROVIDERS%s  (oauth stays with each CLI)\n\n' "$bright" "$reset"
   for id in "${ids[@]}"; do
     n=$((n + 1))

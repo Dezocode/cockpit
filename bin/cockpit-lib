@@ -700,3 +700,493 @@ cockpit_fingerprint_files() {
   fi
   cockpit_stat_mtime_size "$@" 2>/dev/null | sort
 }
+
+# --- Optional Laya routing (C5) ----------------------------------------------
+# One decision path: cockpit_route_default, cockpit_route_decide TASK and
+# cockpit_route_apply (cockpit_route_run = decide + apply + receipt).
+# Absent (no venv), off (enabled=0 or COCKPIT_LAYA=0): file-existence checks
+# only, so no curl, no python and nothing on stderr unless COCKPIT_DEBUG=1.
+# laya.conf is data: key=value lines are read, never sourced or evaluated, and
+# a COCKPIT_LAYA_<KEY> environment variable wins over the file. The bearer key
+# stays in the 0600 key file and reaches curl only through a --config pipe
+# (never argv, never a temp file). Task text goes to Laya as JSON built by
+# json.dumps and sent on stdin; receipts keep only its sha256.
+
+cockpit_laya_data_home() {
+  printf '%s/cockpit/laya\n' "${XDG_DATA_HOME:-$HOME/.local/share}"
+}
+
+cockpit_laya_state_home() {
+  printf '%s/cockpit/laya\n' "${XDG_STATE_HOME:-$HOME/.local/state}"
+}
+
+cockpit_laya_config_file() {
+  printf '%s/laya.conf\n' "$(cockpit_config_home)"
+}
+
+cockpit_laya_key_file() {
+  printf '%s/api.key\n' "$(cockpit_laya_state_home)"
+}
+
+# cockpit_laya_conf_get KEY DEFAULT: last KEY=value line of laya.conf, as text.
+cockpit_laya_conf_get() {
+  local key=$1 default=${2:-} f line k found="" have=0
+  f="$(cockpit_laya_config_file)"
+  if [[ -f "$f" ]]; then
+    while IFS= read -r line || [[ -n "$line" ]]; do
+      line=${line%$'\r'}
+      case "$line" in ''|'#'*) continue ;; esac
+      [[ "$line" == *=* ]] || continue
+      k=${line%%=*}
+      k=${k//[[:space:]]/}
+      [[ "$k" == "$key" ]] || continue
+      found=${line#*=}
+      have=1
+    done <"$f"
+  fi
+  if [[ "$have" == 1 ]]; then
+    printf '%s\n' "$found"
+  else
+    printf '%s\n' "$default"
+  fi
+}
+
+# cockpit_laya_setting KEY DEFAULT: environment first, then laya.conf, then DEFAULT.
+cockpit_laya_setting() {
+  local key=$1 default=$2 env_value=""
+  case "$key" in
+    url) env_value=${COCKPIT_LAYA_URL:-} ;;
+    timeout_ms) env_value=${COCKPIT_LAYA_TIMEOUT_MS:-} ;;
+    min_confidence) env_value=${COCKPIT_LAYA_MIN_CONFIDENCE:-} ;;
+    default_tier) env_value=${COCKPIT_LAYA_DEFAULT_TIER:-} ;;
+    max_tier) env_value=${COCKPIT_LAYA_MAX_TIER:-} ;;
+    device) env_value=${COCKPIT_LAYA_DEVICE:-} ;;
+  esac
+  if [[ -n "$env_value" ]]; then
+    printf '%s\n' "$env_value"
+  else
+    cockpit_laya_conf_get "$key" "$default"
+  fi
+}
+
+# COCKPIT_LAYA=0 hard-disables, COCKPIT_LAYA=1 enables; otherwise enabled=1 in laya.conf.
+cockpit_laya_enabled() {
+  case "${COCKPIT_LAYA:-}" in
+    0) return 1 ;;
+    1) return 0 ;;
+  esac
+  [[ "$(cockpit_laya_conf_get enabled 0)" == 1 ]]
+}
+
+cockpit_laya_venv_bin() {
+  local bin
+  bin="$(cockpit_laya_data_home)/venv/bin/$1"
+  [[ -x "$bin" ]] || return 1
+  printf '%s\n' "$bin"
+}
+
+cockpit_laya_installed() {
+  cockpit_laya_venv_bin laya-serve >/dev/null && cockpit_laya_venv_bin python >/dev/null
+}
+
+# Loopback-only Laya URL (http://127.0.0.1:PORT or http://localhost:PORT), else fail.
+cockpit_laya_loopback_url() {
+  local url=${1%/}
+  [[ "$url" =~ ^http://(127\.0\.0\.1|localhost):([0-9]{1,5})$ ]] || return 1
+  ((10#${BASH_REMATCH[2]} >= 1 && 10#${BASH_REMATCH[2]} <= 65535)) || return 1
+  printf 'http://%s:%s\n' "${BASH_REMATCH[1]}" "$((10#${BASH_REMATCH[2]}))"
+}
+
+cockpit_laya_url() {
+  cockpit_laya_loopback_url "$(cockpit_laya_setting url http://127.0.0.1:8765)"
+}
+
+cockpit_laya_cfg_quote() {
+  local s=$1
+  s=${s//\\/\\\\}
+  s=${s//\"/\\\"}
+  s=${s//[[:cntrl:]]/}
+  printf '"%s"' "$s"
+}
+
+# curl config on stdout: URL, headers and the bearer key read from the key file
+# by the shell (read/printf are builtins, so the key is never on any argv).
+cockpit_laya_curl_config() {
+  local url=$1 keyfile=$2 with_body=$3 key=""
+  IFS= read -r key <"$keyfile" || [[ -n "$key" ]] || return 1
+  printf 'url = %s\n' "$(cockpit_laya_cfg_quote "$url")"
+  printf 'header = "Content-Type: application/json"\n'
+  printf 'header = %s\n' "$(cockpit_laya_cfg_quote "Authorization: Bearer ${key}")"
+  if [[ "$with_body" == 1 ]]; then
+    # Body comes from curl's stdin (the fixed literal "@-"; caller text never sets @).
+    printf 'data-binary = "@-"\n'
+  fi
+}
+
+# cockpit_laya_http URL MAX_TIME_S: POST stdin to URL. Prints the body, then a
+# last line "<http_code> <time_total>". Returns curl's exit status.
+cockpit_laya_http() {
+  local url=$1 max_time=$2 keyfile
+  keyfile="$(cockpit_laya_key_file)"
+  [[ -r "$keyfile" ]] || return 90
+  curl --silent --show-error --max-time "$max_time" \
+    --write-out '\n%{http_code} %{time_total}' \
+    --config <(cockpit_laya_curl_config "$url" "$keyfile" 1) 2>/dev/null
+}
+
+cockpit_route_default() {
+  printf '%s\n' codex
+}
+
+cockpit_route_valid_tier() {
+  case "${1:-}" in cheap|standard|top) return 0 ;; esac
+  return 1
+}
+
+cockpit_route_tier_rank() {
+  case "$1" in cheap) printf 0 ;; standard) printf 1 ;; *) printf 2 ;; esac
+}
+
+cockpit_route_task_sha256() {
+  # shasum (perl) ships on macOS and ubuntu; openssl is the fallback. C3's
+  # portability lint keeps GNU-only digest tools out of bin/.
+  if command -v shasum >/dev/null 2>&1; then
+    printf '%s' "$1" | shasum -a 256 | awk '{print $1}'
+  elif command -v openssl >/dev/null 2>&1; then
+    printf '%s' "$1" | openssl dgst -sha256 | awk '{print $NF}'
+  fi
+}
+
+cockpit_route_receipt_path() {
+  printf '%s/cockpit/route.jsonl\n' "${XDG_STATE_HOME:-$HOME/.local/state}"
+}
+
+cockpit_json_quote() {
+  local s=$1
+  s=${s//\\/\\\\}
+  s=${s//\"/\\\"}
+  s=${s//$'\n'/\\n}
+  s=${s//$'\r'/\\r}
+  s=${s//$'\t'/\\t}
+  s=${s//[[:cntrl:]]/}
+  printf '"%s"' "$s"
+}
+
+cockpit_json_or_null() {
+  if [[ -n "${1:-}" ]]; then cockpit_json_quote "$1"; else printf null; fi
+}
+
+cockpit_json_number_or_null() {
+  if [[ "${1:-}" =~ ^[0-9]+(\.[0-9]+)?$ ]]; then printf '%s' "$1"; else printf null; fi
+}
+
+cockpit_json_bool() {
+  if [[ "${1:-0}" == 1 ]]; then printf true; else printf false; fi
+}
+
+cockpit_route_debug() {
+  [[ "${COCKPIT_DEBUG:-}" == 1 ]] || return 0
+  printf 'cockpit route: %s\n' "$*" >&2
+}
+
+cockpit_route_authlib() {
+  declare -F cockpit_auth_field >/dev/null 2>&1 && return 0
+  local authlib
+  authlib="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/cockpit-auth-lib"
+  [[ -f "$authlib" ]] || return 1
+  # shellcheck source=cockpit-auth-lib
+  source "$authlib"
+}
+
+# Runtime ids whose providers.conf check= passes, as "id<TAB>label" lines.
+cockpit_route_runtime_tools() {
+  local id label
+  cockpit_route_authlib || return 0
+  while IFS= read -r id; do
+    [[ "$id" =~ ^[A-Za-z0-9._-]+$ ]] || continue
+    [[ -n "$(cockpit_auth_field "$id" start 2>/dev/null || true)" ]] || continue
+    cockpit_auth_check "$id" 2>/dev/null || continue
+    label="$(cockpit_auth_field "$id" label 2>/dev/null || true)"
+    printf '%s\t%s\n' "$id" "${label:-$id}"
+  done < <(cockpit_auth_ids runtime 2>/dev/null)
+}
+
+# tiers=cheap:<model>,standard:<model>,top:<model> on the provider → model for TIER.
+cockpit_route_tier_model() {
+  local provider=$1 tier=$2 tiers_line entry
+  cockpit_route_authlib || return 1
+  tiers_line="$(cockpit_auth_field "$provider" tiers 2>/dev/null || true)"
+  [[ -n "$tiers_line" ]] || return 1
+  while IFS= read -r -d , entry; do
+    entry=${entry//[[:space:]]/}
+    if [[ "${entry%%:*}" == "$tier" && -n "${entry#*:}" && "$entry" == *:* ]]; then
+      printf '%s\n' "${entry#*:}"
+      return 0
+    fi
+  done <<<"${tiers_line},"
+  return 1
+}
+
+cockpit_route_reset() {
+  COCKPIT_ROUTE_LAYA=absent
+  COCKPIT_ROUTE_TIER=cheap
+  COCKPIT_ROUTE_TOOL="$(cockpit_route_default)"
+  COCKPIT_ROUTE_CONF_TIER=""
+  COCKPIT_ROUTE_CONF_TOOL=""
+  COCKPIT_ROUTE_NEEDS_REVIEW=0
+  COCKPIT_ROUTE_IS_SENSITIVE=0
+  COCKPIT_ROUTE_REASON=""
+  COCKPIT_ROUTE_LATENCY_MS=0
+  COCKPIT_ROUTE_APPLIED_PROVIDER=""
+  COCKPIT_ROUTE_APPLIED_MODEL=""
+}
+
+cockpit_route_add_reason() {
+  COCKPIT_ROUTE_REASON="${COCKPIT_ROUTE_REASON:+$COCKPIT_ROUTE_REASON,}$1"
+}
+
+# Request body for POST /v1/systemone (laya 0.3.x: {"state", "questions"{...}}).
+# Task text arrives on stdin and is encoded by json.dumps, never by the shell.
+cockpit_route_payload_py='
+import json, os, sys
+text = sys.stdin.read()
+tools = []
+for line in os.environ.get("CR_TOOLS", "").splitlines():
+    if "\t" in line:
+        tid, label = line.split("\t", 1)
+        tools.append((tid, label))
+langs = [l for l in os.environ.get("CR_LANGS", "").split(",") if l]
+state = {"request": text, "repo": os.environ.get("CR_REPO", ""), "languages": langs,
+         "changed_files": int(os.environ.get("CR_CHANGED") or 0)}
+if os.environ.get("CR_CARD"):
+    state["card"] = os.environ["CR_CARD"]
+questions = {
+    "tier": {"type": "choice", "instructions": "Which model tier does this coding task need?",
+             "criteria": {"cheap": "single-file edit, rename, docs, config",
+                          "standard": "multi-file feature, tests",
+                          "top": "architecture, cross-repo refactor, CI/release, security"}},
+    "needs_review": {"type": "noul", "instructions": "Does this change need human review before it merges?"},
+    "is_sensitive": {"type": "noul", "instructions": "Does this task touch secrets, authentication or payments?"},
+}
+if tools:
+    questions["tool"] = {"type": "choice", "instructions": "Which coding agent runtime should run this task?",
+                         "criteria": {tid: label for tid, label in tools}}
+sys.stdout.write(json.dumps({"state": state, "questions": questions}))
+'
+
+# Laya answer → "tier|conf_tier|tool|conf_tool|needs_review|is_sensitive", or MALFORMED.
+cockpit_route_parse_py='
+import json, os, sys
+try:
+    data = json.loads(sys.stdin.read())
+    answers = data["answers"]
+    if not isinstance(answers, dict):
+        raise TypeError
+except Exception:
+    print("MALFORMED")
+    raise SystemExit(0)
+offered = [l.split("\t", 1)[0] for l in os.environ.get("CR_TOOLS", "").splitlines() if l]
+def conf(a):
+    for k in ("answer_confidence", "confidence"):
+        v = a.get(k)
+        if isinstance(v, (int, float)) and not isinstance(v, bool) and 0 <= v <= 1:
+            return "%.2f" % v
+    return ""
+def choice(name, allowed):
+    a = answers.get(name)
+    if not isinstance(a, dict) or a.get("choice") not in allowed:
+        return "", ""
+    return a["choice"], conf(a)
+def noul(name):
+    a = answers.get(name)
+    v = a.get("noul") if isinstance(a, dict) else None
+    return "1" if isinstance(v, (int, float)) and not isinstance(v, bool) and v >= 0.5 else "0"
+tier, ct = choice("tier", ("cheap", "standard", "top"))
+tool, cl = choice("tool", offered)
+print("|".join([tier, ct, tool, cl, noul("needs_review"), noul("is_sensitive")]))
+'
+
+cockpit_route_conf_ok() {
+  local conf=$1 min=$2
+  [[ "$conf" =~ ^[0-9]+(\.[0-9]+)?$ ]] || return 1
+  awk -v c="$conf" -v m="$min" 'BEGIN { exit (c + 0 >= m + 0) ? 0 : 1 }'
+}
+
+# Top languages by tracked-file extension count (names only, no contents).
+cockpit_route_languages() {
+  git ls-files 2>/dev/null | awk -F. 'NF > 1 { n[$NF]++ } END { for (e in n) print n[e], e }' |
+    sort -rn | awk 'NR <= 3 { printf "%s%s", (NR > 1 ? "," : ""), $2 }'
+}
+
+cockpit_route_decide() {
+  local task=${1:-} default_tier max_tier min_conf timeout_ms url py tools payload
+  local response rc status_line http_code time_total body parsed
+  local tier conf_tier tool conf_tool needs_review is_sensitive secs frac
+
+  cockpit_route_reset
+  default_tier="$(cockpit_laya_setting default_tier cheap)"
+  cockpit_route_valid_tier "$default_tier" || default_tier=cheap
+  COCKPIT_ROUTE_TIER=$default_tier
+
+  if [[ "${COCKPIT_LAYA:-}" == 0 ]]; then
+    COCKPIT_ROUTE_LAYA=off
+    cockpit_route_debug "laya off (COCKPIT_LAYA=0)"
+    return 0
+  fi
+  if ! cockpit_laya_installed; then
+    cockpit_route_debug "laya absent"
+    return 0
+  fi
+  if ! cockpit_laya_enabled; then
+    COCKPIT_ROUTE_LAYA=off
+    cockpit_route_debug "laya off (enabled=0)"
+    return 0
+  fi
+
+  COCKPIT_ROUTE_LAYA=down
+  max_tier="$(cockpit_laya_setting max_tier top)"
+  cockpit_route_valid_tier "$max_tier" || max_tier=top
+  min_conf="$(cockpit_laya_setting min_confidence 0.60)"
+  [[ "$min_conf" =~ ^(0(\.[0-9]+)?|1(\.0+)?)$ ]] || min_conf=0.60
+  timeout_ms="$(cockpit_laya_setting timeout_ms 400)"
+  [[ "$timeout_ms" =~ ^[0-9]{1,6}$ ]] || timeout_ms=400
+  timeout_ms=$((10#$timeout_ms))
+  ((timeout_ms >= 50)) || timeout_ms=50
+  if ! url="$(cockpit_laya_url)"; then
+    COCKPIT_ROUTE_REASON=non_loopback_url
+    return 0
+  fi
+  if [[ ! -r "$(cockpit_laya_key_file)" ]]; then
+    COCKPIT_ROUTE_REASON=no_api_key
+    return 0
+  fi
+  py="$(cockpit_laya_venv_bin python)"
+  # Load the provider registry in this shell (not only in a $(...) subshell).
+  cockpit_route_authlib || true
+
+  tools="$(cockpit_route_runtime_tools)"
+  payload="$(printf '%s' "$task" | CR_TOOLS="$tools" CR_REPO="$(basename -- "$PWD")" \
+    CR_LANGS="$(cockpit_route_languages)" \
+    CR_CHANGED="$(git status --porcelain 2>/dev/null | wc -l | tr -d ' ')" \
+    CR_CARD="${COCKPIT_CARD:-}" "$py" -c "$cockpit_route_payload_py" 2>/dev/null)" || payload=""
+  if [[ -z "$payload" ]]; then
+    COCKPIT_ROUTE_REASON=payload_failed
+    return 0
+  fi
+
+  printf -v secs '%d.%03d' "$((timeout_ms / 1000))" "$((timeout_ms % 1000))"
+  rc=0
+  response="$(printf '%s' "$payload" | cockpit_laya_http "$url/v1/systemone" "$secs")" || rc=$?
+  status_line=${response##*$'\n'}
+  body=${response%$'\n'*}
+  [[ "$response" == *$'\n'* ]] || body=""
+  http_code=${status_line%% *}
+  time_total=${status_line#* }
+  if [[ "$time_total" =~ ^([0-9]+)\.?([0-9]*)$ ]]; then
+    frac="${BASH_REMATCH[2]}000"
+    COCKPIT_ROUTE_LATENCY_MS=$((10#${BASH_REMATCH[1]} * 1000 + 10#${frac:0:3}))
+  fi
+
+  if ((rc == 28)); then
+    COCKPIT_ROUTE_LAYA=timeout
+    COCKPIT_ROUTE_REASON="timeout_${timeout_ms}ms"
+    ((COCKPIT_ROUTE_LATENCY_MS > 0)) || COCKPIT_ROUTE_LATENCY_MS=$timeout_ms
+    return 0
+  fi
+  if ((rc != 0)); then
+    COCKPIT_ROUTE_REASON="curl_exit_${rc}"
+    return 0
+  fi
+  if [[ "$http_code" != 200 ]]; then
+    COCKPIT_ROUTE_REASON="http_${http_code}"
+    return 0
+  fi
+
+  parsed="$(printf '%s' "$body" | CR_TOOLS="$tools" "$py" -c "$cockpit_route_parse_py" 2>/dev/null)" || parsed=""
+  if [[ -z "$parsed" || "$parsed" == MALFORMED ]]; then
+    COCKPIT_ROUTE_REASON=malformed_json
+    return 0
+  fi
+  IFS='|' read -r tier conf_tier tool conf_tool needs_review is_sensitive <<<"$parsed"
+
+  COCKPIT_ROUTE_LAYA=ok
+  COCKPIT_ROUTE_CONF_TIER=$conf_tier
+  COCKPIT_ROUTE_CONF_TOOL=$conf_tool
+  COCKPIT_ROUTE_NEEDS_REVIEW=$needs_review
+  COCKPIT_ROUTE_IS_SENSITIVE=$is_sensitive
+  if [[ -n "$tier" ]] && cockpit_route_conf_ok "$conf_tier" "$min_conf"; then
+    if (($(cockpit_route_tier_rank "$tier") > $(cockpit_route_tier_rank "$max_tier"))); then
+      tier=$max_tier
+      cockpit_route_add_reason clamped_to_max_tier
+    fi
+    COCKPIT_ROUTE_TIER=$tier
+  else
+    cockpit_route_add_reason low_confidence_tier
+  fi
+  if [[ -n "$tool" ]] && cockpit_route_conf_ok "$conf_tool" "$min_conf"; then
+    COCKPIT_ROUTE_TOOL=$tool
+  else
+    cockpit_route_add_reason low_confidence_tool
+  fi
+  cockpit_route_debug "laya ok tier=$COCKPIT_ROUTE_TIER tool=$COCKPIT_ROUTE_TOOL"
+  return 0
+}
+
+# Only a real Laya answer changes anything: export COCKPIT_PROVIDER/COCKPIT_MODEL
+# from the provider's tiers= map and run its existing model_apply hook.
+cockpit_route_apply() {
+  local model apply_cmd
+  COCKPIT_ROUTE_APPLIED_PROVIDER=""
+  COCKPIT_ROUTE_APPLIED_MODEL=""
+  [[ "${COCKPIT_ROUTE_LAYA:-}" == ok ]] || return 0
+  cockpit_route_authlib || return 0
+  model="$(cockpit_route_tier_model "$COCKPIT_ROUTE_TOOL" "$COCKPIT_ROUTE_TIER")" || return 0
+  COCKPIT_ROUTE_APPLIED_PROVIDER=$COCKPIT_ROUTE_TOOL
+  COCKPIT_ROUTE_APPLIED_MODEL=$model
+  export COCKPIT_PROVIDER="$COCKPIT_ROUTE_TOOL" COCKPIT_MODEL="$model"
+  apply_cmd="$(cockpit_auth_field "$COCKPIT_ROUTE_TOOL" model_apply 2>/dev/null || true)"
+  if [[ -n "$apply_cmd" ]] && ! bash -lc "$apply_cmd" </dev/null >/dev/null 2>&1; then
+    cockpit_route_add_reason model_apply_failed
+  fi
+  return 0
+}
+
+cockpit_route_receipt_json() {
+  local task_sha=$1 ts
+  ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  printf '{"ts":%s,"laya":%s,"latency_ms":%s,"task_sha256":%s,"tier":%s,"tool":%s,"conf":{"tier":%s,"tool":%s},"needs_review":%s,"is_sensitive":%s,"applied":{"provider":%s,"model":%s},"reason":%s}' \
+    "$(cockpit_json_quote "$ts")" \
+    "$(cockpit_json_quote "$COCKPIT_ROUTE_LAYA")" \
+    "$(cockpit_json_number_or_null "$COCKPIT_ROUTE_LATENCY_MS")" \
+    "$(cockpit_json_quote "$task_sha")" \
+    "$(cockpit_json_quote "$COCKPIT_ROUTE_TIER")" \
+    "$(cockpit_json_quote "$COCKPIT_ROUTE_TOOL")" \
+    "$(cockpit_json_number_or_null "$COCKPIT_ROUTE_CONF_TIER")" \
+    "$(cockpit_json_number_or_null "$COCKPIT_ROUTE_CONF_TOOL")" \
+    "$(cockpit_json_bool "$COCKPIT_ROUTE_NEEDS_REVIEW")" \
+    "$(cockpit_json_bool "$COCKPIT_ROUTE_IS_SENSITIVE")" \
+    "$(cockpit_json_or_null "$COCKPIT_ROUTE_APPLIED_PROVIDER")" \
+    "$(cockpit_json_or_null "$COCKPIT_ROUTE_APPLIED_MODEL")" \
+    "$(cockpit_json_or_null "$COCKPIT_ROUTE_REASON")"
+}
+
+# Receipt: one JSON line per decision; never the task text, only its sha256.
+cockpit_route_write_receipt() {
+  local file
+  file="$(cockpit_route_receipt_path)"
+  {
+    mkdir -p "$(dirname -- "$file")" &&
+      printf '%s\n' "$(cockpit_route_receipt_json "$(cockpit_route_task_sha256 "$1")")" >>"$file"
+  } 2>/dev/null || true
+}
+
+# cockpit_route_run TASK [--dry-run]: decide, apply (unless dry-run), write receipt.
+cockpit_route_run() {
+  local task=$1 mode=${2:-}
+  cockpit_route_decide "$task"
+  if [[ "$mode" != --dry-run ]]; then
+    cockpit_route_apply
+  fi
+  cockpit_route_write_receipt "$task"
+  return 0
+}
