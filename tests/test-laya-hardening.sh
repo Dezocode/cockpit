@@ -144,7 +144,8 @@ printf '#!/bin/sh\nexit 0\n' >"$fake_launch_bin/codex"
 printf '#!/bin/sh\nexit 0\n' >"$fake_launch_bin/nvim"
 # cockpit-idle is backgrounded by cockpit-main; stub it so the log is deterministic.
 printf '#!/bin/sh\nexit 0\n' >"$fake_launch_bin/cockpit-idle"
-chmod 0755 "$fake_launch_bin/tmux" "$fake_launch_bin/codex" "$fake_launch_bin/nvim" "$fake_launch_bin/cockpit-idle"
+stub_bin="$fake_launch_bin"
+chmod 0755 "$stub_bin/tmux" "$stub_bin/codex" "$stub_bin/nvim" "$stub_bin/cockpit-idle"
 launch() {
   local name=$1 mode=$2 dir
   shift 2

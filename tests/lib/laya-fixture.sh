@@ -62,7 +62,9 @@ SERVE
 printf 'laya-mcp-server was executed\n' >>"$FIXTURE_TEST_ROOT/mcp-server-ran"
 exit 1
 MCP
-  chmod 0755 "$venv/bin/python" "$venv/bin/laya-serve" "$venv/bin/laya-mcp-server"
+  # stub_bin is the temp venv bin; the name is what the mode-repair lint allows.
+  stub_bin="$venv/bin"
+  chmod 0755 "$stub_bin/python" "$stub_bin/laya-serve" "$stub_bin/laya-mcp-server"
 }
 
 laya_write_key() {

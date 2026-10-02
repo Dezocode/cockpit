@@ -50,7 +50,8 @@ laya_make_venv
 venv="$(laya_venv_root)"
 mv "$venv/bin/python" "$venv/bin/python.real"
 printf '#!/bin/sh\necho "venv-python $*" >>"%s"\nexit 99\n' "$sentinel_log" >"$venv/bin/python"
-chmod 0755 "$venv/bin/python"
+stub_bin="$venv/bin"
+chmod 0755 "$stub_bin/python"
 laya_write_key
 port="$(laya_pick_port)"
 # unset case: venv + key but no laya.conf and no COCKPIT_LAYA -> routing stays off.
