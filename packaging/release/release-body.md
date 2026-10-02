@@ -1,3 +1,5 @@
+These are draft notes for a release that has not been tagged: docs/release-notes-v2.3.0-draft.md
+
 ## Install cockpit @VERSION@
 
 Every asset is listed in `SHA256SUMS`. Verify your download first (assets you did not download are reported as missing):

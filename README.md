@@ -1,5 +1,27 @@
 # Cockpit
 
+Voice: PENDING owner ear (a local read is not CLEAR). Tree these drafts describe: `cockpit-gtm-v2.3` @ `94b035ae768d8c9d2ad49f30ab6d493853855d66`. Nothing has been tagged `2.3.0`.
+
+Cockpit is still the tmux session named `cockpit`. You attach it when Codex, Grok, Claude, or `cursor-agent` is the one typing, and a second launch joins that same session instead of starting a ghost. Version 2.3 does not throw that away. It puts a Tauri and React window next to it, and that window is not what you get if you clone the default branch.
+
+`main`, commit `968ad49`, has none of the staging layout, none of the globe, and no `cockpit notify`. `app/package.json` on that commit still says `2.1.0`. The newest tag, `v2.2.2`, sits on that same history. The work in this note is branch `cockpit-gtm-v2.3` at `94b035a`, merged on 29 Sep 2026 at 4:24pm CT. Both manifests there say `2.3.0-dev`. Nothing has been tagged `2.3.0`.
+
+Open the web UI and the page is a dock. The left palette has four chips, named AGENTS, COMPUTERS, FILES, and GODSEYE. Double-click GODSEYE, or drag it onto the canvas, and the panel title reads GOD'S EYE.
+
+Cesium `1.138.0` stays out of the first paint. `GodsEyePanelEntry` pulls the panel in with `React.lazy`. If the globe throws, you get the computers roster, the same list that already exists as its own panel. The map stack starts on `naturalearth`, which is Natural Earth II bundled with Cesium. The source table sets `hasCesiumIonToken` to false, so the panel never asks for an ion token and the build does not bake a map key in. Points come from `GET /api/computers`. A computer whose timezone has a centroid is placed. One that does not stays in the unplaced list, instead of being given a made-up lat and lon. Switch the stack and you can use OSM or Esri imagery. Both of those use the keyless terrain, and Esri drops back to OSM when its tiles fail.
+
+The API listens on `127.0.0.1:8787` unless you export `COCKPIT_WEB_HOST`. An empty value does not mean every interface. `bin/cockpit-web` sets that default, and `app/server/index.ts` repeats it. On a Mac, file watches use `fswatch` when `inotifywait` is missing, and the web service is a LaunchAgent. The plist writes `127.0.0.1` and does not set `COCKPIT_HOSTINGER`. A local `cockpit-web`, and `scripts/start-dist-server.sh`, leave that variable unset too. The Hostinger systemd unit is the one place that sets `Environment=COCKPIT_HOSTINGER=1`, because that host is supposed to be in Hostinger mode. `./install.sh` on macOS still wants Homebrew bash 4 or newer, plus `tmux` and `fswatch`.
+
+The deploy pile is gone. Between `e5c2eb8` and the follow-up at `d642070`, thirty-nine `bin/codex-cockpit*` files were deleted, along with `deploy/hostinger-grok-build-install.sh`, `scripts/hostinger-grok-build.sh`, `deploy/cockpit-web.service`, and `deploy/nginx-cockpit.conf`. What remains for that host is `scripts/install-hostinger.sh`.
+
+CI on `94b035a` is not an ubuntu-only workflow anymore. Push run `36633161689` and pull request run `36633167175` both went green, including `portability` and `desktop` on `ubuntu-latest`, `macos-14`, and `macos-15-intel`. Those are GitHub's runners. Node in that workflow is 22, pnpm 9. The release workflow, run `36633167366`, built nine assets at version `2.3.0-dev` and `verify-assets` printed `9/9 present`. The names were `cockpit-2.3.0-dev-linux-x64.tar.gz`, `cockpit-2.3.0-dev-web.tar.gz`, `cockpit-2.3.0-dev-darwin-arm64.tar.gz`, `cockpit-2.3.0-dev-darwin-x64.tar.gz`, `cockpit_2.3.0-dev_amd64.deb`, `cockpit_2.3.0-dev_amd64.AppImage`, `cockpit_2.3.0-dev_aarch64.dmg`, `cockpit_2.3.0-dev_x64.dmg`, and `SHA256SUMS`. The `publish` job on that run was skipped. Publishing waits for a push of a `v2.*` tag, and that tag is not there, so those files lived as Actions artifacts of the pull request, not as a Release page.
+
+`cockpit notify` is one program, `bin/cockpit-notify`. The shell command and `POST /api/notify` both run it (the API uses `execFile`, not a shell). With `--sink auto`, Telegram goes first and ntfy second, and a success stops the remote chain so you do not get both. Telegram is `hermes send --to telegram` when Hermes is on `PATH`. If it is not, the sender uses the Bot API with `COCKPIT_TELEGRAM_BOT_TOKEN` and `COCKPIT_TELEGRAM_CHAT_ID`. The token is read from the process environment or from `/etc/cockpit/notify.env` as data. It is not sourced, and curl gets the URL through a config file descriptor, so `ps` shows `/dev/fd/NN` rather than `bot<token>`. ntfy needs `COCKPIT_NTFY_TOPIC` (treat the topic as a secret) and defaults the server to `https://ntfy.sh`. When a GUI session exists, the sender also tries a desktop toast. That is `notify-send` if `DISPLAY`, `WAYLAND_DISPLAY`, or `DBUS_SESSION_BUS_ADDRESS` is set, and `osascript` otherwise, with the message passed as an argument. Headless runs record `desktop:skip:headless`. `--dry-run` writes a receipt and makes no network call.
+
+The browser terminal did not get looser. `/ws/pty` still closes with 4401 until a GitHub OAuth session is configured and the cookie passes the allowlist.
+
+That is what this branch does.
+
 tmux workspace for local coding agents (Codex, Grok, Anthropic, Cursor).
 Public repo: **https://github.com/Dezocode/cockpit**. Tokens never go in git.
 
