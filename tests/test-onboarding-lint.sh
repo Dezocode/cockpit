@@ -41,7 +41,7 @@ rg -n 'GEV_LAUNCHER|GEV_PROJECT_ROOT|__gev_sharing_disabled__|configureServer|se
 rg -n 'mapStartup|selectMapStartupRoute|OPENSKY_|AISSTREAM_|FIRMS_MAP_KEY|TOMTOM_' app/server/gev pinokio scripts && hit "GEV-specific content" || true
 test -e app/shared/gev && hit "core must live in app/server/gev"
 rg -n "HOST:\s*'(0\.0\.0\.0|::)'|allowedHosts:\s*true" pinokio app/vite.config.ts && hit "binds beyond loopback" || true
-rg -n 'fuser -k|kill \$\(lsof|pkill .*cockpit|killall .*cockpit' tests .github -g '!tests/test-onboarding-lint.sh' -g '!tests/test-*-lint.sh' && hit "foreign port kills" || true
+rg -n -e 'fuser\s+-k' -e 'kill\s+\$\(\s*lsof' -e 'p''kill' -e 'kill''all' tests .github -g '!tests/test-onboarding-lint.sh' -g '!tests/test-*-lint.sh' && hit "foreign port kills" || true
 rg -n -- '--ck-' app/src app/src/styles && hit "forbidden --ck- tokens" || true
 rg -n "printf '%s%s'|TOKEN_PART_" bin scripts packaging pinokio app/server/gev tests -g '!tests/test-*-lint.sh' -g '!tests/test-onboarding-lint.sh' && hit "obfuscated command names" || true
 rg -n 'COCKPIT_HOSTINGER=\$\{COCKPIT_HOSTINGER:-1\}|COCKPIT_HOSTINGER:-\$?\{?1\}' bin scripts packaging && hit "HOSTINGER local default=1" || true

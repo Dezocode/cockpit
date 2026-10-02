@@ -6,33 +6,40 @@ HTTP_PID=""
 cleanup() { kill $HTTP_PID 2>/dev/null || true; rm -rf "$tmpdir"; }
 trap cleanup EXIT
 
-mkdir -p "$tmpdir/bin"
-cat > "$tmpdir/bin/uname" <<'U'
+fakebin="$tmpdir/fakebin"
+mkdir -p "$fakebin"
+cat > "$fakebin/uname" <<'U'
 #!/bin/sh
 [ "$1" = "-s" ] && { echo MINGW64_NT; exit 0; }
 [ "$1" = "-m" ] && { echo x86_64; exit 0; }
 /usr/bin/uname "$@"
 U
-chmod +x "$tmpdir/bin/uname"
+chmod +x "$fakebin/uname"
 set +e
-PATH="$tmpdir/bin:/usr/bin:/bin" bash "$root/scripts/get-cockpit.sh" >"$tmpdir/out" 2>"$tmpdir/err"
+PATH="$fakebin:/usr/bin:/bin" bash "$root/scripts/get-cockpit.sh" >"$tmpdir/out" 2>"$tmpdir/err"
 rc=$?
 set -e
 [ "$rc" = "5" ] || { echo "get-cockpit: FAIL unsupported-os rc=$rc"; cat "$tmpdir/err"; exit 1; }
 
 mkdir -p "$tmpdir/src/bin" "$tmpdir/src/scripts"
 cp "$root/scripts/get-cockpit.sh" "$tmpdir/src/scripts/get-cockpit.sh"
-printf '%s\n' '#!/bin/sh' 'echo stub-install ok' > "$tmpdir/src/install.sh"
-chmod +x "$tmpdir/src/install.sh"
-printf '%s\n' '#!/bin/sh' 'echo "{\"os\":\"linux\",\"arch\":\"x64\",\"required_failed\":0,\"checks\":[]}"' > "$tmpdir/src/bin/cockpit-doctor"
-chmod +x "$tmpdir/src/bin/cockpit-doctor"
+install -m 0755 /dev/stdin "$tmpdir/src/install.sh" <<'SH'
+#!/bin/sh
+echo stub-install ok
+SH
+install -m 0755 /dev/stdin "$tmpdir/src/bin/cockpit-doctor" <<'SH'
+#!/bin/sh
+echo "{\"os\":\"linux\",\"arch\":\"x64\",\"required_failed\":0,\"checks\":[]}"
+SH
 HOME="$tmpdir/home1" XDG_DATA_HOME="$tmpdir/data1" \
   bash "$tmpdir/src/scripts/get-cockpit.sh" --from-dir "$tmpdir/src" >"$tmpdir/from.out" 2>"$tmpdir/from.err"
 rg -q 'get-cockpit: installed' "$tmpdir/from.out" || { echo "from-dir FAIL"; cat "$tmpdir/from.out" "$tmpdir/from.err"; exit 1; }
 
 mkdir -p "$tmpdir/pkg/bin" "$tmpdir/www/download/vtest"
-printf '%s\n' '#!/bin/sh' 'echo installed' > "$tmpdir/pkg/install.sh"
-chmod +x "$tmpdir/pkg/install.sh"
+install -m 0755 /dev/stdin "$tmpdir/pkg/install.sh" <<'SH'
+#!/bin/sh
+echo installed
+SH
 cp "$tmpdir/src/bin/cockpit-doctor" "$tmpdir/pkg/bin/cockpit-doctor"
 tar -czf "$tmpdir/www/download/vtest/cockpit-vtest-linux-x64.tar.gz" -C "$tmpdir" pkg
 ( cd "$tmpdir/www/download/vtest" && if command -v sha256sum >/dev/null; then sha256sum cockpit-vtest-linux-x64.tar.gz > SHA256SUMS; else shasum -a 256 cockpit-vtest-linux-x64.tar.gz > SHA256SUMS; fi )
