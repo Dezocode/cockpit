@@ -5,7 +5,7 @@ In-repo canonical paths (this PR lineage — do not duplicate logic here):
 
 | Canon draft file | In-repo gospel path |
 |------------------|---------------------|
-| `scripts/hostinger-grok-build.sh` | `scripts/hostinger-grok-build.sh` → wraps `deploy/hostinger-grok-build-install.sh` |
+| grok-build wrapper (draft) | removed in v2.3.0 → `scripts/install-hostinger.sh` |
 | `install-hostinger.sh` | `scripts/install-hostinger.sh` |
 | `packaging/systemd/cockpit-web.service` | `packaging/systemd/cockpit-web.service` |
 | `packaging/systemd/cockpit-web-heal.sh` | `packaging/systemd/cockpit-web-heal.sh` |
@@ -15,10 +15,11 @@ In-repo canonical paths (this PR lineage — do not duplicate logic here):
 ## Deploy recipe (canonical)
 
 ```bash
-./deploy/hostinger-grok-build-install.sh
+sudo ./scripts/install-hostinger.sh
+./scripts/hostinger-health.sh --wait 30
 ```
 
-## Gospel curl path (wrapper — same recipe)
+## Historical curl path (v2.1.4 tag only; wrapper removed in v2.3.0)
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Dezocode/cockpit/v2.1.4/scripts/hostinger-grok-build.sh | sudo bash
@@ -33,7 +34,8 @@ curl -fsSL https://raw.githubusercontent.com/Dezocode/cockpit/v2.1.4/scripts/hos
 ```bash
 curl -s http://127.0.0.1:8787/api/health | jq .
 node packaging/health-server.js   # bootstrap probe (optional)
-./scripts/hostinger-health.sh     # install verification
+./scripts/hostinger-health.sh --wait 30   # install verification
 ```
 
-Full API after install: `node /opt/cockpit/app/dist-server/index.js` via systemd.
+Full API after install: `node /opt/cockpit/app/dist-server/index.js` via systemd.  
+Bootstrap probe only: `node packaging/health-server.js` (residual — see `bench/cockpit/H0-HEALTH-CONTRACT.md`).

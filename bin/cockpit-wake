@@ -28,7 +28,7 @@ for candidate_session in "${candidate_sessions[@]}"; do
     pidfile="$runtime_home/$candidate_session/${name}.pid"
     [[ -f "$pidfile" ]] || continue
     pid="$(cat "$pidfile" 2>/dev/null || true)"
-    [[ -n "$pid" && -d "/proc/$pid" ]] || continue
+    cockpit_pid_alive "$pid" || continue
     kill -USR1 "$pid" 2>/dev/null || true
   done
 done

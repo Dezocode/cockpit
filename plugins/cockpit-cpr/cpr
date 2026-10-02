@@ -164,7 +164,7 @@ if [[ "$overlay_enabled" == 1 ]]; then
     printf 'Overlay validation failed; live session was not changed.\n' >&2
     exit 1
   fi
-  overlay_hash="$(sha256sum "$overlay" 2>/dev/null | awk '{print $1}' || true)"
+  overlay_hash="$(cockpit_sha256 "$overlay" 2>/dev/null || true)"
 fi
 old_hash="$(tmux show-options -v -t "$session" @cockpit_overlay_hash 2>/dev/null || true)"
 overlay_action=skip

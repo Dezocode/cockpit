@@ -1,0 +1,158 @@
+/* GOD'S EYE panel. Tokens only (--cockpit-*), no raw colors.
+ * Sizing contract: the panel fills the FieldsetPanel body (height:100%), the
+ * canvas wrap is a flex:1 child with min-width/min-height:0, and the Cesium
+ * host is absolutely inset inside it, so the viewer always gets the wrap's
+ * real box instead of an intrinsic 300x150 canvas or a 0-height auto box. */
+.root {
+  display: flex;
+  gap: var(--cockpit-gap);
+  height: 100%;
+  min-height: 16rem;
+  min-width: 0;
+  font-family: var(--cockpit-font);
+  font-size: var(--cockpit-font-sm);
+  color: var(--cockpit-text);
+}
+
+.canvasWrap {
+  flex: 1 1 auto;
+  position: relative;
+  min-width: 0;
+  min-height: 14rem;
+  overflow: hidden;
+  border: 1px solid var(--cockpit-border-muted);
+  background: var(--cockpit-bg);
+}
+
+.canvas {
+  position: absolute;
+  inset: 0;
+}
+
+/* Cesium's widgets.css is intentionally not imported (widget-less viewer);
+ * these are the only layout rules the viewer DOM needs. */
+.canvas :global(.cesium-viewer),
+.canvas :global(.cesium-viewer-cesiumWidgetContainer),
+.canvas :global(.cesium-widget) {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+.canvas :global(.cesium-widget canvas) {
+  display: block;
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+}
+
+.canvas :global(.cesium-viewer-bottom),
+.canvas :global(.cesium-widget-credits) {
+  display: none;
+}
+
+.creditsHost {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 0 var(--cockpit-pad);
+  pointer-events: auto;
+  font-size: var(--cockpit-font-xs);
+  color: var(--cockpit-muted);
+  background: var(--cockpit-surface);
+  border-top: 1px solid var(--cockpit-border-muted);
+}
+
+.creditsHost :global(a) {
+  color: var(--cockpit-muted);
+}
+
+.creditsHost :global(img) {
+  max-height: 1rem;
+  vertical-align: middle;
+}
+
+.rail {
+  flex: 0 0 13rem;
+  display: flex;
+  flex-direction: column;
+  gap: var(--cockpit-gap);
+  min-height: 0;
+  overflow: auto;
+  padding: var(--cockpit-pad);
+  border: 1px solid var(--cockpit-border-muted);
+  background: var(--cockpit-surface);
+}
+
+.rail label {
+  color: var(--cockpit-muted);
+  font-size: var(--cockpit-font-xs);
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.stackSelect,
+.nodeRow {
+  width: 100%;
+  min-height: 2.75rem;
+  border: 1px solid var(--cockpit-border-muted);
+  background: var(--cockpit-panel);
+  color: var(--cockpit-text);
+  font-family: inherit;
+  text-align: left;
+  padding: var(--cockpit-pad);
+}
+
+.stackSelect:focus,
+.nodeRow:focus {
+  outline: 2px solid var(--cockpit-focus-ring);
+}
+
+.nodeRowSelected {
+  border-color: var(--cockpit-active);
+}
+
+.listTitle {
+  color: var(--cockpit-muted);
+  margin-top: var(--cockpit-pad);
+}
+
+.hint {
+  color: var(--cockpit-muted);
+  font-size: var(--cockpit-font-xs);
+}
+
+.remoteWarn {
+  color: var(--cockpit-accent-alt);
+  font-size: var(--cockpit-font-xs);
+}
+
+.loading {
+  position: absolute;
+  top: 0;
+  left: 0;
+  padding: var(--cockpit-pad);
+  color: var(--cockpit-muted);
+  pointer-events: none;
+}
+
+.fallbackWrap {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cockpit-gap);
+}
+
+.fallback {
+  padding: var(--cockpit-pad);
+  color: var(--cockpit-muted);
+  border: 1px dashed var(--cockpit-border-muted);
+}

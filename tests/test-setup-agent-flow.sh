@@ -3,20 +3,21 @@
 set -euo pipefail
 
 repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
-test_root="$(mktemp -d /tmp/cockpit-setup-agent.XXXXXX)"
-test_home="$test_root/home"
+# shellcheck source=lib/fixture.sh
+source "$repo_root/tests/lib/fixture.sh"
+# shellcheck source=../bin/cockpit-portable-lib
+source "$repo_root/bin/cockpit-portable-lib"
+fixture_init setup-agent-flow
+test_root="$FIXTURE_TEST_ROOT"
+test_home="$FIXTURE_HOME"
 project="$test_root/project"
-fakebin="$test_root/bin"
-mkdir -p "$test_home/.config/cockpit/skills.d" "$project" "$fakebin"
-cleanup() { rm -rf "$test_root"; }
-trap cleanup EXIT
+fakebin="$FIXTURE_FAKEBIN"
+mkdir -p "$test_home/.config/cockpit/skills.d" "$project"
 
-export HOME="$test_home"
 export COCKPIT_AUTH_HOME="$HOME/.config/cockpit"
 export COCKPIT_PROFILE_FILE="$COCKPIT_AUTH_HOME/profile.conf"
 export COCKPIT_SKILLS_DIR="$COCKPIT_AUTH_HOME/skills.d"
 export COCKPIT_SESSION=cockpit-setup-agent-test
-export PATH="$fakebin:$repo_root/bin:/usr/bin:/bin"
 unset TMUX TMUX_PANE
 
 cat >"$COCKPIT_AUTH_HOME/providers.conf" <<'EOF'
@@ -51,7 +52,7 @@ esac
 EOF
 chmod +x "$fakebin/codex"
 
-output="$(cd "$project" && printf 'y\nx\nq\n' | timeout 8s "$repo_root/bin/cockpit-setup" profile 2>&1)"
+output="$(cd "$project" && printf 'y\nx\nq\n' | cockpit_timeout 8 "$repo_root/bin/cockpit-setup" profile 2>&1)"
 grep -q 'COCKPIT PROFILE' <<<"$output"
 grep -q 'Profile skills synced' <<<"$output"
 grep -Fq 'cockpit-profile:begin' "$project/.agent"

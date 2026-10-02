@@ -30,8 +30,8 @@ public internet.
   (binds 0.0.0.0).
 - `packaging/nginx/cockpit.conf` (`location /ws/` → `proxy_pass
   http://cockpit_web`) — installed to `/etc/nginx/sites-enabled/` by
-  `scripts/install-hostinger.sh`; same exposure in legacy
-  `deploy/nginx-cockpit.conf`.
+  `scripts/install-hostinger.sh`; same exposure in the legacy deploy/ nginx
+  conf (removed in v2.3.0, t1127u C2).
 - `packaging/systemd/cockpit-web.service` — runs as `User=cockpit`.
 - Frontend consumes this endpoint (`app/src/lib/api.ts:50`,
   `ptyWebSocketUrl()`), confirming it ships as the browser-terminal
@@ -67,7 +67,7 @@ public internet.
 > 0.0.0.0 (`index.ts:209`). (3) Tighten CORS (`index.ts:64`) to the
 > app's own origin. (4) Until auth lands, add IP-allowlist/basic-auth
 > to the nginx `location /ws/` block in
-> `packaging/nginx/cockpit.conf` AND legacy `deploy/nginx-cockpit.conf`.
+> `packaging/nginx/cockpit.conf` (the legacy deploy/ nginx conf was removed in v2.3.0).
 > (5) Add a regression test: an unauthenticated websocket client to
 > `/ws/pty` must be rejected before any pty spawn. Do not break the
 > legitimate browser-terminal feature (`app/src/lib/api.ts:50`).

@@ -6,9 +6,8 @@ set -euo pipefail
 lib="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/cockpit-auth-lib"
 # shellcheck source=cockpit-auth-lib
 source "$lib"
-theme_lib="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/cockpit-lib"
 # shellcheck source=cockpit-lib
-source "$theme_lib"
+source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/cockpit-lib"
 
 blue="$(cockpit_theme_style accent '' 0)"
 muted="$(cockpit_theme_muted)"
@@ -153,7 +152,7 @@ switch_to() {
   slot="$(runtime_pane)"
   [[ -n "$slot" ]] || exit 1
   current="$(tmux display-message -p -t "$slot" '#{@cockpit_runtime_id}')"
-  [[ -n "$current" ]] || current=codex
+  [[ -n "$current" ]] || current="$(cockpit_route_default)"
   if [[ "$current" == "$id" ]]; then
     resume_pane "$slot"
     save_runtime "$id"
@@ -231,7 +230,7 @@ open_omarchy_agent_switcher() {
   fi
 }
 
-pick() {
+cockpit_runtime_agent_pick() {
   cockpit_auth_ensure_config
   local ids id n=0 status
   mapfile -t ids < <(cockpit_auth_ids runtime)
@@ -240,7 +239,7 @@ pick() {
     exit 1
   fi
   local active
-  active="$(tmux show-options -v -t "$session" @cockpit_runtime 2>/dev/null || echo codex)"
+  active="$(tmux show-options -v -t "$session" @cockpit_runtime 2>/dev/null || cockpit_route_default)"
   printf '%sAGENT PROVIDERS%s  (oauth stays with each CLI)\n\n' "$bright" "$reset"
   for id in "${ids[@]}"; do
     n=$((n + 1))
@@ -310,12 +309,12 @@ case "$cmd" in
     [[ -n "$slot" ]] && resume_pane "$slot"
     ;;
   model) send_model ;;
-  pick) pick ;;
+  pick) cockpit_runtime_agent_pick ;;
   popup|*)
     if [[ -n "${TMUX:-}" ]]; then
       cockpit_popup "AGENT" "cockpit-runtime pick ${session}"
     else
-      pick
+      cockpit_runtime_agent_pick
     fi
     ;;
 esac

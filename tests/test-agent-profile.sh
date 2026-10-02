@@ -3,18 +3,17 @@
 set -euo pipefail
 
 repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
-test_root="$(mktemp -d /tmp/cockpit-agent-profile.XXXXXX)"
-test_home="$test_root/home"
+# shellcheck source=lib/fixture.sh
+source "$repo_root/tests/lib/fixture.sh"
+fixture_init agent-profile
+test_root="$FIXTURE_TEST_ROOT"
+test_home="$FIXTURE_HOME"
 project="$test_root/project"
 mkdir -p "$test_home/.config/cockpit/skills.d" "$project/.codex"
-cleanup() { rm -rf "$test_root"; }
-trap cleanup EXIT
 
-export HOME="$test_home"
 export COCKPIT_AUTH_HOME="$HOME/.config/cockpit"
 export COCKPIT_PROFILE_FILE="$COCKPIT_AUTH_HOME/profile.conf"
 export COCKPIT_SKILLS_DIR="$COCKPIT_AUTH_HOME/skills.d"
-export PATH="$repo_root/bin:/usr/bin:/bin"
 
 cat >"$COCKPIT_AUTH_HOME/providers.conf" <<'EOF'
 [codex]
@@ -40,8 +39,14 @@ cat >"$project/.codex/AGENTS.md" <<'EOF'
 Keep this heading and paragraph intact.
 EOF
 
-detect="$($repo_root/bin/cockpit-agent-config detect "$project" codex)"
-grep -q '^markers=.codex,.codex/AGENTS.md$' <<<"$detect"
+detect="$("$repo_root/bin/cockpit-agent-config" detect "$project" codex 2>&1)" || {
+  printf 'agent-profile: detect failed:\n%s\n' "$detect" >&2
+  exit 1
+}
+grep -q '^markers=.codex,.codex/AGENTS.md$' <<<"$detect" || {
+  printf 'agent-profile: unexpected detect output:\n%s\n' "$detect" >&2
+  exit 1
+}
 grep -q '^target=.codex/AGENTS.md$' <<<"$detect"
 grep -q '^target_state=valid$' <<<"$detect"
 grep -q '^profile_skills=2$' <<<"$detect"

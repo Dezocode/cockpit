@@ -1,6 +1,8 @@
 import { motion } from "framer-motion";
+import styles from "./GhuiChip.module.css";
 
-type ChipTone = "cyan" | "yellow";
+/** cyan = idle chrome · magenta = active · warn = fail-closed / idle status only */
+export type ChipTone = "cyan" | "magenta" | "warn";
 
 interface GhuiChipProps {
   label: string;
@@ -10,12 +12,13 @@ interface GhuiChipProps {
 }
 
 export function GhuiChip({ label, tone = "cyan", onClick, active }: GhuiChipProps) {
-  const cls = tone === "cyan" ? "ghui-chip-cyan" : "ghui-chip-yellow";
+  const cls =
+    tone === "magenta" ? styles.magenta : tone === "warn" ? styles.warn : styles.cyan;
   return (
     <motion.button
       type="button"
       whileTap={{ scale: 0.97 }}
-      className={`rounded px-2 py-0.5 text-xs ${cls} ${active ? "ring-2 ring-white/30" : ""}`}
+      className={`${styles.chip} ${cls} ${active ? styles.active : ""}`}
       onClick={onClick}
     >
       {label}

@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# Cockpit-native plugin entrypoint: `cockpit plugin run cockpit.laya ARGS` runs
+# `cockpit laya ARGS` (the repo checkout's copy when bundled, else the installed one).
+set -euo pipefail
+
+export PATH="$HOME/.local/bin:$PATH"
+script_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+if [[ -x "$script_root/../../bin/cockpit-laya" ]]; then
+  exec "$script_root/../../bin/cockpit-laya" "$@"
+fi
+exec cockpit-laya "$@"

@@ -1,0 +1,97 @@
+#!/usr/bin/env bash
+# cockpit route: ask the optional local Laya sidecar which tier/tool a task
+# needs, apply it through providers.conf (tiers= + model_apply), and write a
+# receipt. Laya absent, off, down or slow: defaults, silently, exit 0.
+set -euo pipefail
+
+script_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=cockpit-lib
+source "$script_root/cockpit-lib"
+
+route_usage() {
+  cat <<'USAGE'
+Usage:
+  cockpit route [--json] [--dry-run] TASK
+  cockpit route --launch TASK [PROJECT]
+
+Optional Laya routing. Absent or disabled Laya is a silent no-op with defaults.
+Receipts ($XDG_STATE_HOME/cockpit/route.jsonl) keep the task's sha256, never its text.
+USAGE
+}
+
+json=0
+dry_run=0
+launch=0
+task=""
+task_set=0
+project=""
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --json) json=1 ;;
+    --dry-run) dry_run=1 ;;
+    --launch) launch=1 ;;
+    -h|--help) route_usage; exit 0 ;;
+    --) shift; break ;;
+    -*) printf 'cockpit route: unknown option %s\n' "$1" >&2; exit 2 ;;
+    *) break ;;
+  esac
+  shift
+done
+if [[ $# -gt 0 ]]; then
+  task=$1
+  task_set=1
+  shift
+fi
+if [[ $# -gt 0 && "$launch" == 1 ]]; then
+  project=$1
+  shift
+fi
+if [[ "$task_set" != 1 || -z "$task" || $# -gt 0 ]]; then
+  route_usage >&2
+  exit 2
+fi
+
+if [[ "$dry_run" == 1 ]]; then
+  cockpit_route_run "$task" --dry-run
+else
+  cockpit_route_run "$task"
+fi
+
+if [[ "$json" == 1 ]]; then
+  printf '{"laya":%s,"latency_ms":%s,"tier":%s,"tool":%s,"conf":{"tier":%s,"tool":%s},"needs_review":%s,"is_sensitive":%s,"applied":{"provider":%s,"model":%s},"reason":%s}\n' \
+    "$(cockpit_json_quote "$COCKPIT_ROUTE_LAYA")" \
+    "$(cockpit_json_number_or_null "$COCKPIT_ROUTE_LATENCY_MS")" \
+    "$(cockpit_json_quote "$COCKPIT_ROUTE_TIER")" \
+    "$(cockpit_json_quote "$COCKPIT_ROUTE_TOOL")" \
+    "$(cockpit_json_number_or_null "$COCKPIT_ROUTE_CONF_TIER")" \
+    "$(cockpit_json_number_or_null "$COCKPIT_ROUTE_CONF_TOOL")" \
+    "$(cockpit_json_bool "$COCKPIT_ROUTE_NEEDS_REVIEW")" \
+    "$(cockpit_json_bool "$COCKPIT_ROUTE_IS_SENSITIVE")" \
+    "$(cockpit_json_or_null "$COCKPIT_ROUTE_APPLIED_PROVIDER")" \
+    "$(cockpit_json_or_null "$COCKPIT_ROUTE_APPLIED_MODEL")" \
+    "$(cockpit_json_or_null "$COCKPIT_ROUTE_REASON")"
+elif [[ "$COCKPIT_ROUTE_LAYA" == ok ]]; then
+  printf 'route: tier=%s tool=%s (laya ok %sms, conf %s/%s)\n' \
+    "$COCKPIT_ROUTE_TIER" "$COCKPIT_ROUTE_TOOL" "$COCKPIT_ROUTE_LATENCY_MS" \
+    "${COCKPIT_ROUTE_CONF_TIER:-?}" "${COCKPIT_ROUTE_CONF_TOOL:-?}"
+else
+  printf 'route: tier=%s tool=%s (laya %s)\n' \
+    "$COCKPIT_ROUTE_TIER" "$COCKPIT_ROUTE_TOOL" "$COCKPIT_ROUTE_LAYA"
+fi
+
+if [[ "$launch" == 1 ]]; then
+  # The decision was made here; cockpit-main must not route again. Only a real
+  # Laya answer picks the runtime; otherwise cockpit-main keeps its own choice.
+  export COCKPIT_TASK="$task" COCKPIT_ROUTE_APPLIED=1
+  if [[ "$COCKPIT_ROUTE_LAYA" == ok ]]; then
+    export COCKPIT_ROUTE_RUNTIME="$COCKPIT_ROUTE_TOOL"
+  else
+    unset COCKPIT_ROUTE_RUNTIME
+  fi
+  if [[ -n "$project" ]]; then
+    exec "$script_root/cockpit-main" "$project"
+  fi
+  exec "$script_root/cockpit-main"
+fi
+exit 0

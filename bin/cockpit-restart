@@ -23,7 +23,7 @@ pane="$(tmux list-panes -s -t "$session" -F '#{pane_id} #{@cockpit_role}' 2>/dev
 [[ -n "$pane" ]] || exit 0
 
 runtime_id="$(tmux display-message -p -t "$pane" '#{@cockpit_runtime_id}' 2>/dev/null || true)"
-[[ -n "$runtime_id" ]] || runtime_id=codex
+[[ -n "$runtime_id" ]] || runtime_id="$(cockpit_route_default)"
 root="$(tmux display-message -p -t "$pane" '#{pane_current_path}' 2>/dev/null || pwd)"
 start="$(cockpit_auth_field "$runtime_id" start 2>/dev/null || true)"
 [[ -n "$start" ]] || start=codex

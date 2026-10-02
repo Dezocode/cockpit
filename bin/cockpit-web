@@ -1,8 +1,25 @@
 #!/usr/bin/env bash
 # Cockpit web API server launcher
 set -euo pipefail
-root="$(cd -- "$(dirname -- "$0")/.." && pwd)"
+if [[ -n "${COCKPIT_INSTALL_ROOT:-}" && -f "${COCKPIT_INSTALL_ROOT}/app/package.json" ]]; then
+  root="$COCKPIT_INSTALL_ROOT"
+else
+  script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+  if [[ -f "$script_dir/../app/package.json" ]]; then
+    root="$(cd -- "$script_dir/.." && pwd)"
+  else
+    root="$(cd -- "$script_dir/.." && pwd)"
+  fi
+fi
 export COCKPIT_WEB_PORT="${COCKPIT_WEB_PORT:-8787}"
+export COCKPIT_WEB_HOST="${COCKPIT_WEB_HOST:-127.0.0.1}"
+dist="$root/app/dist-server/index.js"
+if [[ -f "$dist" ]]; then
+  # COCKPIT_HOSTINGER is inherited, never defaulted: a local launch is not
+  # Hostinger mode. Only the Hostinger systemd unit sets it (docs/service-env.md).
+  cd "$root"
+  exec node "$dist"
+fi
 cd "$root/app"
 if [[ ! -d node_modules ]]; then
   pnpm install

@@ -1,0 +1,13 @@
+/* ghui-cyan — t533u chip palette extended to full chrome */
+
+[data-theme="ghui-cyan"] .dockview-theme-cockpit {
+  --dv-background-color: var(--cockpit-bg);
+  --dv-tabs-and-actions-container-background-color: var(--cockpit-surface);
+  --dv-activegroup-visiblepanel-tab-background-color: var(--cockpit-panel);
+  --dv-activegroup-hiddenpanel-tab-background-color: var(--cockpit-bg);
+  --dv-inactivegroup-visiblepanel-tab-background-color: var(--cockpit-bg);
+  --dv-tab-divider-color: var(--cockpit-border-muted);
+  --dv-separator-border: var(--cockpit-chrome);
+  --dv-paneview-header-border-color: var(--cockpit-chrome);
+  --dv-activegroup-visiblepanel-tab-color: var(--cockpit-active);
+}

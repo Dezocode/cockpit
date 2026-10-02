@@ -100,11 +100,8 @@ cockpit_auth_run_probe() {
   local command=$1 timeout_value
   [[ -n "$command" ]] || return 1
   timeout_value="${COCKPIT_AUTH_TIMEOUT:-1.5s}"
-  if command -v timeout >/dev/null 2>&1; then
-    timeout "$timeout_value" bash -lc "$command" >/dev/null 2>&1
-  else
-    bash -lc "$command" >/dev/null 2>&1
-  fi
+  timeout_value="${timeout_value%s}"
+  cockpit_timeout "$timeout_value" bash -lc "$(cockpit_login_command "$command")" >/dev/null 2>&1
 }
 
 # Grok has a login command but no `login status` subcommand. Its documented
@@ -124,7 +121,7 @@ cockpit_auth_grok_cache_ready() {
       [[ "$key_len" =~ ^[1-9][0-9]*$ ]] || continue
       [[ "$refresh_len" =~ ^[1-9][0-9]*$ ]] || continue
       [[ -n "$expires_at" ]] || continue
-      expiry="$(date -u -d "$expires_at" +%s 2>/dev/null || true)"
+      expiry="$(cockpit_utc_epoch "$expires_at" 2>/dev/null)" || expiry=''
       [[ "$expiry" =~ ^[0-9]+$ ]] || continue
       # A short grace period avoids a false negative during token rollover;
       # a stale cache still needs the native `grok login --oauth` flow.
@@ -326,7 +323,7 @@ cockpit_popup() {
   local title=$1
   shift
   local inner=$*
-  [[ -n "${TMUX:-}" ]] || { bash -lc "$inner"; return $?; }
+  [[ -n "${TMUX:-}" ]] || { bash -lc "$(cockpit_login_command "$inner")"; return $?; }
   if ! cockpit_popup_use_window; then
     tmux display-popup -E -w 88% -h 82% -T "$title" "$inner"
     return $?
@@ -338,7 +335,7 @@ cockpit_popup() {
   slug="$(cockpit_popup_slug "$title")"
   if ! tmux new-window -t "${sess}:" -n "$slug" \
     "exec cockpit-popup run $(printf %q "$ret") $(printf %q "$token") $(printf %q "$title") $(printf %q "$inner")"; then
-    bash -lc "$inner"
+    bash -lc "$(cockpit_login_command "$inner")"
     return $?
   fi
   tmux wait-for "$token"
@@ -357,7 +354,7 @@ cockpit_auth_ensure() {
   if [[ -n "${TMUX:-}" ]]; then
     cockpit_popup "Auth · $(cockpit_auth_label "$id")" "cockpit-auth run $(printf %q "$id")"
   else
-    bash -lc "$login" || true
+    bash -lc "$(cockpit_login_command "$login")" || true
   fi
   cockpit_auth_signed_in "$id"
 }
@@ -382,4 +379,54 @@ cockpit_auth_ready_cmd() {
 
 cockpit_auth_label() {
   cockpit_auth_field "$1" label || printf '%s\n' "$1"
+}
+
+cockpit_auth_pick() {
+  cockpit_auth_ensure_config
+  local ids id n=0 sel
+  local bright muted blue reset
+  bright="$(cockpit_theme_style foreground '' 1)"
+  muted="$(cockpit_theme_muted)"
+  blue="$(cockpit_theme_style accent '' 0)"
+  reset="$(cockpit_theme_reset)"
+  mapfile -t ids < <(cockpit_auth_ids cli-oauth)
+  if ((${#ids[@]} == 0)); then
+    mapfile -t ids < <(cockpit_auth_ids)
+    local filtered=() k
+    for id in "${ids[@]}"; do
+      k="$(cockpit_auth_kind "$id")"
+      [[ "$k" == "runtime" ]] && continue
+      filtered+=("$id")
+    done
+    ids=("${filtered[@]}")
+  fi
+  if ((${#ids[@]} == 0)); then
+    printf 'No providers in %s\n' "$cockpit_auth_file" >&2
+    exit 1
+  fi
+  if ((${#ids[@]} == 1)); then
+    printf '%s\n' "${ids[0]}"
+    return 0
+  fi
+  {
+    printf '%sAuth sources%s\n\n' "$bright" "$reset"
+    for id in "${ids[@]}"; do
+      n=$((n + 1))
+      if cockpit_auth_signed_in "$id"; then
+        printf '  %s) %s  %sready%s\n' "$n" "$(cockpit_auth_label "$id")" "$muted" "$reset"
+      elif cockpit_auth_check "$id"; then
+        printf '  %s) %s  %sneeds auth%s\n' "$n" "$(cockpit_auth_label "$id")" "$blue" "$reset"
+      else
+        printf '  %s) %s  %snot installed%s\n' "$n" "$(cockpit_auth_label "$id")" "$muted" "$reset"
+      fi
+    done
+    printf '\nq / Esc close · tap AGENT to return (desktop: click outside)\nNumber, or q: '
+  } >/dev/tty
+  read -r sel </dev/tty
+  [[ "$sel" == "q" || -z "$sel" ]] && exit 0
+  if [[ "$sel" =~ ^[0-9]+$ ]] && ((sel >= 1 && sel <= ${#ids[@]})); then
+    printf '%s\n' "${ids[sel-1]}"
+    return 0
+  fi
+  printf '%s\n' "$sel"
 }

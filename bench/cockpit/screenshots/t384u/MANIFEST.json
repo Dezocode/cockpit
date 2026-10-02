@@ -1,0 +1,21 @@
+{
+  "seed": "cockpit-20260907",
+  "agent_count": 24,
+  "evidence_class": "live_spa_dist_server",
+  "ui_source": "vite preview (app/dist)",
+  "api_source": "app/dist-server/index.js",
+  "files": [
+    "hostinger-health.json",
+    "splash.png",
+    "agents-20plus.png",
+    "live-term.png",
+    "computers.png",
+    "memory.png",
+    "agents.json",
+    "computers.json",
+    "memory.json",
+    "splash-gh-auth.json"
+  ],
+  "health_url": "http://localhost:8787/api/health",
+  "captured_at": "2026-09-07T08:28:04Z"
+}

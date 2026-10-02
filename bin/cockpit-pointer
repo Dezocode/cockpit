@@ -3,7 +3,7 @@
 # Arguments must stay quoted: an empty #{mouse_x} otherwise shifts the pane
 # id into the y slot and the tap lands on the wrong chip, or none.
 set -euo pipefail
-export PATH="${HOME}/.local/bin:/usr/local/bin:/usr/bin:/bin:${PATH}"
+export PATH="${HOME}/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:${PATH}"
 
 script_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=cockpit-lib
@@ -12,24 +12,15 @@ source "$script_root/cockpit-lib"
 kind="${1:-}"
 shift || true
 
-now_ms() {
-  local n
-  n="$(date +%s%3N 2>/dev/null || true)"
-  if [[ "$n" =~ ^[0-9]+$ ]]; then
-    printf '%s\n' "$n"
-  else
-    printf '%s000\n' "$(date +%s)"
-  fi
-}
-
 # One tap = one action. Press+release and tiny drags must not fire twice,
 # and Agent-pane taps must not also fire MODEL/PRS.
 DEBOUNCE_MS=280
+
 debounce() {
   local key=$1 dir now last last_ms
   dir="$(cockpit_runtime_home)"
   mkdir -p "$dir"
-  now="$(now_ms)"
+  now="$(cockpit_now_ms)"
   last="$(cat "$dir/pointer.stamp" 2>/dev/null || true)"
   last_ms="${last##* }"
   if [[ "$last_ms" =~ ^[0-9]+$ ]] && ((now >= last_ms && now - last_ms < DEBOUNCE_MS)); then
@@ -52,12 +43,6 @@ role_of() {
   local pane=$1
   [[ -n "$pane" ]] || { printf '\n'; return 0; }
   tmux display-message -p -t "$pane" '#{@cockpit_role}' 2>/dev/null || true
-}
-
-window_of() {
-  local target=$1
-  [[ -n "$target" ]] || { printf '\n'; return 0; }
-  tmux display-message -p -t "$target" '#{window_id}' 2>/dev/null || true
 }
 
 # `mouse_pane`, `mouse_window`, and `mouse_session` are not tmux format

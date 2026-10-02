@@ -11,6 +11,7 @@ import { Group, Panel, Separator } from "react-resizable-panels";
 import { PAGE_IDS, type PageId, type AgentBarChip } from "../lib/types";
 import { useCockpitStore } from "../stores/cockpit";
 import { AgentBar, chipToPage } from "./AgentBar";
+import { FieldsetPanel } from "./FieldsetPanel";
 import {
   AgentPage,
   FilesPage,
@@ -21,6 +22,7 @@ import {
   BenchPage,
 } from "../pages/static-pages";
 import { MemoryPage, ComputersPage } from "../pages/data-pages";
+import styles from "./CockpitShell.module.css";
 
 function panelFactory(id: PageId) {
   switch (id) {
@@ -51,8 +53,10 @@ function PagePanel(props: IDockviewPanelProps<{ title: string }>) {
   const id = props.api.id as PageId;
   const Page = panelFactory(id);
   return (
-    <div className="h-full overflow-hidden bg-[#0b0f14]">
-      <Page />
+    <div className={styles.panelWrap}>
+      <FieldsetPanel title={id}>
+        <Page />
+      </FieldsetPanel>
     </div>
   );
 }
@@ -113,17 +117,17 @@ export function CockpitShell() {
   };
 
   return (
-    <div className="flex h-screen flex-col">
+    <div className={styles.shell}>
       <AgentBar onChip={onBarChip} providerLabel="AGENT" />
-      <Group orientation="vertical" className="flex-1">
+      <Group orientation="vertical" className={styles.main}>
         <Panel defaultSize={92} minSize={50}>
-          <div className="dockview-theme-cockpit h-full">
+          <div className={`dockview-theme-cockpit ${styles.dock}`}>
             <DockviewReact components={components} onReady={onReady} className="h-full w-full" />
           </div>
         </Panel>
-        <Separator className="h-1 bg-slate-700" />
+        <Separator className={styles.separator} />
         <Panel defaultSize={8} minSize={4}>
-          <div className="flex h-full items-center px-2 text-xs text-slate-500">
+          <div className={styles.footer}>
             active: {activePage} · Foot size-owning on dezohost · Funnel OFF · Serve OFF
           </div>
         </Panel>

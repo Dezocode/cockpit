@@ -18,17 +18,32 @@ curl -s localhost:8787/api/health | jq .
 Hostinger + grok-build subscription lane (install root `/opt/cockpit`, ≠ Saul):
 
 ```bash
-./deploy/hostinger-grok-build-install.sh   # gospel deploy recipe
-./scripts/hostinger-grok-build.sh          # thin wrapper (same recipe)
+sudo ./scripts/install-hostinger.sh        # canonical deploy (single script)
+./scripts/hostinger-health.sh --wait 30    # GET /api/health probe (waits up to 30s)
 ```
 
 Health probe: `GET /api/health` — see [deploy/README.md](deploy/README.md)
+Env vars each launcher, plist and unit sets: [docs/service-env.md](docs/service-env.md)
+
+## Notifications
+
+Ship-time human ping (Telegram via Hermes or server-side Bot API token, ntfy fallback, desktop toast):
+
+```bash
+cockpit notify "Cockpit v2.3.0 GTM done"
+```
+
+Tokens live only on the Hostinger host (`/etc/cockpit/notify.env`), never in git or the browser bundle. See [docs/notify.md](docs/notify.md).
+
+## Laya-first routing (optional)
+
+Local [Laya](https://pypi.org/project/laya/) can pick tier + runtime before launch (`cockpit laya install`, `cockpit laya start`, `cockpit route --launch "task"`). Loopback-only sidecar; routing is off when Laya is absent, disabled, or `COCKPIT_LAYA=0`. Receipts store task SHA-256 only (`~/.local/state/cockpit/route.jsonl`).
 
 The browser terminal (`/ws/pty`) requires GitHub sign-in — no shared tokens.
 Operator setup (OAuth app + allowlist): [docs/terminal-auth.md](docs/terminal-auth.md).
 Until it is configured, the terminal refuses all connections (fail-closed).
 
-Release: [v2.2.2](RELEASE_NOTES_v2.2.2.md) · matrix: `./bench/cockpit/capability-matrix.sh` · Canon map: `tmp/t847u/README.md`
+Release: [v2.2.2](RELEASE_NOTES_v2.2.2.md) · [v2.2.0 visual multiview](RELEASE_NOTES_v2.2.0.md) · gospel: [t10u visual multiview](bench/cursor/reports/t10u-cockpit-visual-multiview-gospel.md) · matrix: `./bench/cockpit/capability-matrix.sh` · proofs: `proofs/t72u/t384u-live-spa/` · Canon map: `tmp/t847u/README.md`
 
 ## New machine (for a human or an agent)
 
@@ -46,7 +61,9 @@ cockpit agent                               # reattach safely from Termius
 ```
 
 Needs: `tmux`, and whichever agent CLIs she wants (`codex`, `grok`, `claude`,
-`cursor-agent`). Each CLI keeps its own login on **that** machine. The public
+`cursor-agent`). On macOS also install Homebrew `bash` (≥4), `fswatch`, and
+`tmux` (`brew install bash tmux fswatch`). Each CLI keeps its own login on
+**that** machine. The public
 tree has templates only — no API keys, no `auth.json`, no gists from other
 people. `cockpit config push` writes a **secret gist on the signed-in `gh`
 user**, never into this git repo.

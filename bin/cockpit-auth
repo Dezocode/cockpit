@@ -6,9 +6,8 @@ set -euo pipefail
 lib="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/cockpit-auth-lib"
 # shellcheck source=cockpit-auth-lib
 source "$lib"
-theme_lib="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/cockpit-lib"
 # shellcheck source=cockpit-lib
-source "$theme_lib"
+source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/cockpit-lib"
 
 blue="$(cockpit_theme_style accent '' 0)"
 muted="$(cockpit_theme_muted)"
@@ -39,7 +38,7 @@ run_login() {
   printf '%s%s%s\n' "$muted" "Click outside this box to cancel. It closes on success." "$reset"
   printf '%s\n\n' "$login"
   set +e
-  bash -lc "$login"
+  bash -lc "$(cockpit_login_command "$login")"
   local st=$?
   set -e
   if cockpit_auth_signed_in "$id"; then
@@ -71,7 +70,7 @@ gate() {
   while true; do
     if cockpit_auth_signed_in "$id"; then
       if [[ -n "$ready" ]]; then
-        exec bash -lc "$ready"
+        exec bash -lc "$(cockpit_login_command "$ready")"
       fi
       printf '%s%s is signed in.%s\n' "$bright" "$label" "$reset"
       printf 'q to leave this pane idle.\n'
@@ -114,52 +113,6 @@ gate() {
   done
 }
 
-pick() {
-  cockpit_auth_ensure_config
-  local ids id n=0 sel
-  mapfile -t ids < <(cockpit_auth_ids cli-oauth)
-  if ((${#ids[@]} == 0)); then
-    mapfile -t ids < <(cockpit_auth_ids)
-    # Drop runtime entries from the OAuth picker.
-    local filtered=() k
-    for id in "${ids[@]}"; do
-      k="$(cockpit_auth_kind "$id")"
-      [[ "$k" == "runtime" ]] && continue
-      filtered+=("$id")
-    done
-    ids=("${filtered[@]}")
-  fi
-  if ((${#ids[@]} == 0)); then
-    printf 'No providers in %s\n' "$cockpit_auth_file" >&2
-    exit 1
-  fi
-  if ((${#ids[@]} == 1)); then
-    printf '%s\n' "${ids[0]}"
-    return 0
-  fi
-  {
-    printf '%sAuth sources%s\n\n' "$bright" "$reset"
-    for id in "${ids[@]}"; do
-      n=$((n + 1))
-      if cockpit_auth_signed_in "$id"; then
-        printf '  %s) %s  %sready%s\n' "$n" "$(cockpit_auth_label "$id")" "$muted" "$reset"
-      elif cockpit_auth_check "$id"; then
-        printf '  %s) %s  %sneeds auth%s\n' "$n" "$(cockpit_auth_label "$id")" "$blue" "$reset"
-      else
-        printf '  %s) %s  %snot installed%s\n' "$n" "$(cockpit_auth_label "$id")" "$muted" "$reset"
-      fi
-    done
-    printf '\nq / Esc close · tap AGENT to return (desktop: click outside)\nNumber, or q: '
-  } >/dev/tty
-  read -r sel </dev/tty
-  [[ "$sel" == "q" || -z "$sel" ]] && exit 0
-  if [[ "$sel" =~ ^[0-9]+$ ]] && ((sel >= 1 && sel <= ${#ids[@]})); then
-    printf '%s\n' "${ids[sel-1]}"
-    return 0
-  fi
-  printf '%s\n' "$sel"
-}
-
 case "$cmd" in
   check)
     cockpit_auth_check "$id"
@@ -172,7 +125,7 @@ case "$cmd" in
     ;;
   popup)
     if [[ -z "$id" ]]; then
-      id="$(pick)"
+      id="$(cockpit_auth_pick)"
       [[ -n "$id" ]] || exit 0
     fi
     open_popup "$id"
@@ -183,7 +136,7 @@ case "$cmd" in
       open_popup "$id"
       exit 0
     fi
-    id="$(pick)"
+    id="$(cockpit_auth_pick)"
     [[ -n "$id" ]] || exit 0
     open_popup "$id"
     ;;

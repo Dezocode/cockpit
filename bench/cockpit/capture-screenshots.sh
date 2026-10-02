@@ -1,9 +1,15 @@
 #!/usr/bin/env bash
-# t384u screenshot capture — splash, ≥20 agents, live term, COMPUTERS, MEMORY, Hostinger health
+# t384u screenshot capture — Cockpit visual multiview evidence set
+# from the live React SPA + dist-server API (NOT HTML stand-ins)
 set -euo pipefail
 
 root="$(cd -- "$(dirname -- "$0")/../.." && pwd)"
-out="$root/bench/cockpit/screenshots/t384u"
+profile="${COCKPIT_CAPTURE_PROFILE:-local}"
+if [[ "$profile" == "hostinger-live" ]]; then
+  out="$root/bench/cockpit/screenshots/t384u-hostinger"
+else
+  out="$root/bench/cockpit/screenshots/t384u"
+fi
 mkdir -p "$out"
 
 api_port="${COCKPIT_WEB_PORT:-8787}"
@@ -17,22 +23,44 @@ cleanup() {
 }
 trap cleanup EXIT
 
+ensure_build() {
+  command -v pnpm >/dev/null 2>&1 || { printf 'pnpm required\n'; exit 1; }
+  if [[ ! -f "$root/app/dist/index.html" ]]; then
+    printf 'building web dist…\n'
+    pnpm --dir "$root/app" build
+  fi
+  if [[ ! -f "$root/app/dist-server/index.js" ]]; then
+    printf 'compiling dist-server…\n'
+    pnpm --dir "$root/app" exec tsc -p tsconfig.server.json
+  fi
+}
+
 start_api() {
-  if curl -sf "$api_base/api/health" >/dev/null 2>&1; then return 0; fi
-  COCKPIT_HOSTINGER=1 pnpm --dir "$root/app" exec tsx server/index.ts &
+  if curl -sf "$api_base/api/health" >/dev/null 2>&1; then
+    local src
+    src=$(curl -sf "$api_base/api/health" | python3 -c "import sys,json; print(json.load(sys.stdin).get('source',''))" 2>/dev/null || true)
+    if [[ "$src" == "app/dist-server/index.js" ]]; then return 0; fi
+  fi
+  ensure_build
+  COCKPIT_INSTALL_ROOT="$root" COCKPIT_HOSTINGER=1 node "$root/app/dist-server/index.js" &
   web_pid=$!
-  for _ in $(seq 1 30); do
-    curl -sf "$api_base/api/health" >/dev/null 2>&1 && return 0
+  for _ in $(seq 1 40); do
+    if curl -sf "$api_base/api/health" >/dev/null 2>&1; then
+      src=$(curl -sf "$api_base/api/health" | python3 -c "import sys,json; print(json.load(sys.stdin).get('source',''))")
+      [[ "$src" == "app/dist-server/index.js" ]] && return 0
+    fi
     sleep 0.4
   done
+  printf 'dist-server failed to start\n'
   return 1
 }
 
 start_ui() {
   if curl -sf "$ui_base/" >/dev/null 2>&1; then return 0; fi
-  pnpm --dir "$root/app" exec vite --port "$ui_port" --strictPort &
+  ensure_build
+  pnpm --dir "$root/app" exec vite preview --port "$ui_port" --strictPort &
   vite_pid=$!
-  for _ in $(seq 1 30); do
+  for _ in $(seq 1 40); do
     curl -sf "$ui_base/" >/dev/null 2>&1 && return 0
     sleep 0.4
   done
@@ -42,7 +70,7 @@ start_ui() {
 start_api
 start_ui
 
-# JSON evidence (always)
+# JSON evidence (always) — from dist-server, not bootstrap health-server.js
 curl -sf "$api_base/api/health" >"$out/hostinger-health.json"
 curl -sf "$api_base/api/agents" >"$out/agents.json"
 curl -sf "$api_base/api/computers" >"$out/computers.json"
@@ -50,34 +78,78 @@ curl -sf "$api_base/api/memory" >"$out/memory.json"
 curl -sf "$api_base/api/auth/gh" >"$out/splash-gh-auth.json"
 
 agent_count=$(python3 -c "import json; print(len(json.load(open('$out/agents.json'))['agents']))")
-printf 'agents fixture count: %s\n' "$agent_count"
-
-# PNG screenshots via Playwright (chromium)
-if ! pnpm --dir "$root/app" exec playwright --version >/dev/null 2>&1; then
-  pnpm --dir "$root/app" add -D playwright@1.49.1 2>/dev/null || true
+if [[ "$agent_count" -lt 20 ]]; then
+  printf 'FAIL: agents fixture count %s < 20\n' "$agent_count"
+  exit 1
 fi
+printf 'agents fixture count: %s (profile=%s)\n' "$agent_count" "$profile"
+
+health_source=$(python3 -c "import json; print(json.load(open('$out/hostinger-health.json')).get('source',''))")
+if [[ "$health_source" != "app/dist-server/index.js" ]]; then
+  printf 'FAIL: health source %s (expected app/dist-server/index.js)\n' "$health_source"
+  exit 1
+fi
+
+# PNG screenshots via Playwright (chromium) — live React SPA via vite preview
 pnpm --dir "$root/app" exec playwright install chromium 2>/dev/null || true
 
+# shot <url> <file> [selector | wait-ms]
 shot() {
-  local url=$1 file=$2
-  pnpm --dir "$root/app" exec playwright screenshot "$url" "$file" --wait-for-timeout 2000 2>/dev/null || \
-    npx --yes playwright screenshot "$url" "$file" --wait-for-timeout 2000 2>/dev/null || true
+  local url=$1 file=$2 wait=${3:-2500}
+  pnpm --dir "$root/app" exec node scripts/capture-page.mjs "$url" "$file" "$wait"
 }
 
-shot "$ui_base/" "$out/splash.png"
-shot "$ui_base/workspace" "$out/agents-20plus.png"
-shot "$ui_base/workspace#AGENT" "$out/live-term.png"
-shot "$ui_base/workspace#COMPUTERS" "$out/computers.png"
-shot "$ui_base/workspace#MEMORY" "$out/memory.png"
+# Pre-auth login splash (hold redirect)
+shot "$ui_base/splash?screenshot=login" "$out/login-splash.png"
+cp -f "$out/login-splash.png" "$out/splash.png" 2>/dev/null || true
 
-# Manifest for morning CT review
-cat >"$out/MANIFEST.json" <<EOF
-{
-  "seed": "cockpit-20260907",
-  "agent_count": $agent_count,
-  "files": [
+# Staging empty — clear layout first via query
+shot "$ui_base/splash/staging?reset=1" "$out/staging-empty.png"
+
+# Staging with 3 panels
+shot "$ui_base/splash/staging?demo=3panels" "$out/staging-3-panels.png"
+
+# Graph resize + focus rings — distinct action frames (ghui-cyan, FILES+GRAPH vs FILES-only)
+shot "$ui_base/splash/staging?demo=graph&reset=1" "$out/graph-resize.png" 4000
+
+# Fullscreen staging — FILES+GRAPH + exit fullscreen chrome
+shot "$ui_base/splash/staging?demo=fullscreen&reset=1" "$out/fullscreen.png" 4000
+
+# Focus rings — ghui-cyan theme switcher focus on FILES canvas
+shot "$ui_base/splash/staging?demo=focus&reset=1" "$out/focus-rings.png" 4000
+
+# ghui-cyan theme proof (≥3 themes gate) — FILES panel, ghui-cyan active
+shot "$ui_base/splash/staging?demo=theme-ghui-cyan&reset=1" "$out/theme-ghui-cyan.png" 4000
+
+# Legacy workspace parity (v2.1.4 baseline)
+shot "$ui_base/workspace" "$out/agents-20plus.png" "text=Agents ("
+shot "$ui_base/workspace#AGENT" "$out/live-term.png" "text=active:"
+shot "$ui_base/workspace#COMPUTERS" "$out/computers.png" "text=COMPUTERS"
+shot "$ui_base/workspace#MEMORY" "$out/memory.png" "text=MEMORY"
+
+python3 - "$out" "$profile" "$agent_count" "$api_base" "$root" <<'PY'
+import hashlib
+import json
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+
+out = Path(sys.argv[1])
+profile = sys.argv[2]
+agent_count = int(sys.argv[3])
+api_base = sys.argv[4]
+version = json.loads((Path(sys.argv[5]) / "app/package.json").read_text())["version"]
+
+files = [
     "hostinger-health.json",
+    "login-splash.png",
     "splash.png",
+    "staging-empty.png",
+    "staging-3-panels.png",
+    "graph-resize.png",
+    "fullscreen.png",
+    "focus-rings.png",
+    "theme-ghui-cyan.png",
     "agents-20plus.png",
     "live-term.png",
     "computers.png",
@@ -85,12 +157,47 @@ cat >"$out/MANIFEST.json" <<EOF
     "agents.json",
     "computers.json",
     "memory.json",
-    "splash-gh-auth.json"
-  ],
-  "health_url": "$api_base/api/health",
-  "captured_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-}
-EOF
+    "splash-gh-auth.json",
+]
 
-printf 't384u evidence: %s\n' "$out"
+md5 = {}
+for name in files:
+    path = out / name
+    if path.is_file():
+        md5[name] = hashlib.md5(path.read_bytes()).hexdigest()
+
+unique_gate = ["focus-rings.png", "fullscreen.png", "graph-resize.png"]
+gate_hashes = [md5[f] for f in unique_gate if f in md5]
+if len(gate_hashes) != len(unique_gate):
+    missing = [f for f in unique_gate if f not in md5]
+    raise SystemExit(f"MANIFEST gate missing files: {missing}")
+if len(set(gate_hashes)) != len(unique_gate):
+    raise SystemExit(
+        f"MANIFEST md5 uniqueness gate FAILED for {unique_gate}: {dict(zip(unique_gate, gate_hashes))}"
+    )
+
+manifest = {
+    "seed": "cockpit-20260907",
+    "evidence_class": "live_spa_dist_server",
+    "ui_source": "vite preview (app/dist)",
+    "api_source": "app/dist-server/index.js",
+    "version": version,
+    "profile": profile,
+    "agent_count": agent_count,
+    "files": [f for f in files if (out / f).is_file()],
+    "md5": md5,
+    "md5_unique_gate": unique_gate,
+    "md5_unique_ok": True,
+    "health_url": f"{api_base}/api/health",
+    "captured_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+}
+(out / "MANIFEST.json").write_text(json.dumps(manifest, indent=2) + "\n")
+print(f"MANIFEST md5_unique_ok: {unique_gate}")
+for f in unique_gate:
+    print(f"  {f}: {md5[f]}")
+if "theme-ghui-cyan.png" in md5:
+    print(f"  theme-ghui-cyan.png: {md5['theme-ghui-cyan.png']}")
+PY
+
+printf 't384u evidence (%s, live SPA + dist-server): %s\n' "$profile" "$out"
 ls -la "$out"

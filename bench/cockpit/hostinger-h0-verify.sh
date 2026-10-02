@@ -1,65 +1,57 @@
 #!/usr/bin/env bash
-# Hostinger H0 done-line verifier — install.sh + systemd + nginx + /api/health
+# Hostinger H0 done-line verifier — canonical install script + packaging + /api/health
 set -euo pipefail
 
 root="$(cd -- "$(dirname -- "$0")/../.." && pwd)"
-pass=0
-fail=0
+# shellcheck source=lib/matrix.sh
+source "$root/bench/cockpit/lib/matrix.sh"
 
-check() {
-  local name=$1 result=$2
-  if [[ "$result" == ok ]]; then
-    printf '  ✓ %s\n' "$name"
-    pass=$((pass + 1))
-  else
-    printf '  ✗ %s\n' "$name"
-    fail=$((fail + 1))
-  fi
-}
+matrix_begin 'Hostinger H0 verify (cockpit-20260907)'
 
-printf 'Hostinger H0 verify (cockpit-20260907)\n\n'
+[[ -x "$root/scripts/install-hostinger.sh" ]] && i=ok || i=fail
+matrix_check "scripts/install-hostinger.sh (canonical deploy)" "$i"
 
-grep -q 'COCKPIT_INSTALL_HOSTINGER' "$root/install.sh" && i=ok || i=fail
-check "install.sh Hostinger gate" "$i"
+# install.sh only refuses the removed deploy gate; it must never deploy itself.
+! grep -Eq 'useradd|systemctl|/etc/systemd|/etc/nginx' "$root/install.sh" &&
+  grep -q 'scripts/install-hostinger.sh' "$root/install.sh" && ig=ok || ig=fail
+matrix_check "install.sh has no Hostinger block" "$ig"
 
 [[ -f "$root/packaging/systemd/cockpit-web.service" ]] && s=ok || s=fail
-check "systemd cockpit-web.service" "$s"
+matrix_check "systemd cockpit-web.service" "$s"
 
 [[ -f "$root/packaging/nginx/cockpit.conf" ]] && n=ok || n=fail
-check "nginx cockpit.conf" "$n"
+matrix_check "nginx cockpit.conf" "$n"
 
-[[ -x "$root/scripts/hostinger-grok-build.sh" ]] && g=ok || g=fail
-check "grok-build install lane" "$g"
+[[ -x "$root/scripts/hostinger-health.sh" ]] && hscript=ok || hscript=fail
+matrix_check "scripts/hostinger-health.sh probe" "$hscript"
 
-grep -qE 'frontier_subscription|DENY.*Qwen|sol-v1\.7\.1' "$root/deploy/hostinger-grok-build-install.sh" 2>/dev/null && ge=ok || ge=fail
-check "grok-build envelope (subscription only)" "$ge"
-
-grep -q 'deploy/hostinger-grok-build-install.sh' "$root/scripts/hostinger-grok-build.sh" 2>/dev/null && gw=ok || gw=fail
-check "scripts wrapper → deploy recipe" "$gw"
+grep -q 'frontier_subscription\|DENY.*Qwen\|sol-v1\.7\.1' "$root/scripts/install-hostinger.sh" 2>/dev/null && ge=ok || ge=fail
+matrix_check "install-hostinger envelope (subscription only)" "$ge"
 
 [[ -f "$root/app/dist-server/index.js" ]] || (cd "$root/app" && pnpm exec tsc -p tsconfig.server.json) 2>/dev/null
 [[ -f "$root/app/dist-server/index.js" ]] && b=ok || b=fail
-check "compiled API server (dist-server)" "$b"
+matrix_check "compiled API server (dist-server)" "$b"
 
 port="${COCKPIT_WEB_PORT:-8787}"
 if ! curl -sf "http://127.0.0.1:$port/api/health" >/dev/null 2>&1; then
-  COCKPIT_HOSTINGER=1 pnpm --dir "$root/app" exec tsx server/index.ts &
+  COCKPIT_INSTALL_ROOT="$root" COCKPIT_HOSTINGER=1 node "$root/app/dist-server/index.js" &
   hp=$!
   trap 'kill $hp 2>/dev/null || true' EXIT
-  for _ in $(seq 1 20); do
-    curl -sf "http://127.0.0.1:$port/api/health" >/dev/null 2>&1 && break
-    sleep 0.3
-  done
+  bash "$root/scripts/hostinger-health.sh" --wait 30 >/dev/null || true
 fi
 
-if curl -sf "http://127.0.0.1:$port/api/health" >/tmp/cockpit-h0-health.json 2>/dev/null; then
-  status=$(python3 -c "import json; print(json.load(open('/tmp/cockpit-h0-health.json')).get('status',''))")
+if bash "$root/scripts/hostinger-health.sh" >/dev/null 2>&1; then
+  status=$(python3 -c "import json; print(json.load(open('/tmp/cockpit-health-probe.json')).get('status',''))")
+  source=$(python3 -c "import json; print(json.load(open('/tmp/cockpit-health-probe.json')).get('source',''))")
   [[ "$status" == green ]] && h=ok || h=fail
-  check "/api/health green" "$h"
-  cp /tmp/cockpit-h0-health.json "$root/bench/cockpit/screenshots/t384u/hostinger-health.json" 2>/dev/null || true
+  matrix_check "/api/health green" "$h"
+  [[ "$source" == "app/dist-server/index.js" ]] && hs=ok || hs=fail
+  matrix_check "health source app/dist-server/index.js" "$hs"
+  mkdir -p "$root/bench/cockpit/screenshots/t384u"
+  cp /tmp/cockpit-health-probe.json "$root/bench/cockpit/screenshots/t384u/hostinger-health.json" 2>/dev/null || true
 else
-  check "/api/health green" fail
+  matrix_check "/api/health green" fail
+  matrix_check "health source app/dist-server/index.js" fail
 fi
 
-printf '\nH0: pass=%d fail=%d\n' "$pass" "$fail"
-[[ "$fail" -eq 0 ]]
+matrix_end

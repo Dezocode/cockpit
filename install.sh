@@ -1,7 +1,19 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC2088
 set -euo pipefail
 
 root="$(cd -- "$(dirname -- "$0")" && pwd)"
+# shellcheck source=bin/cockpit-portable-lib
+source "$root/bin/cockpit-portable-lib"
+
+# The Hostinger deploy gate left install.sh in v2.3.0 (single deploy path).
+# Fail loudly instead of silently doing only a user-level install.
+if [[ "${COCKPIT_INSTALL_HOSTINGER:-0}" == 1 ]]; then
+  printf 'install.sh: COCKPIT_INSTALL_HOSTINGER was removed in v2.3.0 and no longer deploys.\n' >&2
+  printf 'Run the canonical Hostinger install instead:\n  sudo %s/scripts/install-hostinger.sh\n  %s/scripts/hostinger-health.sh --wait 30\n' \
+    "$root" "$root" >&2
+  exit 2
+fi
 bindir="${HOME}/.local/bin"
 confdir="${XDG_CONFIG_HOME:-$HOME/.config}"
 config_home="${COCKPIT_CONFIG_HOME:-$confdir/cockpit}"
@@ -14,13 +26,22 @@ mkdir -p "$bindir" "$tmuxdir" \
   "$legacy_config_home/providers.d" "$legacy_config_home/nvim" \
   "$legacy_config_home/plugins/cockpit-cpr" "$legacy_config_home/skills.d"
 
-# The public command and every helper use the cockpit namespace. The old
-# codex-cockpit-* files are installed alongside them as compatibility shims.
-install -m 0755 "$root/bin/"cockpit* "$bindir/"
-install -m 0755 "$root/bin/"codex-cockpit* "$root/bin/codex-mermaid-watch" "$bindir/" 2>/dev/null || true
+# The public command and every helper use the cockpit namespace. Legacy
+# codex-cockpit-* names are symlinked to the single alias dispatcher at install time.
+shopt -s nullglob
+for cockpit_bin in "$root/bin"/cockpit*; do
+  [[ "$cockpit_bin" == *.list ]] && continue
+  install -m 0755 "$cockpit_bin" "$bindir/"
+done
+shopt -u nullglob
+install -m 0755 "$root/bin/cockpit-legacy-alias" "$bindir/cockpit-legacy-alias"
+while IFS= read -r legacy_name || [[ -n "$legacy_name" ]]; do
+  [[ -n "$legacy_name" ]] || continue
+  [[ "$legacy_name" =~ ^# ]] && continue
+  ln -sf cockpit-legacy-alias "$bindir/$legacy_name"
+done <"$root/bin/cockpit-legacy-names.list"
 install -m 0644 "$root/bin/cockpit-lib" "$root/bin/cockpit-auth-lib" \
-  "$root/bin/cockpit-agent-lib" "$root/bin/codex-cockpit-lib" \
-  "$root/bin/codex-cockpit-auth-lib" "$root/bin/codex-cockpit-agent-lib" \
+  "$root/bin/cockpit-agent-lib" "$root/bin/cockpit-portable-lib" \
   "$bindir/"
 install -m 0755 "$root/bin/cpr" "$bindir/cpr"
 
@@ -56,7 +77,7 @@ normalize_canonical_namespace() {
   tmp="${file}.cockpit-migrate.$$"
   sed -e 's#~/.config/codex-cockpit#~/.config/cockpit#g' \
     -e 's#Codex Cockpit#Cockpit#g' "$file" >"$tmp"
-  chmod --reference="$file" "$tmp" 2>/dev/null || true
+  cockpit_copy_mode "$file" "$tmp"
   mv "$tmp" "$file"
 }
 
@@ -72,7 +93,7 @@ normalize_canonical_commands() {
   tmp="${file}.cockpit-commands.$$"
   sed -e 's/codex-cockpit-/cockpit-/g' \
     -e 's/codex-mermaid-watch/cockpit-mermaid-watch/g' "$file" >"$tmp"
-  chmod --reference="$file" "$tmp" 2>/dev/null || true
+  cockpit_copy_mode "$file" "$tmp"
   mv "$tmp" "$file"
 }
 
@@ -124,6 +145,27 @@ fi
 if [[ ! -f "$config_home/providers.conf" ]]; then
   install -m 0644 "$root/stage/auth/providers.conf" "$config_home/providers.conf"
 fi
+if [[ ! -f "$config_home/notify.conf" ]]; then
+  install -m 0644 "$root/stage/notify/notify.conf" "$config_home/notify.conf"
+fi
+# Every other bundled Cockpit-native plugin (plugins/<dir>/plugin.conf, its
+# entrypoint and README) goes where `cockpit plugin` looks for installed plugins.
+# Optional plugins' own config is seeded by the plugin on first use, not here.
+shopt -s nullglob
+for bundled_manifest in "$root"/plugins/*/plugin.conf; do
+  bundled_dir="${bundled_manifest%/plugin.conf}"
+  bundled_name="${bundled_dir##*/}"
+  [[ "$bundled_name" == cockpit-cpr ]] && continue # installed explicitly above
+  bundled_entry="$(awk -F= '$1 == "entrypoint" { print $2; exit }' "$bundled_manifest")"
+  [[ -n "$bundled_entry" && "$bundled_entry" != */* && -f "$bundled_dir/$bundled_entry" ]] || continue
+  mkdir -p "$config_home/plugins/$bundled_name"
+  install -m 0644 "$bundled_manifest" "$config_home/plugins/$bundled_name/plugin.conf"
+  if [[ -f "$bundled_dir/README.md" ]]; then
+    install -m 0644 "$bundled_dir/README.md" "$config_home/plugins/$bundled_name/README.md"
+  fi
+  install -m 0755 "$bundled_dir/$bundled_entry" "$config_home/plugins/$bundled_name/$bundled_entry"
+done
+shopt -u nullglob
 if compgen -G "$root/stage/auth/providers.d/*.conf" >/dev/null; then
   for provider_template in "$root/stage/auth/providers.d/"*.conf; do
     provider_file="$config_home/providers.d/${provider_template##*/}"
@@ -149,20 +191,7 @@ if [[ -f "$confdir/tmux/tmux.conf" ]] && ! grep -Fq "$canonical_overlay" "$confd
     "$canonical_overlay" "$canonical_overlay" >>"$confdir/tmux/tmux.conf"
 fi
 
-shellrc="${COCKPIT_SHELL_RC:-${HOME}/.bashrc}"
-# Existing installations may already contain the old reload function. Append
-# a separately marked canonical definition instead of rewriting shellrc.
-cpr_plugin_marker='# Cockpit cpr plugin'
-if [[ -f "$shellrc" ]] &&
-  ! grep -Fqx "$cpr_plugin_marker" "$shellrc"; then
-  printf '\n%s\n' "$cpr_plugin_marker" >>"$shellrc"
-  printf '%s\n' \
-    'unalias cockpit 2>/dev/null || true' \
-    'cpr() {' \
-    '  command -v cockpit >/dev/null 2>&1 || return 0' \
-    '  cockpit cpr "$@"' \
-    '}' >>"$shellrc"
-fi
+cockpit_rc_write "$bindir"
 
 # Upgrade an active installation in place. Renaming the old session keeps
 # Agent/FILES alive; only derived views are refreshed afterward so their old
@@ -188,7 +217,7 @@ fi
 if [[ -d "$root/app" && -f "$root/app/package.json" ]]; then
   if command -v pnpm >/dev/null 2>&1; then
     (cd "$root/app" && pnpm install --frozen-lockfile 2>/dev/null || pnpm install) || true
-    if [[ "${COCKPIT_INSTALL_WEB_BUILD:-0}" == 1 || "${COCKPIT_INSTALL_HOSTINGER:-0}" == 1 ]]; then
+    if [[ "${COCKPIT_INSTALL_WEB_BUILD:-0}" == 1 ]]; then
       (cd "$root/app" && pnpm build && pnpm build:server) || true
     fi
   fi
@@ -198,24 +227,18 @@ if [[ -d "$root/app" && -f "$root/app/package.json" ]]; then
   done
 fi
 
-if [[ "${COCKPIT_INSTALL_HOSTINGER:-0}" == 1 && "$(id -u)" -eq 0 ]]; then
-  COCKPIT_INSTALL_ROOT="${COCKPIT_INSTALL_ROOT:-/opt/cockpit}"
-  case "$COCKPIT_INSTALL_ROOT" in
-    /root/.grok*|*/saul-go*) printf 'DENY: invalid COCKPIT_INSTALL_ROOT=%s\n' "$COCKPIT_INSTALL_ROOT"; exit 1 ;;
-  esac
-  install -d "$COCKPIT_INSTALL_ROOT"
-  rsync -a --exclude node_modules --exclude .git --exclude app/node_modules "$root/" "$COCKPIT_INSTALL_ROOT/" 2>/dev/null || cp -a "$root/." "$COCKPIT_INSTALL_ROOT/"
-  id cockpit &>/dev/null || useradd -r -s /usr/sbin/nologin cockpit
-  chown -R cockpit:cockpit "$COCKPIT_INSTALL_ROOT" 2>/dev/null || true
-  chmod +x "$COCKPIT_INSTALL_ROOT/packaging/systemd/cockpit-web-heal.sh" 2>/dev/null || true
-  install -m 0644 "$root/packaging/systemd/cockpit-web.service" /etc/systemd/system/cockpit-web.service
-  install -m 0644 "$root/packaging/nginx/cockpit.conf" /etc/nginx/sites-available/cockpit.conf
-  ln -sf /etc/nginx/sites-available/cockpit.conf /etc/nginx/sites-enabled/cockpit.conf 2>/dev/null || true
-  systemctl daemon-reload
-  systemctl enable cockpit-web.service 2>/dev/null || true
-  systemctl restart cockpit-web.service 2>/dev/null || systemctl start cockpit-web.service 2>/dev/null || true
-  printf 'Hostinger H0: %s + systemd + nginx (certbot for TLS)\n' "$COCKPIT_INSTALL_ROOT"
+if [[ "${COCKPIT_INSTALL_SERVICE:-0}" == 1 ]]; then
+  cockpit_service_install cockpit-web "$bindir" "$root" ||
+    printf 'service: install failed (rc %s); run %s/cockpit-web manually\n' "$?" "$bindir" >&2
 fi
 
-printf 'Installed to %s\nRun: cockpit   (workspace)\n      cockpit agent   (jump to live Agent pane)\n      cockpit-web     (GUI API server)\n      codex           (Codex CLI)\nProfile sync: cockpit config push|pull (your gh login, secret gist)\nCanonical config: %s\n' \
-  "$bindir" "$config_home"
+watch_backend="$(cockpit_watch_backend)"
+printf 'Installed to %s\nRun: cockpit   (workspace)\n      cockpit agent   (jump to live Agent pane)\n      cockpit-web     (GUI API server)\n      codex           (Codex CLI)\nProfile sync: cockpit config push|pull (your gh login, secret gist)\nCanonical config: %s\nwatch backend: %s\n' \
+  "$bindir" "$config_home" "$watch_backend"
+if [[ "$watch_backend" == none ]]; then
+  if command -v brew >/dev/null 2>&1; then
+    printf 'hint: brew install bash tmux fswatch\n'
+  elif command -v apt-get >/dev/null 2>&1; then
+    printf 'hint: sudo apt-get install -y inotify-tools tmux\n'
+  fi
+fi

@@ -28,8 +28,8 @@ Foot remains size-owning; no product-socket kill; isolated TMUX_TMPDIR tests
 
 ## Hostinger H0
 
-install.sh + systemd cockpit-web + nginx TLS + `/api/health` green  
-Lane: `deploy/hostinger-grok-build-install.sh` (grok-build subscription runtime)
+`sudo ./scripts/install-hostinger.sh` (systemd cockpit-web + nginx TLS) + `./scripts/hostinger-health.sh --wait 30` → `/api/health` green  
+Lane: `scripts/install-hostinger.sh` (canonical deploy recipe since C2, d642070; `deploy/hostinger-grok-build-install.sh` was removed — matches `forge/cockpit-redesign-oneshot.md`)
 
 ## Done-line
 
@@ -37,8 +37,9 @@ Lane: `deploy/hostinger-grok-build-install.sh` (grok-build subscription runtime)
 - [x] Capability matrix green (45/45)
 - [x] Surface matrix TUI↔GUI green (14/14)
 - [x] TUI harness TMUX_TMPDIR (6/6)
-- [x] t384u screenshot set
-- [x] Draft PR #6 (stay draft)
+- [x] t384u screenshot set (live SPA + dist-server — not HTML stand-ins)
+- [x] H0 health contract (`bench/cockpit/H0-HEALTH-CONTRACT.md`)
+- [x] Draft PR #13 (residuals t72u — stay draft)
 
 ## Verification
 
@@ -55,6 +56,9 @@ Lane: `deploy/hostinger-grok-build-install.sh` (grok-build subscription runtime)
 
 | Item | Status |
 |------|--------|
+| Live SPA + dist-server evidence | **Closed** — `capture-screenshots.sh` + `bench/cockpit/screenshots/t384u/` |
+| Bootstrap vs full API health | **Closed** — `bench/cockpit/H0-HEALTH-CONTRACT.md` + `source` field |
+| Hostinger dist-server node deps | **Closed** — `install-hostinger.sh` `pnpm install --prod` |
 | Tauri `.deb`/`.AppImage` | CI Rust ≥1.85 (web+H0 green without) |
 | Live Hostinger VPS | Script ready; needs certbot + grok auth on VPS |
 | Stronghold token store | Device-flow → gh keyring; Stronghold desktop follow-up |

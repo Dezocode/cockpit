@@ -1,55 +1,150 @@
 name: CI
 
+env:
+  COCKPIT_LAYA: "0"
+
 on:
   push:
-    branches: [main]
+    branches: [main, cockpit-gtm-v2.3]
   pull_request:
-    branches: [main]
+    branches: [main, cockpit-gtm-v2.3]
+
+# A newer push to the same PR supersedes its run; branch pushes always finish.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  verify:
+  # Gate for every other job: committed exec bits, one version source, and the
+  # workflow must_absent/structure lint. Full history so the mode-drop check can
+  # diff against the C4 start commit.
+  versions:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Committed tree (exec bits, run by path)
+        run: ./scripts/check-exec-bits.sh
+
+      - name: Version guard
+        run: ./scripts/check-versions.sh | tee "$RUNNER_TEMP/versions.txt"
+
+      - name: Install ripgrep
+        run: |
+          command -v rg >/dev/null 2>&1 || { sudo apt-get update -qq && sudo apt-get install -y -qq ripgrep; }
+          rg --version | head -n 1
+
+      - name: Workflow lint (must_absent + yq structure + actionlint)
+        env:
+          COCKPIT_LINT_REQUIRE_BASE: '1'
+        run: ./tests/test-workflow-lint.sh | tee "$RUNNER_TEMP/workflow-lint.txt"
+
+      - name: Job summary
+        run: |
+          {
+            echo "### versions"
+            echo '| key | value |'
+            echo '|---|---|'
+            echo "| os | $(uname -s) $(uname -m) (${RUNNER_OS}) |"
+            echo "| bash | ${BASH_VERSION} |"
+            echo "| versions | $(head -n 1 "$RUNNER_TEMP/versions.txt") |"
+            echo "| exec bits | $(./scripts/check-exec-bits.sh) |"
+            echo "| workflow-lint | $(grep -E '^workflow-lint' "$RUNNER_TEMP/workflow-lint.txt" | tr '\n' ' ') |"
+          } >>"$GITHUB_STEP_SUMMARY"
+
+  # tests/*.sh in a clean sandbox (env -i, temp HOME/TMUX_TMPDIR, stdin </dev/null).
+  # Separate job so it never conflicts with steps appended to `verify`.
+  shell-tests:
+    needs: versions
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 9
+      - uses: ./.github/actions/setup-node-pnpm
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          cache: 'pnpm'
-          cache-dependency-path: app/pnpm-lock.yaml
+      # tests/test-notify.sh drives the real dist-server (/api/notify) and
+      # tests/test-notify-lint.sh scans the shipped app/dist bundle.
+      - name: Build web + API for notify tests
+        working-directory: app
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
+          pnpm run build:server
+
+      - name: Install ripgrep (tests/test-gev-provenance.sh needs rg in /usr/bin)
+        run: |
+          command -v rg >/dev/null 2>&1 || { sudo apt-get update -qq && sudo apt-get install -y -qq ripgrep; }
+          test -x /usr/bin/rg
+
+      - name: tests/*.sh (named skip list)
+        shell: bash
+        run: |
+          # Quarantine by exact name, never silently; a quarantined test is still
+          # run and the job fails once it passes. test-auth-setup, test-setup-flows
+          # and test-termius-touch were quarantined in C2 fix (d642070) from a
+          # workstation sandbox (its login shell resets PATH past the fakebin);
+          # on ubuntu-latest all three pass (run 36323026888), so the list is empty.
+          skip=()
+          # PATH stays /usr/bin:/bin; only the explicit node binary is handed to
+          # tests that need it (test-notify.sh starts dist-server with it).
+          node_bin="$(command -v node)"
+          sandbox() {
+            env -i PATH=/usr/bin:/bin HOME="$(mktemp -d)" TMUX_TMPDIR="$(mktemp -d)" TERM=xterm \
+              COCKPIT_TEST_NODE="$node_bin" timeout 600 ./"$1" </dev/null
+          }
+          for s in "${skip[@]}"; do
+            [[ -f "tests/$s.sh" ]] || { echo "stale skip entry: $s"; exit 1; }
+          done
+          fail=0 ran=0 fixed=0
+          for t in tests/test-*.sh; do
+            n=$(basename "$t" .sh)
+            if [[ " ${skip[*]} " == *" $n "* ]]; then
+              # Quarantine must stay honest: a skipped test is still run, and
+              # the job fails if it now passes (it must leave the skip list).
+              if sandbox "$t" >"$RUNNER_TEMP/quarantine-$n.log" 2>&1; then
+                echo "::error::quarantined test now passes, remove from skip list: $n"
+                fixed=1
+              else
+                echo "SKIP $n (quarantined; still fails as recorded at e7a1687)"
+              fi
+              continue
+            fi
+            ran=$((ran + 1))
+            if sandbox "$t"; then
+              echo "PASS $n"
+            else
+              echo "FAIL $n"
+              fail=1
+            fi
+          done
+          echo "shell tests: ran=$ran skipped=${#skip[@]} failed=$fail quarantine_now_passing=$fixed"
+          [[ "$ran" -gt 0 && "$fail" -eq 0 && "$fixed" -eq 0 ]]
+
+  verify:
+    needs: versions
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-node-pnpm
 
       - name: Build web + API
         working-directory: app
         run: |
           pnpm install --frozen-lockfile
           pnpm build
-          pnpm exec tsc -p tsconfig.server.json
+          pnpm run build:server
 
       - name: Capability matrix
         run: bash bench/cockpit/capability-matrix.sh
 
-      - name: Prove GET /api/health
-        run: |
-          COCKPIT_HOSTINGER=1 node app/dist-server/index.js &
-          pid=$!
-          trap 'kill $pid 2>/dev/null || true' EXIT
-          for _ in $(seq 1 40); do
-            curl -sf http://127.0.0.1:8787/api/health >/tmp/health.json && break
-            sleep 0.5
-          done
-          curl -sf http://127.0.0.1:8787/api/health | tee /tmp/health.json
-          python3 - <<'PY'
-          import json
-          d = json.load(open("/tmp/health.json"))
-          assert d["product"] == "cockpit"
-          assert d["status"] in ("green", "yellow")
-          assert d["checks"]["hostinger"] == "configured"
-          print("health ok:", d["status"])
-          PY
+      - uses: ./.github/actions/prove-health
 
       - name: Hostinger H0 verify
         run: bash bench/cockpit/hostinger-h0-verify.sh
@@ -57,7 +152,323 @@ jobs:
       - name: Surface matrix (TUI KEEP)
         run: bash bench/cockpit/surface-matrix.sh
 
-      - name: scripts/hostinger-grok-build → deploy wrapper
+      - name: C10 God's Eye panel tests
+        working-directory: app
+        env:
+          # Screens come from the asserting e2e run itself; each PNG is re-read and
+          # must show a rendered globe (lit >= 0.08, colors >= 300) or the run fails.
+          GODSEYE_SHOT: ${{ runner.temp }}/godseye-screens/godseye-keyless.png
+          GODSEYE_ARCS_SHOT: ${{ runner.temp }}/godseye-screens/godseye-arcs.png
         run: |
-          test -x scripts/hostinger-grok-build.sh
-          grep -q deploy/hostinger-grok-build-install.sh scripts/hostinger-grok-build.sh
+          mkdir -p "$RUNNER_TEMP/godseye-screens"
+          pnpm exec playwright install --with-deps chromium
+          node --test 'src/panels/godseye/**/*.test.mjs'
+          node tests/godseye-bundle.check.mjs
+          # America/Chicago (e2e default): the local node is placed by its tz centroid.
+          GODSEYE_EXPECT_NODES=1 GODSEYE_EXPECT_UNPLACED=3 xvfb-run -a node tests/godseye-panel.e2e.mjs
+          # Etc/UTC has no zone1970.tab centroid: every node stays unplaced (never invented).
+          GODSEYE_E2E_TZ=Etc/UTC GODSEYE_EXPECT_NODES=0 GODSEYE_EXPECT_UNPLACED=4 \
+            GODSEYE_SHOT="$RUNNER_TEMP/godseye-screens/godseye-utc.png" GODSEYE_ARCS_SHOT= \
+            xvfb-run -a node tests/godseye-panel.e2e.mjs
+          n=$(find "$RUNNER_TEMP/godseye-screens" -name '*.png' | wc -l)
+          echo "godseye-screens: $n png"
+          # exactly keyless + arcs (America/Chicago run) + utc (Etc/UTC run)
+          test "$n" -eq 3
+
+      - name: Upload God's Eye screenshots (artifact godseye-screens)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: godseye-screens
+          path: ${{ runner.temp }}/godseye-screens/*.png
+          if-no-files-found: error
+
+      - name: Canonical Hostinger install script
+        run: |
+          test -x scripts/install-hostinger.sh
+          grep -q 'packaging/systemd/cockpit-web.service' scripts/install-hostinger.sh
+          grep -q 'scripts/hostinger-health.sh' scripts/install-hostinger.sh
+
+  portability:
+    needs: versions
+    runs-on: ${{ matrix.os }}
+    # Fail closed on a hung test instead of burning the 6 h default.
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-14, macos-15-intel]
+    steps:
+      - uses: actions/checkout@v4
+
+      # By path, so a lost exec bit fails here with rc 126; nothing repairs modes.
+      - name: Committed tree (exec bits, run by path)
+        run: ./scripts/check-exec-bits.sh
+
+      - name: Install OS deps
+        run: |
+          set -euxo pipefail
+          echo "BASH_VERSION=${BASH_VERSION:-}"
+          uname -sm
+          if [[ "${{ matrix.os }}" == ubuntu-latest ]]; then
+            sudo apt-get update
+            sudo apt-get install -y shellcheck tmux fish zsh inotify-tools ripgrep
+          else
+            brew install fswatch shellcheck tmux fish bash ripgrep
+            if echo "$PATH" | grep -qi gnubin; then
+              echo "gnubin on PATH is forbidden"
+              exit 1
+            fi
+          fi
+          echo "watch backend: $(bash -c 'source bin/cockpit-portable-lib; cockpit_watch_backend')"
+
+      - uses: ./.github/actions/setup-node-pnpm
+
+      - name: Build web + API
+        working-directory: app
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
+          pnpm run build:server
+
+      - name: Portability suite
+        run: |
+          set -euxo pipefail
+          log="portability-${{ matrix.os }}.log"
+          exec > >(tee "$log") 2>&1
+          echo "BASH_VERSION=${BASH_VERSION:-}"
+          uname -sm
+          echo "watch backend: $(bash -c 'source bin/cockpit-portable-lib; cockpit_watch_backend')"
+          export PATH="$PWD/bin:$PATH"
+          bash_bin="$(command -v bash)"
+          if [[ "$(uname -s)" == Darwin ]]; then
+            for candidate in /opt/homebrew/bin/bash /usr/local/bin/bash; do
+              [[ -x "$candidate" ]] && bash_bin="$candidate" && break
+            done
+            export PATH="$(dirname "$bash_bin"):$PATH"
+            echo "portability bash: $bash_bin (${BASH_VERSION:-})"
+          fi
+          shellcheck -x -S warning install.sh bin/cockpit-portable-lib bin/cockpit-lib bin/cockpit-agent-lib \
+            bin/cockpit-mermaid-watch bin/cockpit-wake bin/cockpit-idle bin/cockpit-adapt bin/cockpit-profile \
+            bin/cockpit-reload-views bin/cockpit-plugin
+          COCKPIT_REQUIRE_WATCH_BACKEND=1 ./tests/test-portable-lib.sh
+          ./tests/test-portability-lint.sh
+          ./tests/test-install-shells.sh
+          ./tests/test-launchd.sh
+          failed=()
+          for t in tests/test-*.sh; do
+            case "$t" in
+              tests/test-portable-lib.sh|tests/test-portability-lint.sh|tests/test-install-shells.sh|tests/test-launchd.sh) continue ;;
+            esac
+            if ! ./"$t"; then
+              failed+=("$t")
+              echo "::error::$t failed on ${{ matrix.os }}; xtrace tail follows"
+              env SHELLOPTS=xtrace ./"$t" >"xtrace-$(basename "$t" .sh).log" 2>&1 || true
+              tail -n 60 "xtrace-$(basename "$t" .sh).log"
+            fi
+          done
+          if ((${#failed[@]})); then
+            echo "regression failures: ${failed[*]}"
+            exit 1
+          fi
+          bash bench/cockpit/capability-matrix.sh
+          # Listen proof on an ephemeral loopback port this step owns; only the
+          # server PID started here is stopped. COCKPIT_WEB_HOST is left unset
+          # so the proof covers the default bind.
+          port="$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()')"
+          COCKPIT_HOSTINGER=1 COCKPIT_WEB_PORT="$port" node app/dist-server/index.js >web-listen.log 2>&1 &
+          pid=$!
+          trap 'kill "$pid" 2>/dev/null || :' EXIT
+          for _ in $(seq 1 40); do
+            curl -sf "http://127.0.0.1:${port}/api/health" && break
+            sleep 0.5
+          done
+          cat web-listen.log
+          if [[ "${{ matrix.os }}" == ubuntu-latest ]]; then
+            listen="$(ss -ltnp | grep ":${port} " || :)"
+          else
+            listen="$(lsof -nP -a -p "$pid" -iTCP:"$port" -sTCP:LISTEN || :)"
+          fi
+          printf 'listen-proof (%s):\n%s\n' "${{ matrix.os }}" "$listen"
+          grep -q "127.0.0.1:${port}" <<<"$listen"
+          if grep -E "(\\*|0\\.0\\.0\\.0|\\[::\\]|:::?):${port}" <<<"$listen"; then
+            echo "::error::cockpit-web listens on a non-loopback address"
+            exit 1
+          fi
+          echo "listen-proof: loopback-only (127.0.0.1:${port}, pid ${pid})"
+          kill "$pid" 2>/dev/null || :
+          wait "$pid" 2>/dev/null || :
+          # Default config (no COCKPIT_WEB_PORT / COCKPIT_WEB_HOST) = what nginx
+          # proxies to (127.0.0.1:8787). Refuse, naming the holder, if anything
+          # already listens there; never stop a process this step did not start.
+          if curl -s -o /dev/null --max-time 1 http://127.0.0.1:8787/; then
+            echo "::error::8787 already taken on the runner; not ours to stop"
+            (lsof -nP -iTCP:8787 -sTCP:LISTEN || ss -ltnp) 2>/dev/null || :
+            exit 1
+          fi
+          env -u COCKPIT_WEB_PORT -u COCKPIT_WEB_HOST COCKPIT_HOSTINGER=1 node app/dist-server/index.js >web-default.log 2>&1 &
+          pid=$!
+          for _ in $(seq 1 40); do
+            curl -sf http://127.0.0.1:8787/api/health >/dev/null && break
+            sleep 0.5
+          done
+          cat web-default.log
+          if [[ "${{ matrix.os }}" == ubuntu-latest ]]; then
+            listen="$(ss -ltnp | grep ':8787 ' || :)"
+          else
+            listen="$(lsof -nP -a -p "$pid" -iTCP:8787 -sTCP:LISTEN || :)"
+          fi
+          printf 'listen-proof default (%s):\n%s\n' "${{ matrix.os }}" "$listen"
+          grep -q '127.0.0.1:8787' <<<"$listen"
+          if grep -E '(\*|0\.0\.0\.0|\[::\]|:::?):8787' <<<"$listen"; then
+            echo "::error::cockpit-web default bind is not loopback"
+            exit 1
+          fi
+          echo "listen-proof: default bind loopback-only (127.0.0.1:8787, pid ${pid})"
+
+      - name: Fresh-HOME install smoke (install.sh, login bash)
+        shell: bash
+        run: |
+          set -euo pipefail
+          home="$(mktemp -d)"
+          HOME="$home" SHELL=/bin/bash /bin/bash install.sh </dev/null >"$RUNNER_TEMP/install-smoke.log" 2>&1 ||
+            { tail -n 40 "$RUNNER_TEMP/install-smoke.log"; exit 1; }
+          tail -n 4 "$RUNNER_TEMP/install-smoke.log"
+          HOME="$home" bash -lc 'command -v cockpit && cockpit -h' </dev/null >"$RUNNER_TEMP/cockpit-h.txt" 2>&1 ||
+            { cat "$RUNNER_TEMP/cockpit-h.txt"; exit 1; }
+          sed -n '1,3p' "$RUNNER_TEMP/cockpit-h.txt"
+          grep -qx "$home/.local/bin/cockpit" "$RUNNER_TEMP/cockpit-h.txt"
+          grep -q '^Usage: cockpit' "$RUNNER_TEMP/cockpit-h.txt"
+          echo "install-smoke: ok (fresh HOME, bash -lc 'cockpit -h' rc 0)"
+
+      - name: API health (ephemeral loopback port, own PID)
+        shell: bash
+        run: ./scripts/health-smoke.sh app/dist-server/index.js | tee "$RUNNER_TEMP/health.txt"
+
+      - name: Committed tree unchanged (tracked files)
+        shell: bash
+        run: |
+          changed="$(git status --porcelain --untracked-files=no)"
+          if [[ -n "$changed" ]]; then
+            printf '%s\n' "$changed"
+            echo "::error::this job modified tracked files of the checkout"
+            exit 1
+          fi
+          echo "tree: tracked files unchanged at $(git rev-parse --short HEAD)"
+
+      - name: Job summary
+        shell: bash
+        run: |
+          {
+            echo "### portability (${{ matrix.os }})"
+            echo '| key | value |'
+            echo '|---|---|'
+            echo "| os | $(uname -s) $(uname -m) |"
+            echo "| bash (runner) | ${BASH_VERSION} |"
+            echo "| versions | $(./scripts/check-versions.sh | head -n 1) |"
+            echo "| exec bits | $(./scripts/check-exec-bits.sh) |"
+            echo "| health | $(cat "$RUNNER_TEMP/health.txt") |"
+            echo "| log | portability-${{ matrix.os }}.log |"
+          } >>"$GITHUB_STEP_SUMMARY"
+
+      - name: Upload portability log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: portability-${{ matrix.os }}
+          path: portability-${{ matrix.os }}.log
+
+  # Tauri desktop build on every OS leg; required (no allowed-to-fail path, a
+  # timeout fails the leg). Integrity asserts run on the native bundle.
+  desktop:
+    needs: versions
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-14, macos-15-intel]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-node-pnpm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      # rust-cache keys on job id + OS + arch, not the runner image: the
+      # desktop jobs on ubuntu-latest and ubuntu-22.04 would cross-restore.
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: app/src-tauri -> target
+          key: ci-${{ matrix.os }}
+
+      - name: Install Linux deps (Tauri)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf
+
+      - name: Install app deps
+        working-directory: app
+        run: pnpm install --frozen-lockfile
+
+      - name: Tauri build
+        working-directory: app
+        env:
+          BUNDLES: ${{ runner.os == 'Linux' && 'deb,appimage' || 'app,dmg' }}
+        run: |
+          # Hosted macOS runners intermittently fail hdiutil inside Tauri's
+          # bundle_dmg.sh (desktop (macos-15-intel), run 36339154565, after a
+          # clean compile). macOS gets up to 3 attempts of the same command: the
+          # compile is fresh after the first, so a retry re-bundles only; each
+          # attempt must succeed on its own and a third failure fails the leg.
+          # Retries are --verbose so a real bundler error is in the log.
+          attempts=1
+          [[ "$RUNNER_OS" == macOS ]] && attempts=3
+          for attempt in $(seq 1 "$attempts"); do
+            verbose=()
+            ((attempt > 1)) && verbose=(--verbose)
+            if pnpm tauri build ${verbose[@]+"${verbose[@]}"} --bundles "$BUNDLES" -- --locked; then
+              exit 0
+            fi
+            echo "::warning::tauri build attempt ${attempt}/${attempts} failed on ${RUNNER_OS}"
+            sleep 15
+          done
+          exit 1
+
+      - name: Bundle integrity
+        run: ./scripts/check-desktop-bundle.sh --collect "$RUNNER_TEMP/desktop" | tee "$RUNNER_TEMP/desktop.txt"
+
+      - name: Upload desktop bundle (inspection only, 3 days)
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-${{ matrix.os }}
+          path: ${{ runner.temp }}/desktop/*
+          if-no-files-found: error
+          retention-days: 3
+
+      - name: Committed tree unchanged (tracked files)
+        run: |
+          changed="$(git status --porcelain --untracked-files=no)"
+          if [[ -n "$changed" ]]; then
+            printf '%s\n' "$changed"
+            echo "::error::this job modified tracked files of the checkout"
+            exit 1
+          fi
+          echo "tree: tracked files unchanged at $(git rev-parse --short HEAD)"
+
+      - name: Job summary
+        run: |
+          {
+            echo "### desktop (${{ matrix.os }})"
+            echo '| key | value |'
+            echo '|---|---|'
+            echo "| os | $(uname -s) $(uname -m) |"
+            echo "| bash | ${BASH_VERSION} |"
+            echo "| versions | $(./scripts/check-versions.sh | head -n 1) |"
+            grep -E '^desktop-bundle: (asset|dpkg-deb|AppImage|codesign -dv: Signature|lipo|test -x|CFBundle)' "$RUNNER_TEMP/desktop.txt" |
+              sed -e 's/^desktop-bundle: //' -e 's/|/\\|/g' -e 's/^/| check | /' -e 's/$/ |/'
+          } >>"$GITHUB_STEP_SUMMARY"

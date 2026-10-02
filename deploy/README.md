@@ -2,41 +2,36 @@
 
 Install root: **`/opt/cockpit`** — separate from Saul `/root/.grok` and `saul-go`.
 
-## Grok-build subscription lane (gospel recipe)
+## Canonical install (single script)
 
 ```bash
-./deploy/hostinger-grok-build-install.sh
+./scripts/install-hostinger.sh
 ```
 
-Curl one-liner (same recipe via gospel path name):
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/Dezocode/cockpit/v2.2.1/deploy/hostinger-grok-build-install.sh | sudo bash
-# or
-curl -fsSL https://raw.githubusercontent.com/Dezocode/cockpit/v2.2.1/scripts/hostinger-grok-build.sh | sudo bash
-```
-
-Envelope: **frontier_subscription** only — DENY local Qwen/sol-v1.7.1, Funnel OFF, no secrets bake.
-
-## Install without grok auth step
+Tag-pinned curl one-liner (**v2.2.1 tag**: that tag carries the pre-v2.3.0
+script, which also ran the old `install.sh` Hostinger block, so deploy steps
+ran twice; on v2.3.0+ run `./scripts/install-hostinger.sh` from a checkout):
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Dezocode/cockpit/v2.2.1/scripts/install-hostinger.sh | sudo bash
 ```
 
-Or via `install.sh`:
+Deploy semantics in `scripts/install-hostinger.sh`:
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/Dezocode/cockpit/v2.2.1/install.sh | COCKPIT_INSTALL_HOSTINGER=1 COCKPIT_INSTALL_WEB_BUILD=1 sudo bash
-```
+- **rsync:** `-a --delete` (mirror tree under `/opt/cockpit`)
+- **systemd:** `packaging/systemd/cockpit-web.service` → `systemctl restart cockpit-web.service`
+- **nginx:** `packaging/nginx/cockpit.conf`
+
+Envelope: **frontier_subscription** only — DENY local Qwen/sol-v1.7.1, Funnel OFF, no secrets bake.
+
+User-level helpers still come from `./install.sh` (without a Hostinger block — deploy steps run once in the install script above).
 
 ## Packaging on disk
 
 | Path | Purpose |
 |------|---------|
-| `deploy/hostinger-grok-build-install.sh` | grok-build subscription recipe (canonical) |
-| `deploy/cockpit-web.service` | legacy stub → `packaging/systemd/` |
-| `deploy/nginx-cockpit.conf` | legacy stub → `packaging/nginx/` |
+| `scripts/install-hostinger.sh` | canonical Hostinger deploy |
+| `scripts/hostinger-health.sh` | GET `/api/health` probe (`--wait`) |
 | `packaging/systemd/cockpit-web.service` | systemd + heal pre-start |
 | `packaging/nginx/cockpit.conf` | TLS + `/api/health` proxy |
 
@@ -47,7 +42,7 @@ Probe after install:
 ```bash
 curl -s http://127.0.0.1:8787/api/health | jq .
 # or
-./scripts/hostinger-health.sh
+./scripts/hostinger-health.sh --wait 30
 ```
 
 After certbot:
@@ -56,17 +51,18 @@ After certbot:
 curl -sf https://cockpit.example.com/api/health | jq .
 ```
 
-**Green contract** (Hostinger):
+**Green contract** (Hostinger — full API via `app/dist-server/index.js`):
 
 ```json
 {
   "status": "green",
   "product": "cockpit",
   "seed": "cockpit-20260907",
+  "source": "app/dist-server/index.js",
   "checks": {
     "tui": "ok",
     "fixtures": "ok",
-    "gh_auth": "ok",
+    "api_server": "ok",
     "web_build": "ok",
     "hostinger": "configured"
   }
@@ -74,8 +70,11 @@ curl -sf https://cockpit.example.com/api/health | jq .
 ```
 
 - `status` must be `"green"` for done-line pass
+- `source` must be `"app/dist-server/index.js"` — bootstrap `packaging/health-server.js` is **not** full API PASS
 - `checks.hostinger` is `"configured"` when `COCKPIT_HOSTINGER=1`
-- Implemented in `app/server/index.ts` (`GET /api/health`)
+- `COCKPIT_HOSTINGER=1` is set only by `packaging/systemd/cockpit-web.service`; local and launchd launches report `"local"` ([docs/service-env.md](../docs/service-env.md))
+- Contract: `bench/cockpit/H0-HEALTH-CONTRACT.md`
+- Implemented in `app/server/index.ts` (`GET /api/health`) → compiled `app/dist-server/index.js`
 
 ## Web terminal auth
 

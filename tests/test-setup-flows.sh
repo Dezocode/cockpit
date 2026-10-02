@@ -4,23 +4,21 @@
 set -euo pipefail
 
 repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
-test_root="$(mktemp -d /tmp/cockpit-setup-test.XXXXXX)"
-test_home="$test_root/home"
-fakebin="$test_root/bin"
+# shellcheck source=lib/fixture.sh
+source "$repo_root/tests/lib/fixture.sh"
+# shellcheck source=../bin/cockpit-portable-lib
+source "$repo_root/bin/cockpit-portable-lib"
+fixture_init setup-flows
+test_root="$FIXTURE_TEST_ROOT"
+test_home="$FIXTURE_HOME"
+fakebin="$FIXTURE_FAKEBIN"
 plugin_log="$test_root/plugin-add.log"
-mkdir -p "$test_home/.config/cockpit" "$test_home/.grok" "$fakebin"
+mkdir -p "$test_home/.config/cockpit" "$test_home/.grok"
 
-cleanup() {
-  rm -rf "$test_root"
-}
-trap cleanup EXIT
-
-export HOME="$test_home"
 export COCKPIT_AUTH_HOME="$HOME/.config/cockpit"
 export COCKPIT_SESSION=cockpit-setup-test
 export COCKPIT_AUTH_TIMEOUT=0.2s
 export FAKE_PLUGIN_LOG="$plugin_log"
-export PATH="$fakebin:$repo_root/bin:/usr/bin:/bin"
 unset TMUX TMUX_PANE
 
 cat >"$COCKPIT_AUTH_HOME/providers.conf" <<'EOF'
@@ -65,11 +63,14 @@ case "$*" in
 esac
 EOF
 chmod +x "$fakebin/codex"
-ln -s /bin/true "$fakebin/gh"
-ln -s /bin/true "$fakebin/grok"
+# Stock macOS keeps true/false only under /usr/bin (none in /bin); a dangling
+# symlink would let the real gh/codex on PATH answer the probe instead.
+true_bin="$(type -P true)"
+ln -s "$true_bin" "$fakebin/gh"
+ln -s "$true_bin" "$fakebin/grok"
 
 set +e
-plugin_output="$(printf '1\ny\nx\n\nq\n' | timeout 8s "$repo_root/bin/cockpit-setup" plugins 2>&1)"
+plugin_output="$(printf '1\ny\nx\n\nq\n' | cockpit_timeout 8 "$repo_root/bin/cockpit-setup" plugins 2>&1)"
 plugin_status=$?
 set -e
 [[ "$plugin_status" == 0 ]]
@@ -79,7 +80,7 @@ grep -q 'OAuth ready' <<<"$plugin_output"
 [[ "$(<"$plugin_log")" == 'plugin add demo@local' ]]
 
 set +e
-audit_output="$(printf 'x' | timeout 8s "$repo_root/bin/cockpit-setup" audit 2>&1)"
+audit_output="$(printf 'x' | cockpit_timeout 8 "$repo_root/bin/cockpit-setup" audit 2>&1)"
 audit_status=$?
 set -e
 [[ "$audit_status" == 0 ]]
