@@ -206,6 +206,7 @@ for f in scripts/check-*.sh scripts/verify-release-assets.sh scripts/release-bun
   [[ -f "$f" ]] && port_kill_scope+=("$f")
 done
 rgp "kill by port or process name in tests/CI (fuser, lsof, p-kill, kill-all)" -n -e 'fuser\s+-k' -e 'kill\s+(-9\s+)?\$\(\s*lsof' -e 'lsof\s+-t\s+-i' -e 'p''kill\b' -e 'kill''all\b' "${port_kill_scope[@]}"
+rgp "tests run through bash instead of by their exec bit" -n '(\bbash|"\$bash_bin")\s+(-x\s+)?("\$(t|1)"|"?(\./)?tests/)' "$ci" "$rel"
 rgp "user-controlled github context in run: shell" -n '\$\{\{ *github\.(head_ref|event\.(pull_request|issue|comment|head_commit|review)[^}]*(title|body|ref|label|message|name))' .github/workflows
 lint_scripts=()
 for f in tests/*lint*; do [[ -f "$f" && "$f" != "$self_rel" ]] && lint_scripts+=("$f"); done
@@ -241,6 +242,8 @@ twin "macos-15-intel in ci.yml" -n 'macos-15-intel' "$ci"
 twin "macos-15-intel in release-cockpit2.yml" -n 'macos-15-intel' "$rel"
 twin 'tauri.conf "version": "../package.json"' -n '"version": "\.\./package\.json"' app/src-tauri/tauri.conf.json
 twin "check-exec-bits in ci.yml" -n 'check-exec-bits' "$ci"
+twin 'shell-tests sandbox runs each test by path (./"$1")' -n 'timeout 600 \./"\$1" </dev/null' "$ci"
+twin 'portability runs each test by path (./"$t")' -n 'if ! \./"\$t"; then' "$ci"
 twin "ci.yml desktop builds against the committed Cargo.lock (--locked)" -n 'pnpm tauri build .*--bundles "\$BUNDLES" -- --locked' "$ci"
 twin "release desktop builds against the committed Cargo.lock (--locked)" -n 'pnpm tauri build .*--bundles "\$BUNDLES" -- --locked' "$rel"
 for f in "$ci" "$rel"; do
@@ -394,6 +397,12 @@ mutate tauri-literal-version '^literal tauri.conf version' app/src-tauri/tauri.c
   '"version": "../package.json"' '"version": "2.3.0-dev"'
 mutate godseye-count-dropped '^missing positive twin: exactly 3 godseye PNGs' "$ci" \
   'test "$n" -eq 3' 'test "$n" -ge 1'
+mutate shell-tests-through-bash '^tests run through bash instead of by their exec bit' "$ci" \
+  'timeout 600 ./"$1" </dev/null' 'timeout 600 bash "$1" </dev/null'
+mutate portability-through-bash '^tests run through bash instead of by their exec bit' "$ci" \
+  'if ! ./"$t"; then' 'if ! "$bash_bin" "$t"; then'
+mutate portability-named-test-through-bash '^tests run through bash instead of by their exec bit' "$ci" \
+  '          ./tests/test-launchd.sh' '          "$bash_bin" tests/test-launchd.sh'
 mutate head-ref-in-shell '^user-controlled github context' "$ci" \
   'run: ./scripts/check-versions.sh | tee' 'run: echo "${{ github.head_ref }}" && ./scripts/check-versions.sh | tee'
 
