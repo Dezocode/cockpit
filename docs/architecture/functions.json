@@ -1,8 +1,8 @@
 {
   "generator": "generate-arch-docs.sh",
   "generator_version": "1.0.0",
-  "source_commit": "7a099ef0c382e24011d0db3c6fe4b08d40570549",
-  "generated_at": "2026-10-02T21:47:47Z",
+  "source_commit": "e01792f797b5ba5d10ad0481352a199175786620",
+  "generated_at": "2026-10-02T22:59:55Z",
   "repo": "cockpit",
   "functions": [
     {
@@ -3618,13 +3618,13 @@
       "file": "bin/cockpit-notify",
       "line": 323,
       "signature": "cn_emit() {",
-      "calls": ["cn_field", "ok", "run"],
+      "calls": ["cn_field", "cn_redact", "cn_sha256", "ok", "one", "run", "sha", "sha256"],
       "tags": ["entrypoint"]
     },
     {
       "name": "cn_run_check",
       "file": "bin/cockpit-notify",
-      "line": 345,
+      "line": 352,
       "signature": "cn_run_check() {",
       "calls": ["cn_botapi_configured", "cn_desktop_available", "cn_hermes_present", "cn_ntfy_configured", "cn_telegram_getme"],
       "tags": ["entrypoint", "process-spawn", "validation"]
@@ -3632,7 +3632,7 @@
     {
       "name": "cn_deliver_local",
       "file": "bin/cockpit-notify",
-      "line": 366,
+      "line": 373,
       "signature": "cn_deliver_local() {",
       "calls": ["cn_emit", "cn_priority_num", "cn_receipt_json", "cn_write_receipt", "ok", "run"],
       "tags": ["entrypoint"]
@@ -3640,7 +3640,7 @@
     {
       "name": "try_telegram",
       "file": "bin/cockpit-notify",
-      "line": 381,
+      "line": 388,
       "signature": "try_telegram() {",
       "calls": ["cn_botapi_configured", "cn_hermes_present", "cn_sink_botapi", "cn_sink_hermes", "fail", "ok"],
       "tags": ["entrypoint"]
@@ -3648,7 +3648,7 @@
     {
       "name": "try_ntfy",
       "file": "bin/cockpit-notify",
-      "line": 396,
+      "line": 403,
       "signature": "try_ntfy() {",
       "calls": ["cn_ntfy_configured", "cn_sink_ntfy", "fail", "ok"],
       "tags": ["entrypoint"]
@@ -3656,7 +3656,7 @@
     {
       "name": "try_desktop",
       "file": "bin/cockpit-notify",
-      "line": 404,
+      "line": 411,
       "signature": "try_desktop() {",
       "calls": ["cn_desktop_available", "cn_emit", "cn_ntfy_configured", "cn_receipt_json", "cn_remote_configured", "cn_sink_desktop", "cn_telegram_configured", "cn_trim", "cn_write_receipt", "fail", "need", "ok", "try_ntfy", "try_telegram"],
       "tags": ["entrypoint"]
@@ -3664,7 +3664,7 @@
     {
       "name": "cn_post_api",
       "file": "bin/cockpit-notify",
-      "line": 479,
+      "line": 486,
       "signature": "cn_post_api() {",
       "calls": ["check", "cn_cfg_quote", "cn_curl", "cn_emit", "cn_json_str", "cn_note_err", "header"],
       "tags": ["entrypoint"]
@@ -3672,7 +3672,7 @@
     {
       "name": "cn_main",
       "file": "bin/cockpit-notify",
-      "line": 513,
+      "line": 520,
       "signature": "cn_main() {",
       "calls": ["bad", "check", "cn_clean", "cn_deliver_local", "cn_die_usage", "cn_emit", "cn_find_dedupe", "cn_load_notify_env", "cn_maybe_keys_reexec", "cn_post_api", "cn_read_conf", "cn_remote_configured", "cn_run_check", "cn_trim", "cn_usage", "cn_uuid", "run"],
       "tags": ["entrypoint"]
@@ -4688,7 +4688,7 @@
     {
       "name": "refuse",
       "file": "packaging/systemd/cockpit-web-heal.sh",
-      "line": 32,
+      "line": 34,
       "signature": "refuse() { printf 'heal: REFUSE %s\\n' \"$1\" >&2; }",
       "calls": [],
       "tags": ["entrypoint", "process-spawn"]
@@ -4696,7 +4696,7 @@
     {
       "name": "printable",
       "file": "packaging/systemd/cockpit-web-heal.sh",
-      "line": 35,
+      "line": 37,
       "signature": "printable() {",
       "calls": ["gone", "read_argv"],
       "tags": ["entrypoint", "process-spawn"]
@@ -4704,7 +4704,7 @@
     {
       "name": "read_argv",
       "file": "packaging/systemd/cockpit-web-heal.sh",
-      "line": 42,
+      "line": 44,
       "signature": "read_argv() {",
       "calls": [],
       "tags": ["entrypoint", "user-input", "process-spawn"]
@@ -4712,7 +4712,7 @@
     {
       "name": "proc_cwd",
       "file": "packaging/systemd/cockpit-web-heal.sh",
-      "line": 55,
+      "line": 57,
       "signature": "proc_cwd() {",
       "calls": ["under_root"],
       "tags": ["entrypoint", "process-spawn"]
@@ -4720,7 +4720,7 @@
     {
       "name": "under_root",
       "file": "packaging/systemd/cockpit-web-heal.sh",
-      "line": 68,
+      "line": 70,
       "signature": "under_root() {",
       "calls": ["proc_cwd"],
       "tags": ["entrypoint", "privileged", "process-spawn"]
@@ -4728,7 +4728,7 @@
     {
       "name": "is_ours",
       "file": "packaging/systemd/cockpit-web-heal.sh",
-      "line": 80,
+      "line": 82,
       "signature": "is_ours() {",
       "calls": ["under_root"],
       "tags": ["entrypoint", "process-spawn"]
@@ -4736,7 +4736,7 @@
     {
       "name": "gone",
       "file": "packaging/systemd/cockpit-web-heal.sh",
-      "line": 97,
+      "line": 99,
       "signature": "gone() {",
       "calls": ["scan_port"],
       "tags": ["entrypoint", "process-spawn"]
@@ -4744,7 +4744,7 @@
     {
       "name": "scan_port",
       "file": "packaging/systemd/cockpit-web-heal.sh",
-      "line": 108,
+      "line": 110,
       "signature": "scan_port() {",
       "calls": ["accepts", "err", "gone", "has", "is_ours", "printable", "read_argv", "stop_ours"],
       "tags": ["entrypoint", "process-spawn"]
@@ -4752,7 +4752,7 @@
     {
       "name": "stop_ours",
       "file": "packaging/systemd/cockpit-web-heal.sh",
-      "line": 175,
+      "line": 177,
       "signature": "stop_ours() {",
       "calls": ["gone", "is_ours", "ok", "printable", "read_argv", "refuse", "scan_port"],
       "tags": ["entrypoint", "process-spawn"]
@@ -5282,13 +5282,21 @@
       "file": "tests/test-heal-port.sh",
       "line": 149,
       "signature": "run_heal() {",
-      "calls": ["accepts", "alive", "check", "clean", "dead", "drop", "finding", "flush", "free_port", "gone", "has", "lacks", "mk_root", "must_absent", "mutant", "ok", "pass", "probe", "rc_is", "reap", "refuse", "refuses", "run", "select", "spawn", "spawn_node", "start", "wait_file"],
+      "calls": ["fail", "mutant"],
       "tags": ["entrypoint", "process-spawn"]
     },
     {
+      "name": "deny_one",
+      "file": "tests/test-heal-port.sh",
+      "line": 161,
+      "signature": "deny_one() {",
+      "calls": ["accepts", "alive", "bad", "check", "clean", "dead", "drop", "fail", "finding", "flush", "free_port", "gone", "has", "lacks", "mk_root", "must_absent", "mutant", "ok", "pass", "probe", "rc_is", "reap", "refuse", "refuses", "run", "run_heal", "select", "spawn", "spawn_node", "start", "wait_file"],
+      "tags": ["entrypoint"]
+    },
+    {
       "name": "flush",
       "file": "tests/test-heal-port.sh",
-      "line": 604,
+      "line": 647,
       "signature": "flush()",
       "calls": [],
       "tags": ["entrypoint"]
@@ -5296,7 +5304,7 @@
     {
       "name": "flush",
       "file": "tests/test-heal-port.sh",
-      "line": 607,
+      "line": 650,
       "signature": "flush()",
       "calls": [],
       "tags": ["entrypoint"]
@@ -5304,7 +5312,7 @@
     {
       "name": "flush",
       "file": "tests/test-heal-port.sh",
-      "line": 610,
+      "line": 653,
       "signature": "flush()",
       "calls": [],
       "tags": ["entrypoint"]
@@ -5312,7 +5320,7 @@
     {
       "name": "flush",
       "file": "tests/test-heal-port.sh",
-      "line": 613,
+      "line": 656,
       "signature": "flush()",
       "calls": [],
       "tags": ["entrypoint"]
@@ -5320,7 +5328,7 @@
     {
       "name": "flush",
       "file": "tests/test-heal-port.sh",
-      "line": 619,
+      "line": 662,
       "signature": "flush()",
       "calls": ["clean", "mutant", "ok", "one", "probe", "run", "scan", "start", "usage"],
       "tags": ["entrypoint"]
@@ -5328,7 +5336,7 @@
     {
       "name": "probe",
       "file": "tests/test-heal-port.sh",
-      "line": 957,
+      "line": 1000,
       "signature": "probe() {",
       "calls": ["bad", "check", "clean", "finding", "has", "mutant", "ok", "rc_is"],
       "tags": ["entrypoint"]
