@@ -244,14 +244,25 @@ cockpit_auth_ensure_config 2>/dev/null || true
 if [[ -t 0 && -t 1 && -z "${COCKPIT_SKIP_GH_AUTH:-}" ]]; then
   cockpit_auth_signed_in github 2>/dev/null || cockpit_auth_ensure github || true
 fi
-runtime_id=codex
+runtime_id=""
 state_file="$(cockpit_config_read_path state)"
 if [[ -f "$state_file" ]]; then
   runtime_id="$(awk -F= '/^runtime=/{print $2}' "$state_file" | tail -1)"
 fi
-[[ -n "$runtime_id" ]] || runtime_id=codex
+# Optional Laya routing (cockpit route --launch, or COCKPIT_TASK for scripted
+# launches). Only a real Laya answer changes the runtime; absent/off/down/timeout
+# leave the launch exactly as it was.
+if [[ -n "${COCKPIT_ROUTE_RUNTIME:-}" ]]; then
+  runtime_id="$COCKPIT_ROUTE_RUNTIME"
+elif [[ -n "${COCKPIT_TASK:-}" && -z "${COCKPIT_ROUTE_APPLIED:-}" ]]; then
+  cockpit_route_run "$COCKPIT_TASK"
+  if [[ "$COCKPIT_ROUTE_LAYA" == ok ]]; then
+    runtime_id="$COCKPIT_ROUTE_TOOL"
+  fi
+fi
+[[ -n "$runtime_id" ]] || runtime_id="$(cockpit_route_default)"
 if [[ -n "${authlib:-}" ]] && ! cockpit_auth_check "$runtime_id" 2>/dev/null; then
-  runtime_id=codex
+  runtime_id="$(cockpit_route_default)"
 fi
 runtime_cmd="$(cockpit_auth_field "$runtime_id" start 2>/dev/null || true)"
 if [[ -n "$runtime_cmd" ]]; then

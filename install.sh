@@ -148,6 +148,24 @@ fi
 if [[ ! -f "$config_home/notify.conf" ]]; then
   install -m 0644 "$root/stage/notify/notify.conf" "$config_home/notify.conf"
 fi
+# Every other bundled Cockpit-native plugin (plugins/<dir>/plugin.conf, its
+# entrypoint and README) goes where `cockpit plugin` looks for installed plugins.
+# Optional plugins' own config is seeded by the plugin on first use, not here.
+shopt -s nullglob
+for bundled_manifest in "$root"/plugins/*/plugin.conf; do
+  bundled_dir="${bundled_manifest%/plugin.conf}"
+  bundled_name="${bundled_dir##*/}"
+  [[ "$bundled_name" == cockpit-cpr ]] && continue # installed explicitly above
+  bundled_entry="$(awk -F= '$1 == "entrypoint" { print $2; exit }' "$bundled_manifest")"
+  [[ -n "$bundled_entry" && "$bundled_entry" != */* && -f "$bundled_dir/$bundled_entry" ]] || continue
+  mkdir -p "$config_home/plugins/$bundled_name"
+  install -m 0644 "$bundled_manifest" "$config_home/plugins/$bundled_name/plugin.conf"
+  if [[ -f "$bundled_dir/README.md" ]]; then
+    install -m 0644 "$bundled_dir/README.md" "$config_home/plugins/$bundled_name/README.md"
+  fi
+  install -m 0755 "$bundled_dir/$bundled_entry" "$config_home/plugins/$bundled_name/$bundled_entry"
+done
+shopt -u nullglob
 if compgen -G "$root/stage/auth/providers.d/*.conf" >/dev/null; then
   for provider_template in "$root/stage/auth/providers.d/"*.conf; do
     provider_file="$config_home/providers.d/${provider_template##*/}"

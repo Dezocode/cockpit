@@ -47,6 +47,8 @@ Commands:
   vimdiff               open the on-demand Vim diff view
   restart               relaunch the active Agent in place
   notify                send an outbound notification (Telegram, ntfy, desktop)
+  laya                  optional local Laya router sidecar
+  route                 decide tier/tool via Laya (no-op when absent)
 EOF
     ;;
   config)
@@ -119,6 +121,14 @@ EOF
   notify)
     shift
     exec "$script_root/cockpit-notify" "$@"
+    ;;
+  laya)
+    shift
+    exec "$script_root/cockpit-laya" "$@"
+    ;;
+  route)
+    shift
+    exec "$script_root/cockpit-route" "$@"
     ;;
   *)
     exec "$script_root/cockpit-main" "$@"

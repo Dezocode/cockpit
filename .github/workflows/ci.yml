@@ -1,5 +1,8 @@
 name: CI
 
+env:
+  COCKPIT_LAYA: "0"
+
 on:
   push:
     branches: [main, cockpit-gtm-v2.3]
