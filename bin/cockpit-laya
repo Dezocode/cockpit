@@ -246,6 +246,73 @@ except OSError:
   [[ "$code" == 000 || -z "$code" ]] || printf 'exposed\n'
 }
 
+# Listen lines for the recorded pid. Linux: ss. macOS: lsof. Nothing else.
+# A printed URL is not a bind. Empty when the tool is missing or the pid has
+# no TCP listener (caller refuses; that is not a connection-refused failure).
+laya_listen_lines() {
+  local pid=$1
+  case "$(uname -s)" in
+    Darwin)
+      command -v lsof >/dev/null 2>&1 || return 0
+      lsof -nP -a -p "$pid" -iTCP -sTCP:LISTEN 2>/dev/null || true
+      ;;
+    Linux)
+      command -v ss >/dev/null 2>&1 || return 0
+      ss -H -n -ltp 2>/dev/null | grep -E "pid=${pid}[,)]" || true
+      ;;
+  esac
+}
+
+# Local address of one ss or lsof listen line, without the port.
+laya_listen_host() {
+  local line=$1 token
+  if [[ "$line" == *"(LISTEN)"* ]]; then
+    token="${line%% (LISTEN)*}"
+    token="${token##* }"
+  else
+    read -r _ _ _ token _ <<<"$line"
+  fi
+  if [[ "$token" == \[* ]]; then
+    token="${token#\[}"
+    token="${token%%\]*}"
+  else
+    token="${token%%:*}"
+  fi
+  printf '%s\n' "$token"
+}
+
+# After laya-serve answers: the recorded pid must be listening on 127.0.0.1 or
+# ::1 only. Prints each matching listen line. Stops our own pid and refuses
+# otherwise. Does not kill by port.
+laya_assert_loopback_listen() {
+  local pid=$1 port=$2 line token host seen=0
+  while IFS= read -r line; do
+    [[ -n "$line" ]] || continue
+    [[ "$line" == COMMAND* ]] && continue
+    if [[ "$line" == *"(LISTEN)"* ]]; then
+      token="${line%% (LISTEN)*}"
+      token="${token##* }"
+    else
+      read -r _ _ _ token _ <<<"$line"
+    fi
+    [[ "$token" == *":${port}" ]] || continue
+    seen=1
+    printf 'laya: listen %s\n' "$line"
+    host="$(laya_listen_host "$line")"
+    case "$host" in
+      127.0.0.1|::1) ;;
+      *)
+        laya_stop_cmd >/dev/null
+        laya_die "non-loopback-listen: ${line}"
+        ;;
+    esac
+  done < <(laya_listen_lines "$pid")
+  if ((seen == 0)); then
+    laya_stop_cmd >/dev/null
+    laya_die "non-loopback-listen: no listen line for pid ${pid} port ${port}"
+  fi
+}
+
 laya_stop_cmd() {
   local pid i
   if pid="$(laya_running_pid)"; then
@@ -308,6 +375,9 @@ laya_start_cmd() {
     fi
     sleep 0.5
   done
+  # Probe success is not a bind proof. Read this pid's listen line and refuse
+  # anything other than 127.0.0.1 or ::1.
+  laya_assert_loopback_listen "$pid" "$port"
   laya_conf_set enabled 1
   printf 'laya: serving 127.0.0.1:%s device=%s version=%s\n' "$port" "$device" "$(laya_version)"
 }

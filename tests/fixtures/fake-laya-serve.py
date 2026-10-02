@@ -10,7 +10,8 @@ LAYA_API_KEY; there is no default port, so every test owns an ephemeral one.
 
 Test hooks (env): FAKE_LAYA_RECORD_DIR (writes host.txt, argv.txt, laya-env.txt, env-key.txt,
 body.json, auth-ok.txt), FAKE_LAYA_SLEEP_MS / ?delay_ms= (slow answers),
-FAKE_LAYA_MODE=malformed|http500, FAKE_LAYA_FORCE_TOOL, FAKE_LAYA_QUIET=1.
+FAKE_LAYA_MODE=malformed|http500, FAKE_LAYA_FORCE_TOOL, FAKE_LAYA_QUIET=1,
+FAKE_LAYA_BIND (mutation: bind this address even when LAYA_HOST is loopback).
 """
 from __future__ import annotations
 
@@ -22,7 +23,7 @@ import socketserver
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.parse import parse_qs, urlparse
 
-HOST = os.environ.get("LAYA_HOST", "0.0.0.0")  # same default as upstream, so a missing LAYA_HOST is visible
+HOST = os.environ.get("FAKE_LAYA_BIND") or os.environ.get("LAYA_HOST", "0.0.0.0")  # FAKE_LAYA_BIND is the wild-bind mutation; upstream default stays 0.0.0.0
 PORT = int(os.environ["LAYA_PORT"])
 API_KEY = os.environ.get("LAYA_API_KEY") or None
 RECORD_DIR = os.environ.get("FAKE_LAYA_RECORD_DIR", "")
