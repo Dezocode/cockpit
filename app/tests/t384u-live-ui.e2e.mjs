@@ -197,7 +197,8 @@ async function main() {
   const errors = [];
   page.on("pageerror", (err) => errors.push(err.message));
 
-  await page.goto(`http://${HOST}:${uiPort}/splash?screenshot=login`, { waitUntil: "networkidle" });
+  // networkidle is not reliable with SPA long-lived connections; load + explicit selector is the gate.
+  await page.goto(`http://${HOST}:${uiPort}/splash?screenshot=login`, { waitUntil: "load" });
   await page.getByRole("heading", { name: "cockpit" }).waitFor();
   const healthChip = page.getByRole("button", { name: health.status, exact: true });
   await healthChip.waitFor();
@@ -208,7 +209,7 @@ async function main() {
     page.getByRole("heading", { name: "cockpit" }),
   );
 
-  await page.goto(`http://${HOST}:${uiPort}/workspace`, { waitUntil: "networkidle" });
+  await page.goto(`http://${HOST}:${uiPort}/workspace`, { waitUntil: "load" });
   const agentsHeading = page.getByText(agentLabel, { exact: true });
   await agentsHeading.waitFor({ timeout: 20000 });
   await shotAndAssert(
