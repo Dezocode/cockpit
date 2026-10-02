@@ -7,7 +7,10 @@
     "esModuleInterop": true,
     "skipLibCheck": true,
     "outDir": "dist-server",
-    "rootDir": "server"
+    "rootDir": "server",
+    "allowJs": true
   },
-  "include": ["server/**/*"]
+  "include": [
+    "server/**/*"
+  ]
 }

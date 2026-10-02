@@ -19,7 +19,7 @@ Audit harness for parallel TUI + GUI upgrade without Surface/dezohost regression
 
 ```bash
 ./bench/cockpit/capability-matrix.sh
-./bench/cockpit/doctor.sh
+./bin/cockpit-doctor
 ./bin/cockpit-audit
 ```
 

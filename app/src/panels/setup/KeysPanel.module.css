@@ -1,0 +1,128 @@
+.root {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-family: var(--cockpit-font-mono, ui-monospace, monospace);
+  font-size: 12px;
+  color: var(--cockpit-text);
+}
+
+.fieldset {
+  border: 1px solid var(--cockpit-chrome, #22d3ee);
+  border-radius: 2px;
+  padding: 8px 10px 10px;
+  margin: 0;
+}
+
+.legend {
+  padding: 0 6px;
+  color: var(--cockpit-chrome, #22d3ee);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+}
+
+.banner {
+  color: var(--cockpit-muted, #94a3b8);
+  margin: 0 0 8px;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 8px;
+  align-items: center;
+  min-height: 44px;
+  padding: 4px 0;
+  border-top: 1px solid color-mix(in srgb, var(--cockpit-chrome, #22d3ee) 25%, transparent);
+}
+
+.meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.title {
+  color: var(--cockpit-text);
+  font-weight: 600;
+}
+
+.unlocks {
+  color: var(--cockpit-muted, #94a3b8);
+  font-size: 11px;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 64px;
+  min-height: 28px;
+  padding: 0 8px;
+  border: 1px solid var(--cockpit-chrome, #22d3ee);
+  color: var(--cockpit-chrome, #22d3ee);
+  background: transparent;
+}
+
+.chipMuted {
+  border-color: var(--cockpit-muted, #64748b);
+  color: var(--cockpit-muted, #64748b);
+}
+
+.chipFail {
+  border-color: var(--cockpit-accent, #e879f9);
+  color: var(--cockpit-accent, #e879f9);
+}
+
+.actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.btn {
+  min-height: 44px;
+  min-width: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--cockpit-chrome, #22d3ee);
+  background: transparent;
+  color: var(--cockpit-text);
+  cursor: pointer;
+  font: inherit;
+}
+
+.btn:focus-visible,
+.input:focus-visible {
+  outline: 2px solid var(--cockpit-accent, #e879f9);
+  outline-offset: 2px;
+}
+
+.btnPrimary {
+  border-color: var(--cockpit-accent, #e879f9);
+  color: var(--cockpit-accent, #e879f9);
+}
+
+.input {
+  min-height: 44px;
+  min-width: 160px;
+  padding: 0 10px;
+  border: 1px solid var(--cockpit-chrome, #22d3ee);
+  background: transparent;
+  color: var(--cockpit-text);
+  font: inherit;
+}
+
+.hostingerNote {
+  color: var(--cockpit-muted, #94a3b8);
+  margin: 8px 0 0;
+  font-size: 11px;
+}
+
+.error {
+  color: var(--cockpit-accent, #e879f9);
+  margin: 0;
+}
+
+.hidden {
+  display: none;
+}
