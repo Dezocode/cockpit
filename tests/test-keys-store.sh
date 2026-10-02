@@ -14,9 +14,9 @@ FAKE='sk-test-NOT-A-REAL-KEY-0000'
 printf '%s' "$FAKE" | cockpit keys set openai
 store="$XDG_CONFIG_HOME/cockpit/keys.env"
 [ -f "$store" ] || { echo "keys: FAIL (no store)"; exit 1; }
-perm=$(stat -c '%a' "$store" 2>/dev/null || stat -f '%OLp' "$store")
+perm=$(python3 -c 'import os,stat,sys; print(oct(os.stat(sys.argv[1]).st_mode)[-3:])' "$store")
 [ "$perm" = "600" ] || { echo "keys: FAIL (file perms $perm)"; exit 1; }
-dperm=$(stat -c '%a' "$(dirname "$store")" 2>/dev/null || stat -f '%OLp' "$(dirname "$store")")
+dperm=$(python3 -c 'import os,stat,sys; print(oct(os.stat(sys.argv[1]).st_mode)[-3:])' "$(dirname "$store")")
 [ "$dperm" = "700" ] || { echo "keys: FAIL (dir perms $dperm)"; exit 1; }
 
 # no-keychain-writes: shim security/secret-tool

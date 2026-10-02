@@ -61,8 +61,8 @@ export const KEY_SETUP_KEYS = Object.freeze([
   Object.freeze({
     id: 'ntfy',
     title: 'NTFY',
-    unlocks: 'ntfy.sh notify topics',
-    getUrl: 'https://ntfy.sh',
+    unlocks: 'push notify topics',
+    getUrl: 'https://github.com/Dezocode/cockpit/blob/main/docs/notify.md',
     envVars: Object.freeze(['COCKPIT_NTFY_TOPIC']),
     providers: Object.freeze([]),
     tier: 'free',

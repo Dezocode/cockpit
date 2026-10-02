@@ -17,7 +17,7 @@ tracked=$(git ls-files | rg '(^|/)(\.env(\..*)?|keys\.env|keys\.conf)$' | rg -v 
 [ -n "$tracked" ] && hit "tracked env/key files: $tracked"
 rg -n 'security add-generic-password[^|\n]*-w ' bin && hit "keychain secret on argv" || true
 rg -n 'set-environment -g[^\n]*(API_KEY|TOKEN|TOPIC)' bin && hit "keys in tmux global env" || true
-rg -n 'sha256sum|shasum' scripts bin | rg -v '^(scripts/get-cockpit\.sh|bin/cockpit-portable-lib|bin/cockpit-lib):' | rg -v 'test-onboarding' && hit "unsanctioned sha256" || true
+rg -n -e 'sha256''sum' -e 'shasum' scripts bin | rg -v '^(scripts/get-cockpit\.sh|bin/cockpit-portable-lib|bin/cockpit-lib):' | rg -v 'test-onboarding' && hit "unsanctioned sha256" || true
 rg -nP 'sk-[A-Za-z0-9]{20,}|xai-[A-Za-z0-9]{20,}|\d{8,10}:[A-Za-z0-9_-]{35}' -g '!tests/**' -g '!app/tests/**' . && hit "key-shaped strings" || true
 
 test -e pinokio.js -o -e install.js -o -e start.js -o -e update.js && hit "root-level Pinokio scripts"
@@ -29,11 +29,17 @@ rg -n "/api/doctor\b" app/src app/server && hit "old /api/doctor route" || true
 rg -n 'security add-generic-password|security -i\b|security delete-generic-password' bin app scripts pinokio && hit "Keychain writes" || true
 rg -n 'secret-tool store|secret-tool clear' bin app scripts && hit "Secret Service writes" || true
 rg -n 'find-generic-password[^\n]*\s-w\b' bin app scripts && hit "Keychain value reads" || true
-if test -e bin/cockpit-keys && ! rg -q 'node .*app/server/gev/' bin/cockpit-keys; then hit "cockpit-keys not shim"; fi
-if test -e bin/cockpit-doctor && ! rg -q 'node .*app/server/gev/doctor\.mjs' bin/cockpit-doctor; then hit "cockpit-doctor not shim"; fi
+if test -e bin/cockpit-keys && ! rg -q 'app/server/gev/keysCli' bin/cockpit-keys; then hit "cockpit-keys not shim"; fi
+if test -e bin/cockpit-doctor && ! rg -q 'app/server/gev/doctor\.mjs' bin/cockpit-doctor; then hit "cockpit-doctor not shim"; fi
 rg -n "execFile\([^)]*cockpit-keys" app/server && hit "server→CLI shell-out" || true
 if [[ -f third_party/gods-eye-view/PORTMAP.tsv ]]; then
-  missing=$(awk -F'\t' 'NR>1 && $5!="TRIVIAL" {print $4}' third_party/gods-eye-view/PORTMAP.tsv | xargs -r rg --files-without-match 'Ported from bilawalsidhu/gods-eye-view@b210ab0' || true)
+  missing=""
+  while IFS=$'\t' read -r _ _ _ path kind _; do
+    [[ "$kind" == "TRIVIAL" || -z "$path" ]] && continue
+    if ! rg -q 'Ported from bilawalsidhu/gods-eye-view@b210ab0' "$path" 2>/dev/null; then
+      missing="${missing:+$missing }$path"
+    fi
+  done < <(awk -F'\t' 'NR>1 {print}' third_party/gods-eye-view/PORTMAP.tsv)
   [ -n "$missing" ] && hit "ported file missing provenance: $missing"
 fi
 rg -n 'npm ci' scripts/pinokio-*.mjs | rg -v 'Ported from|get-cockpit' && hit "unadapted npm ci" || true

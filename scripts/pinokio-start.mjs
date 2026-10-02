@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Ported from bilawalsidhu/gods-eye-view@b210ab0fe4d71c7faa0268134e0aa5f3c53fc7fe scripts/pinokio-start.mjs — MIT © 2026 Bilawal Sidhu. Modified for Cockpit: Spawn dist-server with loopback + LOCAL_TRUST + SERVE_UI; Ready URL regex unchanged..
+// Ported from bilawalsidhu/gods-eye-view@b210ab0fe4d71c7faa0268134e0aa5f3c53fc7fe scripts/pinokio-start.mjs — MIT © 2026 Bilawal Sidhu. Modified for Cockpit: Spawn dist-server with loopback + SERVE_UI; LOCAL_TRUST set by pinokio/start.js env; Ready URL regex unchanged..
 
 import { realpathSync, existsSync } from 'node:fs';
 import { spawn } from 'node:child_process';
@@ -27,7 +27,6 @@ async function start() {
   process.env.COCKPIT_LAUNCHER = 'pinokio';
   process.env.COCKPIT_WEB_HOST = '127.0.0.1';
   process.env.COCKPIT_WEB_PORT = String(port);
-  process.env.COCKPIT_LOCAL_TRUST = '1';
   process.env.COCKPIT_SERVE_UI = '1';
   console.log('[Pinokio] Local-only launch.');
 

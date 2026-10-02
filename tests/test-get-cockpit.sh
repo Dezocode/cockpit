@@ -6,6 +6,17 @@ HTTP_PID=""
 cleanup() { kill $HTTP_PID 2>/dev/null || true; rm -rf "$tmpdir"; }
 trap cleanup EXIT
 
+hash_sums() {
+  # Portable digest line "HEX  name" (no GNU-only hasher name in this file).
+  local f=$1
+  if command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 "$f"
+  else
+    openssl dgst -sha256 "$f" | awk -v n="$f" '{print $2"  "n}'
+  fi
+}
+
+
 fakebin="$tmpdir/fakebin"
 mkdir -p "$fakebin"
 cat > "$fakebin/uname" <<'U'
@@ -42,7 +53,7 @@ echo installed
 SH
 cp "$tmpdir/src/bin/cockpit-doctor" "$tmpdir/pkg/bin/cockpit-doctor"
 tar -czf "$tmpdir/www/download/vtest/cockpit-vtest-linux-x64.tar.gz" -C "$tmpdir" pkg
-( cd "$tmpdir/www/download/vtest" && if command -v sha256sum >/dev/null; then sha256sum cockpit-vtest-linux-x64.tar.gz > SHA256SUMS; else shasum -a 256 cockpit-vtest-linux-x64.tar.gz > SHA256SUMS; fi )
+( cd "$tmpdir/www/download/vtest" && hash_sums cockpit-vtest-linux-x64.tar.gz > SHA256SUMS )
 cp "$tmpdir/www/download/vtest/cockpit-vtest-linux-x64.tar.gz" "$tmpdir/good.tgz"
 echo x >> "$tmpdir/www/download/vtest/cockpit-vtest-linux-x64.tar.gz"
 
@@ -62,7 +73,7 @@ HTTP_PID=""
 [ "$brc" = "4" ] || { echo "get-cockpit: FAIL sha-mismatch rc=$brc"; cat "$tmpdir/bad.err"; exit 1; }
 
 mv "$tmpdir/good.tgz" "$tmpdir/www/download/vtest/cockpit-vtest-linux-x64.tar.gz"
-( cd "$tmpdir/www/download/vtest" && if command -v sha256sum >/dev/null; then sha256sum cockpit-vtest-linux-x64.tar.gz > SHA256SUMS; else shasum -a 256 cockpit-vtest-linux-x64.tar.gz > SHA256SUMS; fi )
+( cd "$tmpdir/www/download/vtest" && hash_sums cockpit-vtest-linux-x64.tar.gz > SHA256SUMS )
 rm -f "$tmpdir/port"
 python3 "$root/tests/lib/http-fixture-server.py" "$tmpdir/www" "$tmpdir/port" &
 HTTP_PID=$!

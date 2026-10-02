@@ -9,6 +9,7 @@ module.exports = {
         path: '..',
         env: {
           HOST: '127.0.0.1',
+          COCKPIT_LOCAL_TRUST: '1',
           PORT: '{{port}}',
           OPENAI_API_KEY: '{{env.OPENAI_API_KEY || ""}}',
           ANTHROPIC_API_KEY: '{{env.ANTHROPIC_API_KEY || ""}}',
