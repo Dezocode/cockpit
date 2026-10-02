@@ -231,7 +231,11 @@ mut_rc=$?
 set -e
 [[ "$mut_rc" != 0 ]] || laya_fail "loopback-bind-mutation: 0.0.0.0 stub was accepted: $mut_out"
 [[ "$mut_out" == *"non-loopback-listen:"* ]] || laya_fail "loopback-bind-mutation: missing label: $mut_out"
-[[ "$mut_out" == *"0.0.0.0:${mut_port}"* ]] || laya_fail "loopback-bind-mutation: listen line did not show the wild bind: $mut_out"
+# Linux ss prints 0.0.0.0:port. macOS lsof prints "TCP *:port (LISTEN)" for the same wild bind.
+wild=0
+[[ "$mut_out" == *"0.0.0.0:${mut_port}"* ]] && wild=1
+[[ "$mut_out" == *'TCP *:'"${mut_port}"* ]] && wild=1
+[[ "$wild" == 1 ]] || laya_fail "loopback-bind-mutation: listen line did not show the wild bind: $mut_out"
 if [[ "$mut_out" == *"no answer from"* || "$mut_out" == *"exited during start"* ]]; then
   laya_fail "loopback-bind-mutation: looked like connection-refused: $mut_out"
 fi
