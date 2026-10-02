@@ -178,7 +178,13 @@ start_out="$(LAYA_HOST=0.0.0.0 LAYA_API_KEY=not-the-key LAYA_AUTO_TASK=1 LAYA_LO
   COCKPIT_LAYA_START_TIMEOUT_S=15 bash "$laya" start 2>&1)" || laya_fail "loopback-bind: start failed: $start_out"
 [[ "$(cat "$serve_rec/host.txt")" == 127.0.0.1 ]] || laya_fail "loopback-bind: served LAYA_HOST=$(cat "$serve_rec/host.txt")"
 [[ "$(cat "$serve_rec/listening.txt")" == "127.0.0.1:$serve_port" ]] || laya_fail "loopback-bind: listening $(cat "$serve_rec/listening.txt")"
-[[ "$start_out" == "laya: serving 127.0.0.1:$serve_port device=cpu version=0.3.99" ]] || laya_fail "loopback-bind: start said '$start_out'"
+serving_line="laya: serving 127.0.0.1:$serve_port device=cpu version=0.3.99"
+[[ "$start_out" == *"$serving_line"* ]] || laya_fail "loopback-bind: start said '$start_out'"
+listen_line="$(printf '%s\n' "$start_out" | grep -F 'laya: listen ' || true)"
+[[ -n "$listen_line" ]] || laya_fail "loopback-bind: listen line not printed: $start_out"
+[[ "$listen_line" == *"127.0.0.1:${serve_port}"* ]] || laya_fail "loopback-bind: listen line not 127.0.0.1: $listen_line"
+serve_pid="$(cat "$HOME/.local/state/cockpit/laya/laya-serve.pid")"
+[[ "$listen_line" == *"pid=${serve_pid}"* || "$listen_line" == *" ${serve_pid} "* ]] || laya_fail "loopback-bind: listen line is not recorded pid ${serve_pid}: $listen_line"
 if grep -q "$key" "$serve_rec/argv.txt"; then laya_fail "loopback-bind: key on laya-serve argv"; fi
 # config-is-data: the launcher sets exactly the LAYA_* vars upstream documents.
 [[ "$(cat "$serve_rec/laya-env.txt")" == 'LAYA_API_KEY LAYA_DEVICE LAYA_HOST LAYA_MODELS LAYA_PORT LAYA_PRELOAD LAYA_THREADS' ]] ||
@@ -206,4 +212,34 @@ rm -f "$HOME/.local/state/cockpit/laya/laya-serve.pid"
 out="$(bash "$route" --json 'rename x')"
 [[ "$out" == *'"laya":"down"'* ]] || laya_fail "loopback-bind: after stop $out"
 
-printf 'laya-router: ok (absent, off, stub-routed, down, timeout, low-confidence, tiers-map, receipt-no-text, loopback-bind)\n'
+# A missing listen line is not the wild-bind label.
+grep -q 'listen-line-missing:' "$laya" || laya_fail "loopback-bind: listen-line-missing label absent"
+if grep -q 'non-loopback-listen: no listen line' "$laya"; then
+  laya_fail "loopback-bind: missing line still labeled non-loopback-listen"
+fi
+
+# --- loopback-bind-mutation: stub binds 0.0.0.0 and must fail on its own label ---
+mut_rec="$FIXTURE_TEST_ROOT/rec-wild"
+mkdir -p "$mut_rec"
+mut_port="$(laya_pick_port)"
+laya_write_conf 0 "$mut_port" 2000
+set +e
+mut_out="$(LAYA_HOST=0.0.0.0 LAYA_API_KEY=not-the-key \
+  FAKE_LAYA_BIND=0.0.0.0 FAKE_LAYA_RECORD_DIR="$mut_rec" FAKE_LAYA_QUIET=1 \
+  COCKPIT_LAYA_START_TIMEOUT_S=15 bash "$laya" start 2>&1)"
+mut_rc=$?
+set -e
+[[ "$mut_rc" != 0 ]] || laya_fail "loopback-bind-mutation: 0.0.0.0 stub was accepted: $mut_out"
+[[ "$mut_out" == *"non-loopback-listen:"* ]] || laya_fail "loopback-bind-mutation: missing label: $mut_out"
+# Linux ss prints 0.0.0.0:port. macOS lsof prints "TCP *:port (LISTEN)" for the same wild bind.
+wild=0
+[[ "$mut_out" == *"0.0.0.0:${mut_port}"* ]] && wild=1
+[[ "$mut_out" == *'TCP *:'"${mut_port}"* ]] && wild=1
+[[ "$wild" == 1 ]] || laya_fail "loopback-bind-mutation: listen line did not show the wild bind: $mut_out"
+if [[ "$mut_out" == *"no answer from"* || "$mut_out" == *"exited during start"* ]]; then
+  laya_fail "loopback-bind-mutation: looked like connection-refused: $mut_out"
+fi
+[[ ! -f "$HOME/.local/state/cockpit/laya/laya-serve.pid" ]] || laya_fail "loopback-bind-mutation: pidfile left behind"
+printf 'laya: listen-check mutation label non-loopback-listen (not connection-refused)\n'
+
+printf 'laya-router: ok (absent, off, stub-routed, down, timeout, low-confidence, tiers-map, receipt-no-text, loopback-bind, loopback-bind-mutation)\n'
