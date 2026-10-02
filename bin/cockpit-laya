@@ -246,15 +246,27 @@ except OSError:
   [[ "$code" == 000 || -z "$code" ]] || printf 'exposed\n'
 }
 
+# lsof is /usr/sbin/lsof on macOS. The test sandbox PATH is /usr/bin:/bin
+# plus Homebrew, so command -v misses it. Never kill by port.
+laya_lsof() {
+  if command -v lsof >/dev/null 2>&1; then
+    command lsof "$@"
+  elif [[ -x /usr/sbin/lsof ]]; then
+    /usr/sbin/lsof "$@"
+  else
+    return 127
+  fi
+}
+
 # Listen lines for the recorded pid. Linux: ss. macOS: lsof. Nothing else.
-# A printed URL is not a bind. Empty when the tool is missing or the pid has
-# no TCP listener (caller refuses; that is not a connection-refused failure).
+# A printed URL is not a bind. Empty when the tool is missing or that pid
+# has no TCP listener on this port.
 laya_listen_lines() {
-  local pid=$1
+  local pid=$1 port=$2
   case "$(uname -s)" in
     Darwin)
-      command -v lsof >/dev/null 2>&1 || return 0
-      lsof -nP -a -p "$pid" -iTCP -sTCP:LISTEN 2>/dev/null || true
+      # Same shape as the launchd check: pid AND this port AND LISTEN.
+      laya_lsof -nP -a -p "$pid" -iTCP:"$port" -sTCP:LISTEN 2>/dev/null || true
       ;;
     Linux)
       command -v ss >/dev/null 2>&1 || return 0
@@ -306,10 +318,12 @@ laya_assert_loopback_listen() {
         laya_die "non-loopback-listen: ${line}"
         ;;
     esac
-  done < <(laya_listen_lines "$pid")
+  done < <(laya_listen_lines "$pid" "$port")
   if ((seen == 0)); then
+    # No line is not a non-loopback bind. non-loopback-listen is only for a
+    # line whose host is neither 127.0.0.1 nor ::1.
     laya_stop_cmd >/dev/null
-    laya_die "non-loopback-listen: no listen line for pid ${pid} port ${port}"
+    laya_die "listen-line-missing: no listen line for pid ${pid} port ${port}"
   fi
 }
 

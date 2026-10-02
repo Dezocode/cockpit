@@ -212,6 +212,12 @@ rm -f "$HOME/.local/state/cockpit/laya/laya-serve.pid"
 out="$(bash "$route" --json 'rename x')"
 [[ "$out" == *'"laya":"down"'* ]] || laya_fail "loopback-bind: after stop $out"
 
+# A missing listen line is not the wild-bind label.
+grep -q 'listen-line-missing:' "$laya" || laya_fail "loopback-bind: listen-line-missing label absent"
+if grep -q 'non-loopback-listen: no listen line' "$laya"; then
+  laya_fail "loopback-bind: missing line still labeled non-loopback-listen"
+fi
+
 # --- loopback-bind-mutation: stub binds 0.0.0.0 and must fail on its own label ---
 mut_rec="$FIXTURE_TEST_ROOT/rec-wild"
 mkdir -p "$mut_rec"
