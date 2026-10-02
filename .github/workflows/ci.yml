@@ -96,7 +96,7 @@ jobs:
           node_bin="$(command -v node)"
           sandbox() {
             env -i PATH=/usr/bin:/bin HOME="$(mktemp -d)" TMUX_TMPDIR="$(mktemp -d)" TERM=xterm \
-              COCKPIT_TEST_NODE="$node_bin" timeout 600 bash "$1" </dev/null
+              COCKPIT_TEST_NODE="$node_bin" timeout 600 ./"$1" </dev/null
           }
           for s in "${skip[@]}"; do
             [[ -f "tests/$s.sh" ]] || { echo "stale skip entry: $s"; exit 1; }
@@ -251,19 +251,19 @@ jobs:
           shellcheck -x -S warning install.sh bin/cockpit-portable-lib bin/cockpit-lib bin/cockpit-agent-lib \
             bin/cockpit-mermaid-watch bin/cockpit-wake bin/cockpit-idle bin/cockpit-adapt bin/cockpit-profile \
             bin/cockpit-reload-views bin/cockpit-plugin
-          COCKPIT_REQUIRE_WATCH_BACKEND=1 "$bash_bin" tests/test-portable-lib.sh
-          "$bash_bin" tests/test-portability-lint.sh
-          "$bash_bin" tests/test-install-shells.sh
-          "$bash_bin" tests/test-launchd.sh
+          COCKPIT_REQUIRE_WATCH_BACKEND=1 ./tests/test-portable-lib.sh
+          ./tests/test-portability-lint.sh
+          ./tests/test-install-shells.sh
+          ./tests/test-launchd.sh
           failed=()
           for t in tests/test-*.sh; do
             case "$t" in
               tests/test-portable-lib.sh|tests/test-portability-lint.sh|tests/test-install-shells.sh|tests/test-launchd.sh) continue ;;
             esac
-            if ! "$bash_bin" "$t"; then
+            if ! ./"$t"; then
               failed+=("$t")
               echo "::error::$t failed on ${{ matrix.os }}; xtrace tail follows"
-              "$bash_bin" -x "$t" >"xtrace-$(basename "$t" .sh).log" 2>&1 || true
+              env SHELLOPTS=xtrace ./"$t" >"xtrace-$(basename "$t" .sh).log" 2>&1 || true
               tail -n 60 "xtrace-$(basename "$t" .sh).log"
             fi
           done
