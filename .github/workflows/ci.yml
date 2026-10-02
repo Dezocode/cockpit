@@ -183,6 +183,26 @@ jobs:
           path: ${{ runner.temp }}/godseye-screens/*.png
           if-no-files-found: error
 
+      # t384u: the live SPA (dist-server + vite preview), not a box screenshot.
+      # The e2e re-reads each PNG and fails a flat crop. The images are the
+      # t384u-live-screens artifact on this pull request run.
+      - name: t384u live UI visual assertion
+        working-directory: app
+        env:
+          T384U_SHOT_DIR: ${{ runner.temp }}/t384u-live-screens
+        run: |
+          mkdir -p "$T384U_SHOT_DIR"
+          pnpm exec playwright install --with-deps chromium
+          node tests/t384u-live-ui.e2e.mjs
+
+      - name: Upload t384u live UI screenshots (artifact t384u-live-screens)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: t384u-live-screens
+          path: ${{ runner.temp }}/t384u-live-screens/*.png
+          if-no-files-found: error
+
       - name: Canonical Hostinger install script
         run: |
           test -x scripts/install-hostinger.sh
