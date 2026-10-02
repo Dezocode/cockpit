@@ -33,6 +33,9 @@ export function KeysPanel() {
     try {
       const res = await fetch("/api/setup/status", { credentials: "same-origin" });
       if (!res.ok) {
+        // Drain the body. An unread 401 leaves the browser request open, and
+        // Playwright's networkidle (t384u /workspace) never arrives.
+        await res.text().catch(() => {});
         setUnavailable(true);
         setStatus(null);
         return;
