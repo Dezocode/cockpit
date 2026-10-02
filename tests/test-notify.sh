@@ -51,7 +51,7 @@ hits() { [[ -f "$1" ]] && grep -c "$2" "$1" || echo 0; }
 
 # ---------------------------------------------------------------- cli-contract
 out="$(COCKPIT_NOTIFY_DRY_RUN=1 cockpit notify "Cockpit v2.3.0 GTM done")" || fail cli-contract "rc=$?"
-[[ "$out" =~ ^notify:\ delivered=dry-run\ sinks=dry-run:ok\ id=[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]] ||
+[[ "$out" =~ ^notify:\ delivered=dry-run\ sinks=dry-run:ok\ id=[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\ message_sha256=[0-9a-f]{64}\ message=Cockpit\ v2\.3\.0\ GTM\ done$ ]] ||
   fail cli-contract "$out"
 [[ "$(tail -1 "$state_file")" == *"\"message_sha256\":\"$(sha 'Cockpit v2.3.0 GTM done')\""* ]] || fail cli-contract-sha
 cockpit notify --dry-run --json multi   word "join" >/dev/null

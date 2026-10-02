@@ -12,15 +12,17 @@ COCKPIT_INSTALL_ROOT="${COCKPIT_INSTALL_ROOT:-/opt/cockpit}"
 APP="$COCKPIT_INSTALL_ROOT/app"
 PORT="${COCKPIT_WEB_PORT:-8787}"
 
+# Fail-closed before any existence check. A forbidden root is DENY even when
+# the directory is absent, so deleting these two globs is observable.
+# Globs: /root/.grok* and */saul-go*.
+case "$COCKPIT_INSTALL_ROOT" in
+  /root/.grok*|*/saul-go*) echo "heal: DENY install root $COCKPIT_INSTALL_ROOT"; exit 1 ;;
+esac
+
 [[ -d "$COCKPIT_INSTALL_ROOT" ]] || { echo "heal: missing $COCKPIT_INSTALL_ROOT"; exit 1; }
 [[ -f "$APP/dist-server/index.js" ]] || { echo "heal: missing dist-server — run install-hostinger.sh"; exit 1; }
 [[ -f "$APP/dist/index.html" ]] || { echo "heal: missing web dist"; exit 1; }
 command -v node >/dev/null 2>&1 || { echo "heal: node not found"; exit 1; }
-
-# Fail-closed: refuse Saul/grok local runtime paths as install root
-case "$COCKPIT_INSTALL_ROOT" in
-  /root/.grok*|*/saul-go*) echo "heal: DENY install root $COCKPIT_INSTALL_ROOT"; exit 1 ;;
-esac
 
 if ! [[ "$PORT" =~ ^[0-9]{1,5}$ ]] || ((10#$PORT < 1 || 10#$PORT > 65535)); then
   printf 'heal: invalid COCKPIT_WEB_PORT %q\n' "$PORT" >&2

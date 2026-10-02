@@ -155,6 +155,49 @@ run_heal() {
   printf '%s\n' "$out" | sed 's/^/     | /'
 }
 
+# --- install-root deny (/root/.grok* and */saul-go*) -----------------------
+# heal-deny-install-root fails when those two globs are removed from the heal
+# script. The mutant below deletes that arm and the same assertion must fail.
+deny_one() {
+  local root=$1
+  run_heal "$root" 9
+  [[ "$rc" -eq 1 ]] && has "heal: DENY install root $root"
+}
+echo "== heal-deny-install-root"
+for root in /root/.grok /root/.grok/agents "$tmp/saul-go" "$tmp/nested/saul-go-work"; do
+  check "heal-deny-install-root $root" deny_one "$root"
+done
+run_heal "$tmp/missing-root" 9
+check "missing root is not a deny" eval "rc_is 1 && has \"heal: missing $tmp/missing-root\" && lacks DENY"
+
+python3 - "$heal" "$tmp/mutant-no-deny.sh" <<'PY'
+import sys
+src = open(sys.argv[1], encoding="utf-8").read()
+kept = []
+removed = 0
+for line in src.splitlines(True):
+    if line.lstrip().startswith("#"):
+        kept.append(line)
+        continue
+    if "/root/.grok*" in line and "*/saul-go*" in line:
+        removed += 1
+        continue
+    kept.append(line)
+if removed != 1:
+    sys.exit("heal-deny mutant: expected to remove 1 deny arm, removed %d" % removed)
+open(sys.argv[2], "w", encoding="utf-8").write("".join(kept))
+PY
+for root in /root/.grok "$tmp/saul-go"; do
+  rc=0
+  out="$(env PATH="$(dirname "$node_bin"):$PATH" COCKPIT_INSTALL_ROOT="$root" COCKPIT_WEB_PORT=9 \
+    bash "$tmp/mutant-no-deny.sh" 2>&1 </dev/null)" || rc=$?
+  if [[ "$rc" -eq 1 ]] && has "heal: DENY install root $root"; then
+    bad "mutant-removed-deny still refused $root (heal-deny-install-root would not fail)" "$out"
+  else
+    ok "mutant-removed-deny: heal-deny-install-root fails for $root (rc=$rc)"
+  fi
+done
+
 # --- free port -------------------------------------------------------------
 root="$tmp/a/root"
 mk_root "$root"
