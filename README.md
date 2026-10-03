@@ -1,26 +1,20 @@
 # Cockpit
 
-Voice: PENDING owner ear (a local read is not CLEAR). Tree these drafts describe: `cockpit-gtm-v2.3` @ `94b035ae768d8c9d2ad49f30ab6d493853855d66`. Nothing has been tagged `2.3.0`.
+Status: PARTIAL. Voice CLEAR is an open residual. Owner Dezocode is away. A local read is not CLEAR. GIFs are an open residual. This pack does not add GIFs.
 
-Cockpit is still the tmux session named `cockpit`. You attach it when Codex, Grok, Claude, or `cursor-agent` is the one typing, and a second launch joins that same session instead of starting a ghost. Version 2.3 does not throw that away. It puts a Tauri and React window next to it, and that window is not what you get if you clone the default branch.
+Cockpit is still the tmux session named `cockpit`. You attach it when Codex, Grok, Claude, or `cursor-agent` is the one typing, and a second launch joins that same session instead of starting a ghost. Version 2.3 keeps that session and puts a Tauri and React window next to it. The default checkout is `main`.
 
-`main`, commit `968ad49`, has none of the staging layout, none of the globe, and no `cockpit notify`. `app/package.json` on that commit still says `2.1.0`. The newest tag, `v2.2.2`, sits on that same history. The work in this note is branch `cockpit-gtm-v2.3` at `94b035a`, merged on 29 Sep 2026 at 4:24pm CT. Both manifests there say `2.3.0-dev`. Nothing has been tagged `2.3.0`.
+`main`, when this pack was written, is `0e7e9d62d546bf969c433c469d74361fc77c382b`, message `docs: regenerate architecture docs [skip ci]`. That commit is architecture docs on merge `0f8e56cdde8d1ee77e2d91ffa8e9c01ae3b58e5b` of pull request #40. The merge parents are `de29184552925a347edd6ae5fe4d78e83dc671b4` and `5af4f9706fda93acf074f0413a06344b1cfa40fa` (C6-next, God's Eye View onboarding). `app/package.json` and `app/src-tauri/Cargo.toml` on that tip both say `2.3.0`.
 
-Open the web UI and the page is a dock. The left palette has four chips, named AGENTS, COMPUTERS, FILES, and GODSEYE. Double-click GODSEYE, or drag it onto the canvas, and the panel title reads GOD'S EYE.
+Lightweight tag `v2.3.0` is `7a099ef0c382e24011d0db3c6fe4b08d40570549`. Do not move it. The release page is <https://github.com/Dezocode/cockpit/releases/tag/v2.3.0>. Assets published from that tag are `cockpit-2.3.0-linux-x64.tar.gz`, `cockpit-2.3.0-web.tar.gz`, `cockpit-2.3.0-darwin-arm64.tar.gz`, `cockpit-2.3.0-darwin-x64.tar.gz`, `cockpit_2.3.0_amd64.deb`, `cockpit_2.3.0_amd64.AppImage`, `cockpit_2.3.0_aarch64.dmg`, `cockpit_2.3.0_x64.dmg`, and `SHA256SUMS`. A fresh Hostinger install of that tag was green. `gh_auth` is still pending. That is a C9 residual, not a C8 cell. The notify body `Cockpit v2.3.0 GTM done` was already delivered.
 
-Cesium `1.138.0` stays out of the first paint. `GodsEyePanelEntry` pulls the panel in with `React.lazy`. If the globe throws, you get the computers roster, the same list that already exists as its own panel. The map stack starts on `naturalearth`, which is Natural Earth II bundled with Cesium. The source table sets `hasCesiumIonToken` to false, so the panel never asks for an ion token and the build does not bake a map key in. Points come from `GET /api/computers`. A computer whose timezone has a centroid is placed. One that does not stays in the unplaced list, instead of being given a made-up lat and lon. Switch the stack and you can use OSM or Esri imagery. Both of those use the keyless terrain, and Esri drops back to OSM when its tiles fail.
+C6 is ahead of the published tag. `5af4f9706fda93acf074f0413a06344b1cfa40fa` and merge `0f8e56cdde8d1ee77e2d91ffa8e9c01ae3b58e5b` are on `main` and are not contained in `v2.3.0`. God's Eye View onboarding (`scripts/get-cockpit.sh`, `bin/cockpit-doctor`, `pinokio/`) lands in that range, at `5aa675c3ba7e415a4cc6e81ac8f00ce5bb9242b3`, so it is not inside the tag. Also ahead of the tag, and not C6: C9-next merge `e01792f797b5ba5d10ad0481352a199175786620` (pull request #41, `b0719b7e58444018b43afb4cd64aef343b9264a5`) and architecture-doc commits `7a87e5eaeef9593329c07919b260b7183ea493ea`, `de29184552925a347edd6ae5fe4d78e83dc671b4`, and `0e7e9d62d546bf969c433c469d74361fc77c382b`.
 
-The API listens on `127.0.0.1:8787` unless you export `COCKPIT_WEB_HOST`. An empty value does not mean every interface. `bin/cockpit-web` sets that default, and `app/server/index.ts` repeats it. On a Mac, file watches use `fswatch` when `inotifywait` is missing, and the web service is a LaunchAgent. The plist writes `127.0.0.1` and does not set `COCKPIT_HOSTINGER`. A local `cockpit-web`, and `scripts/start-dist-server.sh`, leave that variable unset too. The Hostinger systemd unit is the one place that sets `Environment=COCKPIT_HOSTINGER=1`, because that host is supposed to be in Hostinger mode. `./install.sh` on macOS still wants Homebrew bash 4 or newer, plus `tmux` and `fswatch`.
+C5 is Laya and is on `main`. The merge is `e6e4ae2d2f59502d6c60e4b46bbea8f385163be8` (pull request #34). That commit is an ancestor of tag `v2.3.0`, so Laya is inside the tag. C5-next, the loopback listen check, is merge `60e5f3be8ec5c21902e704fa31029b15aa722f68` (pull request #39), also an ancestor of the tag.
 
-The deploy pile is gone. Between `e5c2eb8` and the follow-up at `d642070`, thirty-nine `bin/codex-cockpit*` files were deleted, along with `deploy/hostinger-grok-build-install.sh`, `scripts/hostinger-grok-build.sh`, `deploy/cockpit-web.service`, and `deploy/nginx-cockpit.conf`. What remains for that host is `scripts/install-hostinger.sh`.
+Open the web UI and the page is a dock. The left palette has four chips, named AGENTS, COMPUTERS, FILES, and GODSEYE. Double-click GODSEYE, or drag it onto the canvas, and the panel title reads GOD'S EYE. The API default port is `8787` (`bin/cockpit-web`).
 
-CI on `94b035a` is not an ubuntu-only workflow anymore. Push run `36633161689` and pull request run `36633167175` both went green, including `portability` and `desktop` on `ubuntu-latest`, `macos-14`, and `macos-15-intel`. Those are GitHub's runners. Node in that workflow is 22, pnpm 9. The release workflow, run `36633167366`, built nine assets at version `2.3.0-dev` and `verify-assets` printed `9/9 present`. The names were `cockpit-2.3.0-dev-linux-x64.tar.gz`, `cockpit-2.3.0-dev-web.tar.gz`, `cockpit-2.3.0-dev-darwin-arm64.tar.gz`, `cockpit-2.3.0-dev-darwin-x64.tar.gz`, `cockpit_2.3.0-dev_amd64.deb`, `cockpit_2.3.0-dev_amd64.AppImage`, `cockpit_2.3.0-dev_aarch64.dmg`, `cockpit_2.3.0-dev_x64.dmg`, and `SHA256SUMS`. The `publish` job on that run was skipped. Publishing waits for a push of a `v2.*` tag, and that tag is not there, so those files lived as Actions artifacts of the pull request, not as a Release page.
-
-`cockpit notify` is one program, `bin/cockpit-notify`. The shell command and `POST /api/notify` both run it (the API uses `execFile`, not a shell). With `--sink auto`, Telegram goes first and ntfy second, and a success stops the remote chain so you do not get both. Telegram is `hermes send --to telegram` when Hermes is on `PATH`. If it is not, the sender uses the Bot API with `COCKPIT_TELEGRAM_BOT_TOKEN` and `COCKPIT_TELEGRAM_CHAT_ID`. The token is read from the process environment or from `/etc/cockpit/notify.env` as data. It is not sourced, and curl gets the URL through a config file descriptor, so `ps` shows `/dev/fd/NN` rather than `bot<token>`. ntfy needs `COCKPIT_NTFY_TOPIC` (treat the topic as a secret) and defaults the server to `https://ntfy.sh`. When a GUI session exists, the sender also tries a desktop toast. That is `notify-send` if `DISPLAY`, `WAYLAND_DISPLAY`, or `DBUS_SESSION_BUS_ADDRESS` is set, and `osascript` otherwise, with the message passed as an argument. Headless runs record `desktop:skip:headless`. `--dry-run` writes a receipt and makes no network call.
-
-The browser terminal did not get looser. `/ws/pty` still closes with 4401 until a GitHub OAuth session is configured and the cookie passes the allowlist.
-
-That is what this branch does.
+Demo: [docs/demo-v2.3.md](docs/demo-v2.3.md). Notes: [docs/release-notes-v2.3.0-draft.md](docs/release-notes-v2.3.0-draft.md). Install body: [packaging/release/release-body.md](packaging/release/release-body.md).
 
 tmux workspace for local coding agents (Codex, Grok, Anthropic, Cursor).
 Public repo: **https://github.com/Dezocode/cockpit**. Tokens never go in git.
@@ -50,6 +44,8 @@ Env vars each launcher, plist and unit sets: [docs/service-env.md](docs/service-
 
 ## Onboarding (keyless-first)
 
+This section is C6. It is on `main` and it is not inside tag `v2.3.0`.
+
 Modeled on [God's Eye View](https://github.com/bilawalsidhu/gods-eye-view) distribution (Pinokio + one-command install + in-app POWER UP). Credit: Bilawal Sidhu, MIT code only.
 
 ### Path 1 — Pinokio (one click)
@@ -64,10 +60,10 @@ bash scripts/get-cockpit.sh --from-dir "$PWD"
 cockpit doctor --json
 ```
 
-Linux/macOS release downloads (when a release publishes `SHA256SUMS`):
+`scripts/get-cockpit.sh` is on `main` and is not in tag `v2.3.0`. The published release already has `SHA256SUMS`; this curl reads the script from `main`, not from the tag:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Dezocode/cockpit/cockpit-gtm-v2.3/scripts/get-cockpit.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Dezocode/cockpit/main/scripts/get-cockpit.sh | bash
 ```
 
 ### Paste this into your coding agent
@@ -92,13 +88,15 @@ Tokens live only on the Hostinger host (`/etc/cockpit/notify.env`), never in git
 
 ## Laya-first routing (optional)
 
+C5. On `main`, and an ancestor of tag `v2.3.0` (`e6e4ae2d2f59502d6c60e4b46bbea8f385163be8`).
+
 Local [Laya](https://pypi.org/project/laya/) can pick tier + runtime before launch (`cockpit laya install`, `cockpit laya start`, `cockpit route --launch "task"`). Loopback-only sidecar; routing is off when Laya is absent, disabled, or `COCKPIT_LAYA=0`. Receipts store task SHA-256 only (`~/.local/state/cockpit/route.jsonl`).
 
 The browser terminal (`/ws/pty`) requires GitHub sign-in — no shared tokens.
 Operator setup (OAuth app + allowlist): [docs/terminal-auth.md](docs/terminal-auth.md).
 Until it is configured, the terminal refuses all connections (fail-closed).
 
-Release: [v2.2.2](RELEASE_NOTES_v2.2.2.md) · [v2.2.0 visual multiview](RELEASE_NOTES_v2.2.0.md) · gospel: [t10u visual multiview](bench/cursor/reports/t10u-cockpit-visual-multiview-gospel.md) · matrix: `./bench/cockpit/capability-matrix.sh` · proofs: `proofs/t72u/t384u-live-spa/` · Canon map: `tmp/t847u/README.md`
+Release: [v2.3.0](https://github.com/Dezocode/cockpit/releases/tag/v2.3.0) (`7a099ef`; `main` is ahead) · [v2.2.2](RELEASE_NOTES_v2.2.2.md) · [v2.2.0 visual multiview](RELEASE_NOTES_v2.2.0.md) · gospel: [t10u visual multiview](bench/cursor/reports/t10u-cockpit-visual-multiview-gospel.md) · matrix: `./bench/cockpit/capability-matrix.sh` · proofs: `proofs/t72u/t384u-live-spa/` · Canon map: `tmp/t847u/README.md`
 
 ## New machine (for a human or an agent)
 

@@ -1,4 +1,6 @@
-These are draft notes for a release that has not been tagged: docs/release-notes-v2.3.0-draft.md
+This file is the install body for published tag `v2.3.0` (`7a099ef0c382e24011d0db3c6fe4b08d40570549`). `@VERSION@` is replaced at publish. The release page is https://github.com/Dezocode/cockpit/releases/tag/v2.3.0.
+
+`main` is ahead of that tag. C6 (`5af4f9706fda93acf074f0413a06344b1cfa40fa`, merge `0f8e56cdde8d1ee77e2d91ffa8e9c01ae3b58e5b`) is not inside the tag. Do not move the tag. Voice CLEAR and GIFs are open residuals. A local read is not CLEAR. Notes: docs/release-notes-v2.3.0-draft.md.
 
 ## Install cockpit @VERSION@
 
