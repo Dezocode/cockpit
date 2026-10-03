@@ -49,6 +49,7 @@ plugin_dir() {
   [[ "$id" != */* && "$id" != .* && -n "$id" ]] || return 1
   case "$id" in
     cpr|cockpit.cpr) id=cockpit-cpr ;;
+    laya|cockpit.laya) id=cockpit-laya ;;
   esac
   for root in "$installed_root" "$bundled_root"; do
     candidate="$root/$id"

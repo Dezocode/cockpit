@@ -337,9 +337,16 @@ cn_emit() {
     done
   fi
   [[ "$(cn_field delivered "$1")" == dry-run ]] && kv="dry-run:ok"
-  local extra=""
+  local extra="" sha msg_suffix=""
   [[ "$1" == *'"deduped":true'* ]] && extra=" deduped=true"
-  printf 'notify: delivered=%s sinks=%s id=%s%s\n' "$(cn_field delivered "$1")" "$kv" "$(cn_field id "$1")" "$extra"
+  sha="$(cn_field message_sha256 "$1")"
+  # One-line receipt carries the sha256 of the exact body, and the body itself
+  # when that body is a single line (newlines would break the one-line contract).
+  if [[ -n "$sha" && -n "${cn_message:-}" && "$cn_message" != *$'\n'* && "$(cn_sha256 "$cn_message")" == "$sha" ]]; then
+    msg_suffix=" message=$(cn_redact "$cn_message")"
+  fi
+  printf 'notify: delivered=%s sinks=%s id=%s message_sha256=%s%s%s\n' \
+    "$(cn_field delivered "$1")" "$kv" "$(cn_field id "$1")" "$sha" "$extra" "$msg_suffix"
 }
 
 cn_run_check() {

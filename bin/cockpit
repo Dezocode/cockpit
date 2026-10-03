@@ -47,6 +47,10 @@ Commands:
   vimdiff               open the on-demand Vim diff view
   restart               relaunch the active Agent in place
   notify                send an outbound notification (Telegram, ntfy, desktop)
+  laya                  optional local Laya router sidecar
+  route                 decide tier/tool via Laya (no-op when absent)
+  doctor                setup diagnosis (human / --json / --fix)
+  keys                  list|set|unset|exec provider keys (local store only)
 EOF
     ;;
   config)
@@ -116,9 +120,25 @@ EOF
     shift
     exec "$script_root/cockpit-client" "$@"
     ;;
+  doctor)
+    shift
+    exec "$script_root/cockpit-doctor" "$@"
+    ;;
+  keys)
+    shift
+    exec "$script_root/cockpit-keys" "$@"
+    ;;
   notify)
     shift
     exec "$script_root/cockpit-notify" "$@"
+    ;;
+  laya)
+    shift
+    exec "$script_root/cockpit-laya" "$@"
+    ;;
+  route)
+    shift
+    exec "$script_root/cockpit-route" "$@"
     ;;
   *)
     exec "$script_root/cockpit-main" "$@"

@@ -47,6 +47,39 @@ sudo ./scripts/install-hostinger.sh        # canonical deploy (single script)
 Health probe: `GET /api/health` — see [deploy/README.md](deploy/README.md)
 Env vars each launcher, plist and unit sets: [docs/service-env.md](docs/service-env.md)
 
+
+## Onboarding (keyless-first)
+
+Modeled on [God's Eye View](https://github.com/bilawalsidhu/gods-eye-view) distribution (Pinokio + one-command install + in-app POWER UP). Credit: Bilawal Sidhu, MIT code only.
+
+### Path 1 — Pinokio (one click)
+
+Open this repo in [Pinokio](https://pinokio.computer) ≥ 8.2, click **Install**, then **Start**. Sharing stays forced off.
+
+### Path 2 — One command (terminal)
+
+```bash
+# From a checkout (CI / local):
+bash scripts/get-cockpit.sh --from-dir "$PWD"
+cockpit doctor --json
+```
+
+Linux/macOS release downloads (when a release publishes `SHA256SUMS`):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Dezocode/cockpit/cockpit-gtm-v2.3/scripts/get-cockpit.sh | bash
+```
+
+### Paste this into your coding agent
+
+```
+Set up Cockpit from https://github.com/Dezocode/cockpit. Check prerequisites with `cockpit doctor`, install with `bash scripts/get-cockpit.sh --from-dir .` (or `./install.sh`), and launch the default keyless version (`cockpit` or `cockpit-web`). Keep API keys local; don't ask me to paste them into this chat. Use `cockpit keys set <id>` or the in-app SETUP → KEYS panel (POWER UP) on loopback only.
+```
+
+### Then power it up — in the app, not in a file
+
+Open SETUP → KEYS. Add a provider key; the page only ever shows `set ✓`. On Hostinger, set keys over SSH with `cockpit keys set`.
+
 ## Notifications
 
 Ship-time human ping (Telegram via Hermes or server-side Bot API token, ntfy fallback, desktop toast):
@@ -56,6 +89,10 @@ cockpit notify "Cockpit v2.3.0 GTM done"
 ```
 
 Tokens live only on the Hostinger host (`/etc/cockpit/notify.env`), never in git or the browser bundle. See [docs/notify.md](docs/notify.md).
+
+## Laya-first routing (optional)
+
+Local [Laya](https://pypi.org/project/laya/) can pick tier + runtime before launch (`cockpit laya install`, `cockpit laya start`, `cockpit route --launch "task"`). Loopback-only sidecar; routing is off when Laya is absent, disabled, or `COCKPIT_LAYA=0`. Receipts store task SHA-256 only (`~/.local/state/cockpit/route.jsonl`).
 
 The browser terminal (`/ws/pty`) requires GitHub sign-in — no shared tokens.
 Operator setup (OAuth app + allowlist): [docs/terminal-auth.md](docs/terminal-auth.md).
@@ -69,7 +106,7 @@ Fork or clone **this** repo — not someone else's private files. Then on the
 new computer:
 
 ```bash
-git clone https://github.com/YOUR_USER/cockpit.git
+git clone https://github.com/Dezocode/cockpit.git
 cd cockpit
 ./install.sh
 gh auth login -h github.com -p https -w   # HER GitHub account

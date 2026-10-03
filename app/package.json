@@ -1,7 +1,7 @@
 {
   "name": "cockpit",
   "private": true,
-  "version": "2.3.0-dev",
+  "version": "2.3.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -11,7 +11,7 @@
     "preview": "vite preview",
     "tauri": "tauri",
     "test:matrix": "bash ../bench/cockpit/capability-matrix.sh",
-    "test:doctor": "bash ../bench/cockpit/doctor.sh",
+    "test:doctor": "bash ../bin/cockpit-doctor",
     "test:h0": "bash ../bench/cockpit/hostinger-h0-verify.sh",
     "screenshots": "bash ../bench/cockpit/capture-screenshots.sh"
   },

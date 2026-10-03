@@ -40,6 +40,9 @@ export default defineConfig(() => ({
     hmr: host ? { protocol: "ws", host, port: 1421 } : undefined,
     watch: { ignored: ["**/src-tauri/**"] },
     proxy: apiProxy(),
+    fs: {
+      deny: [".env", ".env.*", "*.crt", "*.pem", "**/.git/**", "**/ENVIRONMENT", "**/keys.env"],
+    },
   },
   preview: {
     port: 1420,

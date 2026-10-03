@@ -1,6 +1,6 @@
 [package]
 name = "cockpit"
-version = "2.3.0-dev"
+version = "2.3.0"
 description = "Cockpit 2 — multi-agent terminal IDE"
 authors = ["Dezocode"]
 edition = "2021"

@@ -26,7 +26,7 @@ Canon draft alignment: `tmp/t847u/README.md`
 | Path | Purpose |
 |------|---------|
 | `packaging/systemd/cockpit-web.service` | systemd unit + heal pre-start |
-| `packaging/systemd/cockpit-web-heal.sh` | artifact/port heal |
+| `packaging/systemd/cockpit-web-heal.sh` | artifact/port heal: stops a listener on `COCKPIT_WEB_PORT` only when it is `cockpit-web` or `node …/app/dist-server/index.js` under the install root; any other holder is named (pid + command line) and the unit does not start (`tests/test-heal-port.sh`) |
 | `packaging/nginx/cockpit.conf` | TLS + `/api/health` proxy |
 | `scripts/install-hostinger.sh` | canonical Hostinger install (single deploy path) |
 | `packaging/health-server.js` | optional GET `/api/health` bootstrap (NOT full API — see H0-HEALTH-CONTRACT.md) |

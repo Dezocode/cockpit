@@ -12,8 +12,10 @@ cockpit notify [--title T] [--sink auto|telegram|ntfy|desktop|all] [--require SI
 
 - MESSAGE words join with single spaces; `-` reads stdin. Control characters except
   newline are stripped. Empty message → exit 2.
-- Stdout is exactly one line `notify: delivered=<sink> sinks=<k:v,…> id=<uuid>`, or one
-  JSON receipt with `--json` (also on failure). Errors go to stderr, redacted, and name the fix.
+- Stdout is exactly one line `notify: delivered=<sink> sinks=<k:v,…> id=<uuid> message_sha256=<hex> message=<text>`, or one
+  JSON receipt with `--json` (also on failure). `message_sha256` is the sha256 of the exact body.
+  `message=` is that body when it is a single line, and is omitted when the body contains a newline.
+  Errors go to stderr, redacted, and name the fix.
 - Exit codes: `0` delivered · `2` usage · `3` nothing delivered or `--require` unmet ·
   `4` API auth refused · `5` rate-limited.
 - `--dry-run` (or `COCKPIT_NOTIFY_DRY_RUN=1`) validates, writes a receipt with

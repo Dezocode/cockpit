@@ -9,6 +9,7 @@ repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 # Resolve node before fixture_init resets PATH: CI passes COCKPIT_TEST_NODE into its
 # env -i sandbox (setup-node lives outside /usr/bin). The API cases need it; no skip.
 node_bin="${COCKPIT_TEST_NODE:-$(command -v node || true)}"
+export COCKPIT_TEST_NODE="$node_bin"
 # shellcheck source=lib/fixture.sh
 source "$repo_root/tests/lib/fixture.sh"
 fixture_init notify
@@ -51,7 +52,7 @@ hits() { [[ -f "$1" ]] && grep -c "$2" "$1" || echo 0; }
 
 # ---------------------------------------------------------------- cli-contract
 out="$(COCKPIT_NOTIFY_DRY_RUN=1 cockpit notify "Cockpit v2.3.0 GTM done")" || fail cli-contract "rc=$?"
-[[ "$out" =~ ^notify:\ delivered=dry-run\ sinks=dry-run:ok\ id=[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]] ||
+[[ "$out" =~ ^notify:\ delivered=dry-run\ sinks=dry-run:ok\ id=[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\ message_sha256=[0-9a-f]{64}\ message=Cockpit\ v2\.3\.0\ GTM\ done$ ]] ||
   fail cli-contract "$out"
 [[ "$(tail -1 "$state_file")" == *"\"message_sha256\":\"$(sha 'Cockpit v2.3.0 GTM done')\""* ]] || fail cli-contract-sha
 cockpit notify --dry-run --json multi   word "join" >/dev/null

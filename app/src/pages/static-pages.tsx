@@ -47,6 +47,7 @@ import { useState } from "react";
 import { ThemeSwitcher } from "../components/ThemeSwitcher";
 import { loadTheme, type CockpitTheme } from "../lib/theme";
 import styles from "../panels/SetupPanel.module.css";
+import { KeysPanel } from "../panels/setup/KeysPanel";
 
 export function SetupPage() {
   const [theme, setTheme] = useState<CockpitTheme>(loadTheme);
@@ -57,6 +58,7 @@ export function SetupPage() {
         Auth, provider, model, git, plugins, audit — TUI SETUP pane intact. Envelope: frontier_subscription.
       </p>
       <ThemeSwitcher value={theme} onChange={setTheme} />
+      <KeysPanel />
       <ul className={styles.list}>
         <li>GitHub device-flow via gh keyring</li>
         <li>PTY web + desktop (tauri-plugin-pty)</li>
@@ -80,7 +82,7 @@ export function BenchPage() {
     <div className="p-3 text-sm">
       <h2 className="mb-2" style={{ color: "var(--cockpit-chrome)" }}>BENCH</h2>
       <p className="text-slate-400">Read-only Proctor surface. Harness under <code>bench/cockpit/</code>.</p>
-      <pre className="mt-2 rounded bg-black/40 p-2 text-xs">pnpm test:matrix{"\n"}pnpm test:doctor</pre>
+      <pre className="mt-2 rounded bg-black/40 p-2 text-xs">pnpm test:matrix{"\n"}cockpit doctor</pre>
     </div>
   );
 }
