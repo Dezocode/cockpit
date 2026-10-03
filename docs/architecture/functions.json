@@ -1,8 +1,8 @@
 {
   "generator": "generate-arch-docs.sh",
   "generator_version": "1.0.0",
-  "source_commit": "e01792f797b5ba5d10ad0481352a199175786620",
-  "generated_at": "2026-10-02T22:59:55Z",
+  "source_commit": "0f8e56cdde8d1ee77e2d91ffa8e9c01ae3b58e5b",
+  "generated_at": "2026-10-03T00:14:57Z",
   "repo": "cockpit",
   "functions": [
     {
@@ -22,9 +22,137 @@
       "tags": ["network"]
     },
     {
+      "name": "pinokioManaged",
+      "file": "app/server/gev/keySetup.ts",
+      "line": 34,
+      "signature": "function pinokioManaged(): boolean {",
+      "calls": [],
+      "tags": ["network"]
+    },
+    {
+      "name": "storeName",
+      "file": "app/server/gev/keySetup.ts",
+      "line": 38,
+      "signature": "function storeName(): string {",
+      "calls": ["pinokioManaged"],
+      "tags": ["network", "persistence"]
+    },
+    {
+      "name": "storePath",
+      "file": "app/server/gev/keySetup.ts",
+      "line": 42,
+      "signature": "function storePath(): string {",
+      "calls": ["pinokioManaged"],
+      "tags": ["network", "persistence"]
+    },
+    {
+      "name": "ensureStoreDir",
+      "file": "app/server/gev/keySetup.ts",
+      "line": 48,
+      "signature": "function ensureStoreDir(filepath: string): void {",
+      "calls": [],
+      "tags": ["network", "persistence"]
+    },
+    {
+      "name": "readStore",
+      "file": "app/server/gev/keySetup.ts",
+      "line": 58,
+      "signature": "function readStore(): string {",
+      "calls": ["err", "pinokioManaged", "storePath"],
+      "tags": ["network", "user-input", "persistence"]
+    },
+    {
+      "name": "storeValues",
+      "file": "app/server/gev/keySetup.ts",
+      "line": 73,
+      "signature": "function storeValues(): Record<string, string> {",
+      "calls": ["readStore"],
+      "tags": ["network", "persistence"]
+    },
+    {
+      "name": "isExternallyManaged",
+      "file": "app/server/gev/keySetup.ts",
+      "line": 81,
+      "signature": "function isExternallyManaged(name: string, inStore: Record<string, string>): boolean {",
+      "calls": ["pinokioManaged"],
+      "tags": ["network", "persistence"]
+    },
+    {
+      "name": "providerStatus",
+      "file": "app/server/gev/keySetup.ts",
+      "line": 90,
+      "signature": "function providerStatus() {",
+      "calls": ["isExternallyManaged", "storeName", "storeValues"],
+      "tags": ["network"]
+    },
+    {
+      "name": "persistStore",
+      "file": "app/server/gev/keySetup.ts",
+      "line": 103,
+      "signature": "function persistStore(text: string): void {",
+      "calls": ["ensureStoreDir", "err", "storePath"],
+      "tags": ["network", "persistence"]
+    },
+    {
+      "name": "peerAddress",
+      "file": "app/server/gev/keySetup.ts",
+      "line": 149,
+      "signature": "function peerAddress(c: Context): string {",
+      "calls": [],
+      "tags": ["network"]
+    },
+    {
+      "name": "proxyHeadersFrom",
+      "file": "app/server/gev/keySetup.ts",
+      "line": 157,
+      "signature": "function proxyHeadersFrom(c: Context): Record<string, string> {",
+      "calls": ["header"],
+      "tags": ["network"]
+    },
+    {
+      "name": "securityHeaders",
+      "file": "app/server/gev/keySetup.ts",
+      "line": 177,
+      "signature": "function securityHeaders(c: Context): void {",
+      "calls": ["header"],
+      "tags": ["network"]
+    },
+    {
+      "name": "localTrustOk",
+      "file": "app/server/gev/keySetup.ts",
+      "line": 184,
+      "signature": "function localTrustOk(c: Context): boolean {",
+      "calls": ["peerAddress"],
+      "tags": ["network"]
+    },
+    {
+      "name": "createKeySetupApp",
+      "file": "app/server/gev/keySetup.ts",
+      "line": 191,
+      "signature": "export function createKeySetupApp(opts: {",
+      "calls": ["terminalGranted"],
+      "tags": ["network"]
+    },
+    {
+      "name": "authorized",
+      "file": "app/server/gev/keySetup.ts",
+      "line": 197,
+      "signature": "function authorized(c: Context): boolean {",
+      "calls": ["localTrustOk", "terminalGranted"],
+      "tags": ["network", "auth"]
+    },
+    {
+      "name": "admit",
+      "file": "app/server/gev/keySetup.ts",
+      "line": 203,
+      "signature": "function admit(c: Context, method: string) {",
+      "calls": ["authorized", "err", "header", "isExternallyManaged", "ok", "peerAddress", "persistStore", "post", "providerStatus", "proxyHeadersFrom", "readStore", "securityHeaders", "storeName", "storeValues"],
+      "tags": ["network"]
+    },
+    {
       "name": "readJson",
       "file": "app/server/index.ts",
-      "line": 18,
+      "line": 20,
       "signature": "function readJson<T>(name: string, fallback: T): T {",
       "calls": [],
       "tags": ["network", "user-input"]
@@ -32,7 +160,7 @@
     {
       "name": "ghAuthStatus",
       "file": "app/server/index.ts",
-      "line": 24,
+      "line": 26,
       "signature": "function ghAuthStatus(): { authenticated: boolean; user?: string; host: string } {",
       "calls": [],
       "tags": ["network", "auth"]
@@ -40,15 +168,15 @@
     {
       "name": "healthCheck",
       "file": "app/server/index.ts",
-      "line": 37,
+      "line": 39,
       "signature": "function healthCheck() {",
-      "calls": ["fail", "ghAuthStatus", "label", "launch", "ok", "post", "readJson", "start", "trim"],
+      "calls": ["admit", "body", "createKeySetupApp", "fail", "ghAuthStatus", "label", "launch", "ok", "post", "readJson", "readSessionCookie", "start", "terminalGranted", "trim"],
       "tags": ["network", "validation"]
     },
     {
       "name": "b64url",
       "file": "app/server/index.ts",
-      "line": 177,
+      "line": 183,
       "signature": "function b64url(buf: Buffer): string {",
       "calls": [],
       "tags": ["network"]
@@ -56,7 +184,7 @@
     {
       "name": "signSession",
       "file": "app/server/index.ts",
-      "line": 180,
+      "line": 186,
       "signature": "function signSession(payload: string): string {",
       "calls": ["b64url", "sha256", "update"],
       "tags": ["network"]
@@ -64,7 +192,7 @@
     {
       "name": "verifySession",
       "file": "app/server/index.ts",
-      "line": 185,
+      "line": 191,
       "signature": "function verifySession(token: string): TerminalSession | null {",
       "calls": ["expect", "sha256", "update"],
       "tags": ["network", "auth", "validation"]
@@ -72,7 +200,7 @@
     {
       "name": "signState",
       "file": "app/server/index.ts",
-      "line": 198,
+      "line": 204,
       "signature": "function signState(ts: number): string {",
       "calls": ["sha256", "update"],
       "tags": ["network", "persistence"]
@@ -80,7 +208,7 @@
     {
       "name": "verifyState",
       "file": "app/server/index.ts",
-      "line": 203,
+      "line": 209,
       "signature": "function verifyState(token: string, maxAgeMs = 600_000): boolean {",
       "calls": ["expect", "sha256", "update"],
       "tags": ["network", "auth", "persistence", "validation"]
@@ -88,7 +216,7 @@
     {
       "name": "terminalGranted",
       "file": "app/server/index.ts",
-      "line": 211,
+      "line": 217,
       "signature": "function terminalGranted(sess: TerminalSession): boolean {",
       "calls": ["has"],
       "tags": ["network"]
@@ -96,7 +224,7 @@
     {
       "name": "readSessionCookie",
       "file": "app/server/index.ts",
-      "line": 215,
+      "line": 221,
       "signature": "function readSessionCookie(c: { req: { header: (n: string) => string | undefined } }): TerminalSession | null {",
       "calls": ["header", "verifySession"],
       "tags": ["network", "user-input"]
@@ -104,15 +232,15 @@
     {
       "name": "registerDevice",
       "file": "app/server/index.ts",
-      "line": 220,
+      "line": 226,
       "signature": "function registerDevice(did: string, user: string, ua: string): void {",
-      "calls": ["bad", "header", "ok", "post", "readSessionCookie", "signSession", "signState", "start", "terminalGranted", "verifyState"],
+      "calls": ["bad", "body", "header", "ok", "post", "readSessionCookie", "signSession", "signState", "start", "terminalGranted", "verifyState"],
       "tags": ["network"]
     },
     {
       "name": "sha256",
       "file": "app/server/index.ts",
-      "line": 287,
+      "line": 293,
       "signature": "function sha256(v: string): Buffer {",
       "calls": ["update"],
       "tags": ["network"]
@@ -120,7 +248,7 @@
     {
       "name": "notifyPrincipal",
       "file": "app/server/index.ts",
-      "line": 291,
+      "line": 297,
       "signature": "function notifyPrincipal(c: Context): string | null {",
       "calls": ["header", "readSessionCookie", "sha256", "terminalGranted"],
       "tags": ["network"]
@@ -128,7 +256,7 @@
     {
       "name": "notifyTake",
       "file": "app/server/index.ts",
-      "line": 307,
+      "line": 313,
       "signature": "function notifyTake(principal: string): boolean {",
       "calls": [],
       "tags": ["network"]
@@ -136,7 +264,7 @@
     {
       "name": "runNotify",
       "file": "app/server/index.ts",
-      "line": 318,
+      "line": 324,
       "signature": "function runNotify(args: string[]): Promise<{ code: number; stdout: string }> {",
       "calls": ["err"],
       "tags": ["network", "user-input", "process-spawn"]
@@ -144,25 +272,25 @@
     {
       "name": "lastJson",
       "file": "app/server/index.ts",
-      "line": 332,
+      "line": 338,
       "signature": "function lastJson(stdout: string): Record<string, unknown> | null {",
-      "calls": ["check", "notifyPrincipal", "notifyTake", "post", "runNotify", "trim"],
+      "calls": ["body", "check", "notifyPrincipal", "notifyTake", "post", "runNotify", "trim"],
       "tags": ["network"]
     },
     {
       "name": "str",
       "file": "app/server/index.ts",
-      "line": 364,
+      "line": 370,
       "signature": "const str = (k: string): string | undefined => (typeof body[k] === \"string\" ? (body[k] as string) : undefined);",
-      "calls": ["disable"],
+      "calls": ["body", "disable"],
       "tags": ["network"]
     },
     {
       "name": "clean",
       "file": "app/server/index.ts",
-      "line": 369,
+      "line": 375,
       "signature": "const clean = (v: string) => v.replace(/[\\x00-\\x09\\x0b-\\x1f\\x7f]/g, \"\").trim();",
-      "calls": ["disable", "has", "lastJson", "log", "replace", "runNotify", "spawn", "str", "terminalGranted", "trim", "verifySession"],
+      "calls": ["body", "disable", "has", "header", "lastJson", "log", "replace", "runNotify", "spawn", "str", "terminalGranted", "trim", "verifySession"],
       "tags": ["network"]
     },
     {
@@ -298,7 +426,7 @@
       "file": "app/src/components/FieldsetPanel.tsx",
       "line": 10,
       "signature": "export function FieldsetPanel({ title, children, className }: FieldsetPanelProps) {",
-      "calls": ["label"],
+      "calls": ["body", "label"],
       "tags": ["logic"]
     },
     {
@@ -394,7 +522,7 @@
       "file": "app/src/components/StagingMultiview.tsx",
       "line": 303,
       "signature": "const clearLayout = () => {",
-      "calls": ["AgentBar", "FieldsetPanel", "ThemeSwitcher", "label", "onBarChip", "onDragOver", "onDragStart", "onDrop", "toggleFullscreen"],
+      "calls": ["AgentBar", "FieldsetPanel", "ThemeSwitcher", "body", "label", "onBarChip", "onDragOver", "onDragStart", "onDrop", "toggleFullscreen"],
       "tags": ["rendering"]
     },
     {
@@ -410,7 +538,7 @@
       "file": "app/src/components/TerminalPane.tsx",
       "line": 32,
       "signature": "const safeFit = () => {",
-      "calls": ["center", "ptyWebSocketUrl"],
+      "calls": ["authorized", "center", "ptyWebSocketUrl"],
       "tags": ["logic"]
     },
     {
@@ -498,7 +626,7 @@
       "file": "app/src/lib/api.ts",
       "line": 6,
       "signature": "async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {",
-      "calls": ["init", "label", "launch", "ok", "start"],
+      "calls": ["body", "init", "label", "launch", "ok", "start"],
       "tags": ["network"]
     },
     {
@@ -634,21 +762,21 @@
       "file": "app/src/pages/static-pages.tsx",
       "line": 37,
       "signature": "export function MapPage() {",
-      "calls": ["ThemeSwitcher", "loadTheme"],
+      "calls": ["KeysPanel", "ThemeSwitcher", "loadTheme"],
       "tags": ["logic"]
     },
     {
       "name": "SetupPage",
       "file": "app/src/pages/static-pages.tsx",
-      "line": 51,
+      "line": 52,
       "signature": "export function SetupPage() {",
-      "calls": ["ThemeSwitcher", "loadTheme"],
+      "calls": ["KeysPanel", "ThemeSwitcher", "loadTheme"],
       "tags": ["logic"]
     },
     {
       "name": "PrsPage",
       "file": "app/src/pages/static-pages.tsx",
-      "line": 69,
+      "line": 71,
       "signature": "export function PrsPage() {",
       "calls": [],
       "tags": ["logic"]
@@ -656,7 +784,7 @@
     {
       "name": "BenchPage",
       "file": "app/src/pages/static-pages.tsx",
-      "line": 78,
+      "line": 80,
       "signature": "export function BenchPage() {",
       "calls": [],
       "tags": ["logic"]
@@ -738,7 +866,7 @@
       "file": "app/src/panels/godseye/GodsEyePanel.tsx",
       "line": 187,
       "signature": "const begin = () => {",
-      "calls": ["applyMapStack", "dead", "destroy", "getDiagnostics", "governorRequestRender", "has", "hasLayoutBox", "observeGodsEyeTheme", "prefersReducedMotion", "publish", "readGodsEyeThemeColors", "select", "start", "uninstallRenderGovernor", "viewerContext"],
+      "calls": ["applyMapStack", "body", "dead", "destroy", "getDiagnostics", "governorRequestRender", "has", "hasLayoutBox", "observeGodsEyeTheme", "prefersReducedMotion", "publish", "readGodsEyeThemeColors", "select", "start", "uninstallRenderGovernor", "viewerContext"],
       "tags": ["logic"]
     },
     {
@@ -1258,7 +1386,7 @@
       "file": "app/src/panels/godseye/layers/fleetNodes.ts",
       "line": 206,
       "signature": "destroy() {",
-      "calls": [],
+      "calls": ["remove"],
       "tags": ["logic"]
     },
     {
@@ -1292,6 +1420,62 @@
       "signature": "export function observeGodsEyeTheme(onChange: () => void): () => void {",
       "calls": [],
       "tags": ["network"]
+    },
+    {
+      "name": "KeysPanel",
+      "file": "app/src/panels/setup/KeysPanel.tsx",
+      "line": 24,
+      "signature": "export function KeysPanel() {",
+      "calls": ["body", "keySetupChipLabel", "ok"],
+      "tags": ["logic"]
+    },
+    {
+      "name": "save",
+      "file": "app/src/panels/setup/KeysPanel.tsx",
+      "line": 78,
+      "signature": "async function save(row: KeyRow) {",
+      "calls": ["body", "collectKeyUpdates"],
+      "tags": ["persistence"]
+    },
+    {
+      "name": "body",
+      "file": "app/src/panels/setup/KeysPanel.tsx",
+      "line": 89,
+      "signature": "const body = (await res.json().catch(() => ({}))) as { error?: string; status?: StatusPayload };",
+      "calls": ["ok", "save"],
+      "tags": ["logic"]
+    },
+    {
+      "name": "remove",
+      "file": "app/src/panels/setup/KeysPanel.tsx",
+      "line": 103,
+      "signature": "async function remove(row: KeyRow) {",
+      "calls": ["body"],
+      "tags": ["logic"]
+    },
+    {
+      "name": "body",
+      "file": "app/src/panels/setup/KeysPanel.tsx",
+      "line": 116,
+      "signature": "const body = (await res.json().catch(() => ({}))) as { error?: string; status?: StatusPayload };",
+      "calls": ["enable", "ok", "one", "refuses", "remove", "save", "trim"],
+      "tags": ["logic"]
+    },
+    {
+      "name": "keySetupChipLabel",
+      "file": "app/src/panels/setup/keysPanelModel.ts",
+      "line": 4,
+      "signature": "export function keySetupChipLabel(setCount: number, total: number): string {",
+      "calls": ["remove"],
+      "tags": ["logic"]
+    },
+    {
+      "name": "collectKeyUpdates",
+      "file": "app/src/panels/setup/keysPanelModel.ts",
+      "line": 11,
+      "signature": "export function collectKeyUpdates(",
+      "calls": ["trim"],
+      "tags": ["logic"]
     },
     {
       "name": "check",
@@ -1339,14 +1523,6 @@
       "line": 97,
       "signature": "shot() {",
       "calls": ["gate"],
-      "tags": ["entrypoint"]
-    },
-    {
-      "name": "need",
-      "file": "bench/cockpit/doctor.sh",
-      "line": 12,
-      "signature": "need() {",
-      "calls": ["fail", "ok", "run"],
       "tags": ["entrypoint"]
     },
     {
@@ -2522,7 +2698,7 @@
       "file": "bin/cockpit-laya",
       "line": 654,
       "signature": "laya_mcp_hermes() {",
-      "calls": ["cockpit_json_quote", "laya_upstream_writer", "laya_version", "run"],
+      "calls": ["cockpit_json_quote", "laya_upstream_writer", "laya_version", "remove", "run"],
       "tags": ["entrypoint"]
     },
     {
@@ -3050,7 +3226,7 @@
       "file": "bin/cockpit-lib",
       "line": 814,
       "signature": "cockpit_laya_curl_config() {",
-      "calls": ["cockpit_laya_cfg_quote", "cockpit_laya_http", "header"],
+      "calls": ["body", "cockpit_laya_cfg_quote", "cockpit_laya_http", "header"],
       "tags": ["config"]
     },
     {
@@ -3178,7 +3354,7 @@
       "file": "bin/cockpit-lib",
       "line": 944,
       "signature": "cockpit_route_add_reason() {",
-      "calls": ["label", "need", "run"],
+      "calls": ["body", "label", "run"],
       "tags": ["logic"]
     },
     {
@@ -3202,7 +3378,7 @@
       "file": "bin/cockpit-lib",
       "line": 1021,
       "signature": "cockpit_route_decide() {",
-      "calls": ["absent", "cockpit_laya_enabled", "cockpit_laya_http", "cockpit_laya_installed", "cockpit_laya_key_file", "cockpit_laya_setting", "cockpit_laya_url", "cockpit_laya_venv_bin", "cockpit_route_add_reason", "cockpit_route_authlib", "cockpit_route_conf_ok", "cockpit_route_debug", "cockpit_route_languages", "cockpit_route_reset", "cockpit_route_runtime_tools", "cockpit_route_tier_rank", "cockpit_route_valid_tier", "ok", "run"],
+      "calls": ["absent", "body", "cockpit_laya_enabled", "cockpit_laya_http", "cockpit_laya_installed", "cockpit_laya_key_file", "cockpit_laya_setting", "cockpit_laya_url", "cockpit_laya_venv_bin", "cockpit_route_add_reason", "cockpit_route_authlib", "cockpit_route_conf_ok", "cockpit_route_debug", "cockpit_route_languages", "cockpit_route_reset", "cockpit_route_runtime_tools", "cockpit_route_tier_rank", "cockpit_route_valid_tier", "ok", "run"],
       "tags": ["logic"]
     },
     {
@@ -3522,7 +3698,7 @@
       "file": "bin/cockpit-notify",
       "line": 169,
       "signature": "cn_max_time() {",
-      "calls": [],
+      "calls": ["body"],
       "tags": ["entrypoint"]
     },
     {
@@ -3554,7 +3730,7 @@
       "file": "bin/cockpit-notify",
       "line": 200,
       "signature": "cn_sink_botapi() {",
-      "calls": ["cn_cfg_quote", "cn_curl", "cn_max_time", "cn_note_err", "ok"],
+      "calls": ["body", "cn_cfg_quote", "cn_curl", "cn_max_time", "cn_note_err", "ok"],
       "tags": ["entrypoint"]
     },
     {
@@ -3570,7 +3746,7 @@
       "file": "bin/cockpit-notify",
       "line": 235,
       "signature": "cn_sink_ntfy() {",
-      "calls": ["cn_cfg_quote", "cn_curl", "cn_max_time", "cn_note_err", "header", "publish"],
+      "calls": ["body", "cn_cfg_quote", "cn_curl", "cn_max_time", "cn_note_err", "header", "publish"],
       "tags": ["entrypoint"]
     },
     {
@@ -3618,7 +3794,7 @@
       "file": "bin/cockpit-notify",
       "line": 323,
       "signature": "cn_emit() {",
-      "calls": ["cn_field", "cn_redact", "cn_sha256", "ok", "one", "run", "sha", "sha256"],
+      "calls": ["body", "cn_field", "cn_redact", "cn_sha256", "ok", "one", "run", "sha", "sha256"],
       "tags": ["entrypoint"]
     },
     {
@@ -3658,7 +3834,7 @@
       "file": "bin/cockpit-notify",
       "line": 411,
       "signature": "try_desktop() {",
-      "calls": ["cn_desktop_available", "cn_emit", "cn_ntfy_configured", "cn_receipt_json", "cn_remote_configured", "cn_sink_desktop", "cn_telegram_configured", "cn_trim", "cn_write_receipt", "fail", "need", "ok", "try_ntfy", "try_telegram"],
+      "calls": ["cn_desktop_available", "cn_emit", "cn_ntfy_configured", "cn_receipt_json", "cn_remote_configured", "cn_sink_desktop", "cn_telegram_configured", "cn_trim", "cn_write_receipt", "fail", "ok", "try_ntfy", "try_telegram"],
       "tags": ["entrypoint"]
     },
     {
@@ -3666,7 +3842,7 @@
       "file": "bin/cockpit-notify",
       "line": 486,
       "signature": "cn_post_api() {",
-      "calls": ["check", "cn_cfg_quote", "cn_curl", "cn_emit", "cn_json_str", "cn_note_err", "header"],
+      "calls": ["body", "check", "cn_cfg_quote", "cn_curl", "cn_emit", "cn_json_str", "cn_note_err", "header"],
       "tags": ["entrypoint"]
     },
     {
@@ -4802,7 +4978,7 @@
       "file": "scripts/check-versions.sh",
       "line": 10,
       "signature": "usage() {",
-      "calls": ["check", "has", "need", "ok", "start", "str", "tag"],
+      "calls": ["check", "has", "ok", "start", "str", "tag"],
       "tags": ["entrypoint", "validation"]
     },
     {
@@ -4826,7 +5002,7 @@
       "file": "scripts/generate-arch-docs.sh",
       "line": 205,
       "signature": "compute_tags() {",
-      "calls": ["check", "emit", "main", "render", "run", "spawn", "start"],
+      "calls": ["check", "emit", "main", "render", "run", "save", "spawn", "start"],
       "tags": ["entrypoint"]
     },
     {
@@ -4862,6 +5038,46 @@
       "tags": ["entrypoint"]
     },
     {
+      "name": "usage",
+      "file": "scripts/get-cockpit.sh",
+      "line": 13,
+      "signature": "usage() {",
+      "calls": [],
+      "tags": ["entrypoint"]
+    },
+    {
+      "name": "os_name",
+      "file": "scripts/get-cockpit.sh",
+      "line": 51,
+      "signature": "os_name() {",
+      "calls": [],
+      "tags": ["entrypoint"]
+    },
+    {
+      "name": "arch_name",
+      "file": "scripts/get-cockpit.sh",
+      "line": 61,
+      "signature": "arch_name() {",
+      "calls": [],
+      "tags": ["entrypoint"]
+    },
+    {
+      "name": "sha256_file",
+      "file": "scripts/get-cockpit.sh",
+      "line": 70,
+      "signature": "sha256_file() {",
+      "calls": ["arch_name", "os_name", "run"],
+      "tags": ["entrypoint"]
+    },
+    {
+      "name": "run_install",
+      "file": "scripts/get-cockpit.sh",
+      "line": 91,
+      "signature": "run_install() {",
+      "calls": ["disable", "sha256_file", "tag"],
+      "tags": ["entrypoint", "process-spawn"]
+    },
+    {
       "name": "cleanup",
       "file": "scripts/health-smoke.sh",
       "line": 18,
@@ -4890,7 +5106,7 @@
       "file": "scripts/set-version.sh",
       "line": 41,
       "signature": "rewrite() {",
-      "calls": ["check", "cockpit_copy_mode", "drop", "one"],
+      "calls": ["body", "check", "cockpit_copy_mode", "drop", "one"],
       "tags": ["entrypoint", "persistence"]
     },
     {
@@ -4930,7 +5146,7 @@
       "file": "scripts/verify-release-assets.sh",
       "line": 95,
       "signature": "sha_of() {",
-      "calls": ["clean", "cockpit_sha256", "finish", "list_dir", "match_names", "sha256", "usage"],
+      "calls": ["clean", "cockpit_sha256", "finish", "hit", "list_dir", "match_names", "sha256", "usage"],
       "tags": ["entrypoint", "validation"]
     },
     {
@@ -5134,6 +5350,30 @@
       "tags": ["entrypoint", "validation"]
     },
     {
+      "name": "cleanup",
+      "file": "tests/test-get-cockpit.sh",
+      "line": 6,
+      "signature": "cleanup() { kill $HTTP_PID 2>/dev/null || true; rm -rf \"$tmpdir\"; }",
+      "calls": [],
+      "tags": ["entrypoint", "network"]
+    },
+    {
+      "name": "hash_sums",
+      "file": "tests/test-get-cockpit.sh",
+      "line": 9,
+      "signature": "hash_sums() {",
+      "calls": ["err", "fixture", "refuses", "run_install", "sha256"],
+      "tags": ["entrypoint"]
+    },
+    {
+      "name": "write_exec",
+      "file": "tests/test-get-cockpit.sh",
+      "line": 47,
+      "signature": "write_exec() {",
+      "calls": ["bad", "body", "err", "fixture", "hash_sums", "ok", "sha"],
+      "tags": ["entrypoint", "persistence", "process-spawn"]
+    },
+    {
       "name": "must_absent",
       "file": "tests/test-gev-provenance.sh",
       "line": 38,
@@ -5290,7 +5530,7 @@
       "file": "tests/test-heal-port.sh",
       "line": 161,
       "signature": "deny_one() {",
-      "calls": ["accepts", "alive", "bad", "check", "clean", "dead", "drop", "fail", "finding", "flush", "free_port", "gone", "has", "lacks", "mk_root", "must_absent", "mutant", "ok", "pass", "probe", "rc_is", "reap", "refuse", "refuses", "run", "run_heal", "select", "spawn", "spawn_node", "start", "wait_file"],
+      "calls": ["accepts", "alive", "bad", "body", "check", "clean", "dead", "drop", "fail", "finding", "flush", "free_port", "gone", "has", "lacks", "mk_root", "must_absent", "mutant", "ok", "pass", "probe", "rc_is", "reap", "refuse", "refuses", "remove", "run", "run_heal", "select", "spawn", "spawn_node", "start", "wait_file"],
       "tags": ["entrypoint"]
     },
     {
@@ -5330,7 +5570,7 @@
       "file": "tests/test-heal-port.sh",
       "line": 662,
       "signature": "flush()",
-      "calls": ["clean", "mutant", "ok", "one", "probe", "run", "scan", "start", "usage"],
+      "calls": ["body", "clean", "mutant", "ok", "one", "probe", "run", "scan", "start", "usage"],
       "tags": ["entrypoint"]
     },
     {
@@ -5368,7 +5608,7 @@
     {
       "name": "stop_child",
       "file": "tests/test-hostinger-default.sh",
-      "line": 23,
+      "line": 24,
       "signature": "stop_child() {",
       "calls": ["fixture_cleanup"],
       "tags": ["entrypoint"]
@@ -5376,7 +5616,7 @@
     {
       "name": "pass",
       "file": "tests/test-hostinger-default.sh",
-      "line": 32,
+      "line": 33,
       "signature": "pass() { printf 'hostinger-default: PASS %s\\n' \"$1\"; }",
       "calls": [],
       "tags": ["entrypoint"]
@@ -5384,7 +5624,7 @@
     {
       "name": "bad",
       "file": "tests/test-hostinger-default.sh",
-      "line": 33,
+      "line": 34,
       "signature": "bad() { printf 'hostinger-default: FAIL %s\\n' \"$1\"; [[ -n \"${2:-}\" ]] && printf '%s\\n' \"$2\" >&2; failed+=(\"$1\"); }",
       "calls": [],
       "tags": ["entrypoint"]
@@ -5392,7 +5632,7 @@
     {
       "name": "check",
       "file": "tests/test-hostinger-default.sh",
-      "line": 34,
+      "line": 35,
       "signature": "check() { local label=$1; shift; if \"$@\"; then pass \"$label\"; else bad \"$label\"; fi; }",
       "calls": ["bad", "label", "pass"],
       "tags": ["entrypoint", "validation"]
@@ -5400,7 +5640,7 @@
     {
       "name": "absent",
       "file": "tests/test-hostinger-default.sh",
-      "line": 35,
+      "line": 36,
       "signature": "absent() { local label=$1 pat=$2 file=$3; if grep -q -- \"$pat\" \"$file\"; then bad \"$label\" \"$(grep -n -- \"$pat\" \"$file\")\"; else pass \"$label\"; fi; }",
       "calls": ["bad", "label", "pass"],
       "tags": ["entrypoint"]
@@ -5408,7 +5648,7 @@
     {
       "name": "die",
       "file": "tests/test-hostinger-default.sh",
-      "line": 36,
+      "line": 37,
       "signature": "die() { printf 'hostinger-default: FAIL (%s)\\n' \"$1\"; [[ -n \"${2:-}\" ]] && printf '%s\\n' \"$2\" >&2; exit 1; }",
       "calls": ["fail", "must_absent", "probe", "run"],
       "tags": ["entrypoint"]
@@ -5416,7 +5656,7 @@
     {
       "name": "free_port",
       "file": "tests/test-hostinger-default.sh",
-      "line": 46,
+      "line": 47,
       "signature": "free_port() { python3 -c 'import socket; s=socket.socket(); s.bind((\"127.0.0.1\",0)); print(s.getsockname()[1]); s.close()'; }",
       "calls": ["launch"],
       "tags": ["entrypoint", "ipc"]
@@ -5424,7 +5664,7 @@
     {
       "name": "launch",
       "file": "tests/test-hostinger-default.sh",
-      "line": 49,
+      "line": 50,
       "signature": "launch() {",
       "calls": ["die", "free_port", "label", "log"],
       "tags": ["entrypoint"]
@@ -5432,7 +5672,7 @@
     {
       "name": "health_mode",
       "file": "tests/test-hostinger-default.sh",
-      "line": 64,
+      "line": 65,
       "signature": "health_mode() {",
       "calls": [],
       "tags": ["entrypoint"]
@@ -5440,7 +5680,7 @@
     {
       "name": "notify_code",
       "file": "tests/test-hostinger-default.sh",
-      "line": 68,
+      "line": 69,
       "signature": "notify_code() {",
       "calls": [],
       "tags": ["entrypoint"]
@@ -5448,7 +5688,7 @@
     {
       "name": "cli_rc",
       "file": "tests/test-hostinger-default.sh",
-      "line": 72,
+      "line": 73,
       "signature": "cli_rc() {",
       "calls": ["check", "health_mode", "launch", "notify_code", "stop_child", "write_plist"],
       "tags": ["entrypoint"]
@@ -5456,7 +5696,7 @@
     {
       "name": "write_plist",
       "file": "tests/test-hostinger-default.sh",
-      "line": 109,
+      "line": 110,
       "signature": "write_plist() {",
       "calls": ["cockpit_service_install_launchd", "die", "log"],
       "tags": ["entrypoint", "persistence"]
@@ -5464,7 +5704,7 @@
     {
       "name": "plist_keys",
       "file": "tests/test-hostinger-default.sh",
-      "line": 119,
+      "line": 120,
       "signature": "plist_keys() {",
       "calls": ["absent", "check", "must_absent", "probe", "start", "write_plist"],
       "tags": ["entrypoint"]
@@ -5472,7 +5712,7 @@
     {
       "name": "hostinger_probe",
       "file": "tests/test-hostinger-default.sh",
-      "line": 145,
+      "line": 146,
       "signature": "hostinger_probe() {  # ROOT → offending lines on stdout; rc 0 clean, 1 findings, 2 scanner error",
       "calls": ["absent", "check", "clean", "probe"],
       "tags": ["entrypoint", "privileged"]
@@ -5480,7 +5720,7 @@
     {
       "name": "proctor3",
       "file": "tests/test-hostinger-default.sh",
-      "line": 170,
+      "line": 171,
       "signature": "proctor3() {  # ROOT → rc 0 match (finding), 1 clean, >=2 error; paths: bin install.sh scripts packaging",
       "calls": ["absent", "check", "clean", "finding", "fixture", "hostinger_probe", "pass", "twin"],
       "tags": ["entrypoint", "privileged"]
@@ -5488,7 +5728,7 @@
     {
       "name": "mutant",
       "file": "tests/test-hostinger-default.sh",
-      "line": 206,
+      "line": 207,
       "signature": "mutant() {  # NAME RELPATH LINE",
       "calls": ["absent", "bad", "check", "clean", "has", "hostinger_probe", "launch", "must_absent", "ok", "pass", "proctor3", "start", "twin"],
       "tags": ["entrypoint"]
@@ -5514,7 +5754,7 @@
       "file": "tests/test-install-shells.sh",
       "line": 24,
       "signature": "count_markers() {",
-      "calls": ["absent", "alive", "drop", "fail", "label", "launch", "log", "ok", "run_install"],
+      "calls": ["absent", "alive", "drop", "fail", "hit", "label", "launch", "log", "ok", "run_install"],
       "tags": ["entrypoint"]
     },
     {
@@ -5634,7 +5874,7 @@
       "file": "tests/test-laya-hardening.sh",
       "line": 149,
       "signature": "launch() {",
-      "calls": ["absent", "cockpit_route_run", "has", "init", "laya_fail", "laya_make_venv", "laya_pick_port", "laya_start_stub", "laya_stop_stubs", "laya_write_conf", "laya_write_key", "log", "main", "ok", "one", "probe", "replace", "run", "start"],
+      "calls": ["absent", "cockpit_route_run", "has", "init", "laya_fail", "laya_make_venv", "laya_pick_port", "laya_start_stub", "laya_stop_stubs", "laya_write_conf", "laya_write_key", "log", "main", "ok", "one", "probe", "replace", "run", "save", "start"],
       "tags": ["entrypoint"]
     },
     {
@@ -5730,13 +5970,13 @@
       "file": "tests/test-notify-lint.sh",
       "line": 15,
       "signature": "probe() {",
-      "calls": ["clean", "finding", "label", "need", "post", "scan"],
+      "calls": ["clean", "finding", "label", "post", "scan"],
       "tags": ["entrypoint", "validation"]
     },
     {
       "name": "stop_ours",
       "file": "tests/test-notify.sh",
-      "line": 25,
+      "line": 26,
       "signature": "stop_ours() {",
       "calls": ["fixture_cleanup"],
       "tags": ["entrypoint"]
@@ -5744,7 +5984,7 @@
     {
       "name": "fail",
       "file": "tests/test-notify.sh",
-      "line": 33,
+      "line": 34,
       "signature": "fail() { echo \"notify: FAIL ($1)\"; [[ -n \"${2:-}\" ]] && printf '%s\\n' \"$2\" >&2; exit 1; }",
       "calls": [],
       "tags": ["entrypoint"]
@@ -5752,7 +5992,7 @@
     {
       "name": "sha",
       "file": "tests/test-notify.sh",
-      "line": 36,
+      "line": 37,
       "signature": "sha() { printf '%s' \"$1\" | cockpit_sha256 /dev/stdin; }",
       "calls": ["cockpit_sha256", "start_stub"],
       "tags": ["entrypoint"]
@@ -5760,7 +6000,7 @@
     {
       "name": "start_stub",
       "file": "tests/test-notify.sh",
-      "line": 39,
+      "line": 40,
       "signature": "start_stub() {",
       "calls": ["fail", "log", "start"],
       "tags": ["entrypoint"]
@@ -5768,7 +6008,7 @@
     {
       "name": "stop_pid",
       "file": "tests/test-notify.sh",
-      "line": 49,
+      "line": 50,
       "signature": "stop_pid() { kill \"$1\" 2>/dev/null || true; wait \"$1\" 2>/dev/null || true; }",
       "calls": [],
       "tags": ["entrypoint"]
@@ -5776,15 +6016,15 @@
     {
       "name": "hits",
       "file": "tests/test-notify.sh",
-      "line": 50,
+      "line": 51,
       "signature": "hits() { [[ -f \"$1\" ]] && grep -c \"$2\" \"$1\" || echo 0; }",
-      "calls": ["check", "fail", "log", "ok", "one", "probe", "run", "sha", "start_stub", "stop_pid"],
+      "calls": ["body", "check", "fail", "log", "ok", "one", "probe", "run", "sha", "start_stub", "stop_pid"],
       "tags": ["entrypoint"]
     },
     {
       "name": "free_port",
       "file": "tests/test-notify.sh",
-      "line": 260,
+      "line": 261,
       "signature": "free_port() { python3 -c 'import socket; s=socket.socket(); s.bind((\"127.0.0.1\",0)); print(s.getsockname()[1]); s.close()'; }",
       "calls": ["refuses", "start_api"],
       "tags": ["entrypoint", "ipc"]
@@ -5792,7 +6032,7 @@
     {
       "name": "start_api",
       "file": "tests/test-notify.sh",
-      "line": 262,
+      "line": 263,
       "signature": "start_api() {",
       "calls": ["fail", "free_port", "log"],
       "tags": ["entrypoint"]
@@ -5800,10 +6040,18 @@
     {
       "name": "post",
       "file": "tests/test-notify.sh",
-      "line": 278,
+      "line": 279,
       "signature": "post() { # post CODEVAR BODYFILE JSON [curl args...]",
       "calls": ["bad", "fail", "header", "log", "ok", "pass", "present", "run", "sha256", "start_api", "start_stub", "stop_pid"],
       "tags": ["entrypoint", "user-input"]
+    },
+    {
+      "name": "hit",
+      "file": "tests/test-onboarding-lint.sh",
+      "line": 8,
+      "signature": "hit() { echo \"$1\"; findings=$((findings + 1)); }",
+      "calls": ["must_absent", "present", "sha256", "stage", "start", "twin", "update"],
+      "tags": ["entrypoint", "validation"]
     },
     {
       "name": "scan",
@@ -5890,7 +6138,7 @@
       "file": "tests/test-termius-touch.sh",
       "line": 24,
       "signature": "termius_cleanup() {",
-      "calls": ["check", "expect", "fixture_cleanup", "flush", "need", "ok", "one", "pane_pid", "run", "runtime_pane", "select", "show", "str", "tmux_test"],
+      "calls": ["check", "expect", "fixture_cleanup", "flush", "ok", "one", "pane_pid", "remove", "run", "runtime_pane", "select", "show", "str", "tmux_test"],
       "tags": ["entrypoint"]
     },
     {
@@ -5922,7 +6170,7 @@
       "file": "tests/test-verify-release-assets.sh",
       "line": 37,
       "signature": "expect() {",
-      "calls": ["bad", "drop", "fail", "has", "label", "ok", "present", "refuses", "run", "sha256", "stage", "usage"],
+      "calls": ["bad", "body", "drop", "fail", "has", "label", "ok", "present", "refuses", "run", "sha256", "stage", "usage"],
       "tags": ["entrypoint", "validation"]
     },
     {
@@ -5962,7 +6210,7 @@
       "file": "tests/test-workflow-lint.sh",
       "line": 133,
       "signature": "finding() {",
-      "calls": ["clean", "rgp"],
+      "calls": ["clean", "hit", "rgp"],
       "tags": ["entrypoint", "validation"]
     },
     {
@@ -5986,7 +6234,7 @@
       "file": "tests/test-workflow-lint.sh",
       "line": 161,
       "signature": "yqt() {",
-      "calls": ["check", "drop", "fail", "finding", "has", "header", "label", "main", "must_absent", "need", "one", "pass", "present", "publish", "report", "rgp", "run", "select", "start", "tag", "twin", "update"],
+      "calls": ["body", "check", "drop", "fail", "finding", "has", "header", "hit", "label", "main", "must_absent", "one", "pass", "present", "publish", "report", "rgp", "run", "select", "start", "tag", "twin", "update"],
       "tags": ["entrypoint", "validation"]
     },
     {
