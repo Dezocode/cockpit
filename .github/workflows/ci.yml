@@ -257,6 +257,15 @@ jobs:
           pnpm build
           pnpm run build:server
 
+      # Same two commands as verify "C10 God's Eye panel tests" (working-directory: app).
+      # e2e stays on ubuntu verify. macos-13 is not a leg. No continue-on-error.
+      - name: C10 God's Eye unit + bundle (macOS portability)
+        if: matrix.os == 'macos-14' || matrix.os == 'macos-15-intel'
+        working-directory: app
+        run: |
+          node --test 'src/panels/godseye/**/*.test.mjs'
+          node tests/godseye-bundle.check.mjs
+
       - name: Portability suite
         run: |
           set -euxo pipefail
