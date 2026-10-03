@@ -9,6 +9,7 @@ repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 # Resolve node before fixture_init resets PATH: CI passes COCKPIT_TEST_NODE into its
 # env -i sandbox (setup-node lives outside /usr/bin). The API cases need it; no skip.
 node_bin="${COCKPIT_TEST_NODE:-$(command -v node || true)}"
+export COCKPIT_TEST_NODE="$node_bin"
 # shellcheck source=lib/fixture.sh
 source "$repo_root/tests/lib/fixture.sh"
 fixture_init notify

@@ -102,8 +102,8 @@ done
 [[ -x "$root/bench/cockpit/capability-matrix.sh" ]] && bench=ok || bench=fail
 check "bench/cockpit/capability-matrix.sh" "$bench"
 
-[[ -f "$root/bench/cockpit/doctor.sh" ]] && doc=ok || doc=fail
-check "bench/cockpit/doctor.sh" "$doc"
+[[ -f "$root/bin/cockpit-doctor" ]] && doc=ok || doc=fail
+check "bin/cockpit-doctor" "$doc"
 
 [[ -f "$root/bench/cockpit/hostinger-h0-verify.sh" ]] && h0=ok || h0=fail
 check "bench/cockpit/hostinger-h0-verify.sh" "$h0"

@@ -10,6 +10,8 @@ import { createServer } from "node:http";
 import { WebSocketServer } from "ws";
 import { createHmac, createHash, timingSafeEqual, randomBytes } from "node:crypto";
 import { fleetNodesApp } from "./fleet/nodes.js";
+import { createKeySetupApp } from "./gev/keySetup.js";
+import { serveStatic } from "@hono/node-server/serve-static";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = join(__dirname, "../..");
@@ -148,6 +150,10 @@ app.post("/api/emulators/:id/launch", (c) => {
 });
 
 app.route("/", fleetNodesApp);
+
+// C6: GEV-style key setup (presence-only; POST gated by admit + session/LOCAL_TRUST).
+app.route("/api/setup", createKeySetupApp({ readSession: readSessionCookie as never, terminalGranted: terminalGranted as never }));
+
 
 app.get("/api/memory", (c) =>
   c.json({
@@ -392,6 +398,36 @@ app.post("/api/notify", async (c) => {
   if (!receipt) return c.json({ error: "notify failed" }, 502);
   return c.json(receipt, code === 0 ? 200 : 502);
 });
+
+// C6: serve app/dist only when COCKPIT_SERVE_UI=1 (Pinokio / local). Hostinger uses nginx.
+if (process.env.COCKPIT_SERVE_UI === "1") {
+  const distRoot = join(__dirname, "../dist");
+  app.use("/*", async (c, next) => {
+    c.header("X-Frame-Options", "DENY");
+    c.header("Content-Security-Policy", "frame-ancestors 'none'");
+    await next();
+  });
+  app.use(
+    "/*",
+    serveStatic({
+      root: distRoot,
+      rewriteRequestPath: (p) => {
+        // Deny credential paths even if somehow requested
+        if (/(^|\/)(\.env|ENVIRONMENT|keys\.env)(\.|$|\/)/.test(p)) return "/__denied__";
+        return p;
+      },
+    }),
+  );
+  // SPA fallback: non-API GETs without a file extension → index.html
+  app.get("*", async (c) => {
+    const path = new URL(c.req.url).pathname;
+    if (path.startsWith("/api") || path.startsWith("/ws")) return c.notFound();
+    const index = join(distRoot, "index.html");
+    if (!existsSync(index)) return c.text("UI build missing (app/dist)", 404);
+    c.header("Content-Type", "text/html; charset=utf-8");
+    return c.body(readFileSync(index));
+  });
+}
 
 const port = Number(process.env.COCKPIT_WEB_PORT ?? 8787);
 const host = process.env.COCKPIT_WEB_HOST?.trim() || "127.0.0.1"; // loopback default; unset/empty never binds all interfaces

@@ -1,0 +1,20 @@
+# Ported from bilawalsidhu/gods-eye-view@b210ab0fe4d71c7faa0268134e0aa5f3c53fc7fe pinokio/_ENVIRONMENT — MIT © 2026 Bilawal Sidhu. Modified for Cockpit: Cockpit key template; sharing forced off with __cockpit_sharing_disabled__..
+
+# Cockpit works without any API keys.
+# Easiest way to add one: open SETUP → KEYS (POWER UP) in the running app.
+# It saves into this file under Pinokio (or ~/.config/cockpit/keys.env otherwise)
+# with owner-only permissions. You never need to paste keys into chat.
+# Manual fallback: edit this ignored pinokio/ENVIRONMENT, uncomment only what
+# you need, then Stop and Start. This file is plaintext, not encrypted.
+
+# OPENAI_API_KEY=
+# ANTHROPIC_API_KEY=
+# XAI_API_KEY=
+# COCKPIT_NTFY_TOPIC=
+# COCKPIT_NOTIFY_KEY=
+# COCKPIT_TELEGRAM_BOT_TOKEN=
+
+# Keep sharing off. Funnel/Serve stay off (Cockpit denylist).
+PINOKIO_SHARE_CLOUDFLARE=false
+PINOKIO_SHARE_LOCAL=false
+PINOKIO_SHARE_VAR=__cockpit_sharing_disabled__

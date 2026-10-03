@@ -27,3 +27,6 @@ bench/cockpit/screenshots/*
 !bench/cockpit/screenshots/t384u/
 bench/cockpit/screenshots/t384u/**
 .gitnexus/
+keys.env
+pinokio/ENVIRONMENT
+pinokio/.installed

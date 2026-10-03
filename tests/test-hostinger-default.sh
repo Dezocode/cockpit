@@ -15,6 +15,7 @@ set -euo pipefail
 
 repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 node_bin="${COCKPIT_TEST_NODE:-$(command -v node || true)}"
+export COCKPIT_TEST_NODE="$node_bin"
 # shellcheck source=lib/fixture.sh
 source "$repo_root/tests/lib/fixture.sh"
 fixture_init hostinger-default

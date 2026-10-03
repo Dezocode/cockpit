@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# Thin shim → ported GEV doctor (app/server/gev/doctor.mjs).
+set -euo pipefail
+root="$(cd "$(dirname "$0")/.." && pwd)"
+node_bin="${COCKPIT_TEST_NODE:-$(command -v node 2>/dev/null || true)}"
+if [[ -z "$node_bin" || ! -x "$node_bin" ]]; then
+  echo "cockpit doctor: node is required. Install Node 22+ from https://nodejs.org" >&2
+  exit 1
+fi
+exec "$node_bin" "$root/app/server/gev/doctor.mjs" "$@"
